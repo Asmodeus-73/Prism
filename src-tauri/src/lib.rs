@@ -1,3 +1,6 @@
+mod sync;
+mod update;
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -44,8 +47,30 @@ async fn save_file(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(LastDir::default())
-        .invoke_handler(tauri::generate_handler![save_file])
+        .manage(sync::SyncState::default())
+        .manage(update::Pending::default())
+        .setup(|app| {
+            sync::load(app.handle());
+            Ok(())
+        })
+        .register_asynchronous_uri_scheme_protocol("prismsync", sync::protocol)
+        .invoke_handler(tauri::generate_handler![
+            save_file,
+            sync::sync_folder,
+            sync::sync_choose,
+            sync::sync_stop,
+            sync::db_scan,
+            sync::db_get,
+            sync::db_set,
+            sync::db_delete,
+            sync::asset_put,
+            sync::asset_delete,
+            sync::asset_usage,
+            update::update_check,
+            update::update_install
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Prism");
 }

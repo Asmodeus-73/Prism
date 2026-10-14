@@ -1,0 +1,45 @@
+name: Créer la clé des mises à jour
+
+# Run once. Creates the key that signs app updates: the private half goes
+# straight into the TAURI_SIGNING_PRIVATE_KEY secret (it never leaves GitHub),
+# the public half is written into tauri.conf.json so the apps can check it.
+# Needs the RELEASES_TOKEN secret (a token allowed to write this repository's secrets).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  key:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Créer la clé et la ranger
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          set -e
+          if [ -z "$GH_TOKEN" ]; then echo "Le secret RELEASES_TOKEN manque."; exit 1; fi
+          dir=$(mktemp -d)
+          npx tauri signer generate -w "$dir/key" --ci -p '' > /dev/null
+          gh secret set TAURI_SIGNING_PRIVATE_KEY -R "$GITHUB_REPOSITORY" < "$dir/key"
+          pub=$(cat "$dir/key.pub")
+          rm -rf "$dir"
+          jq --arg k "$pub" '.plugins.updater.pubkey = $k' src-tauri/tauri.conf.json > conf.tmp
+          mv conf.tmp src-tauri/tauri.conf.json
+
+      - name: Enregistrer la clé publique
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Clé publique des mises à jour"
+          git push

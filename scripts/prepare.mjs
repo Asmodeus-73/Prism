@@ -18,6 +18,20 @@ const swaps = [
   ["'https://fonts.googleapis.com/css2?'+q+'&display=swap'", "'desktop/fonts/fonts.css'"],
   [/https:\/\/fonts\.googleapis\.com\/css2\?[^"']*/g, 'desktop/fonts/fonts.css'],
   [/<link rel="preconnect"[^>]*>/g, ''],
+  // Synced files are served by the app instead of claude.ai.
+  ["'/_blob/'", 'PRISM_BLOB'],
+  ['"/_blob/${', '"${PRISM_BLOB}${'],
+  // Sync goes through a folder, not a claude.ai account.
+  ['La synchronisation entre appareils fonctionne quand Prism est ouvert depuis votre compte Claude par son propriétaire.',
+    'Pour retrouver vos projets sur votre autre ordinateur, choisissez un dossier synchronisé : Fichier > Dossier de synchronisation…'],
+  ['Disponible quand Prism est ouvert depuis votre compte Claude', 'Choisissez d’abord un dossier : Fichier > Dossier de synchronisation…'],
+  ['Sur cet appareil et sur votre compte', 'Sur cet appareil et dans le dossier synchronisé'],
+  ['de cet appareil et de votre compte', 'de cet appareil et du dossier synchronisé'],
+  ['rouvrez le projet depuis votre compte', 'rouvrez le projet depuis le dossier synchronisé'],
+  ['sur mon compte', 'dans le dossier synchronisé'],
+  ['sur votre compte', 'dans le dossier synchronisé'],
+  ['Sur mon compte', 'Dans le dossier synchronisé'],
+  ['Sur votre compte', 'Dans le dossier synchronisé'],
 ];
 for (const [from, to] of swaps) {
   const before = html;
