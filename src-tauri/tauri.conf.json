@@ -59,7 +59,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNEOTI1QkQ4M0RDNDE2RUMKUldUc0ZzUTkyRnVTUGVhbmJ5N0NFOTFwYUpqWEpFR3hFc09kNVkyazQ2aXhYTW53NjBSUk9ZWnkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY4QzEzQjVCNzQxRTVBMkQKUldRdFdoNTBXenZCYUQrdnNyblhMRlRwOEIwMG9aOFJLVmsxL0h4NU5BUzkvL0Mvb211d1BtQ2YK",
       "endpoints": [
         "https://github.com/Asmodeus-73/Prism/releases/latest/download/latest.json"
       ],
