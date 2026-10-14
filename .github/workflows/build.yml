@@ -61,4 +61,4 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           # Until the update key exists (setup-update-key.yml), build without the update files.
-          args: ${{ matrix.args }} ${{ secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config {"bundle":{"createUpdaterArtifacts":false}}' || '' }}
+          args: ${{ matrix.args }} ${{ secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config src-tauri/no-updater.conf.json' || '' }}
