@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "prepare-web": "node scripts/prepare.mjs",
+    "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build"
   },
