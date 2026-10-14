@@ -8812,7 +8812,7 @@ setTimeout(beat,3000);
 /* ===== wave49: télécharger l'application de bureau depuis l'accueil (version web sur ordinateur) ===== */
 (()=>{
 if(window.PRISM_DESKTOP||IS_IOS||/Android/.test(navigator.userAgent))return;
-const URL_APP='https://github.com/Asmodeus-73/Prism/releases/latest';
+const URL_APP='https://asmodeus-73.github.io/Prism/#telecharger';
 const st=document.createElement('style');st.textContent='.w49{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--fg-2)}.w49 a{color:var(--accent);font-weight:600;text-decoration:none}.w49 a:hover{text-decoration:underline}.w49 svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}';document.head.appendChild(st);
 const put=()=>{const t=$('#wTiles');if(!t||$('#w49'))return;t.insertAdjacentHTML('afterend',`<div class="w49" id="w49"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Prism existe aussi en application pour Mac et Windows, qui marche hors ligne.</span><a href="${URL_APP}" target="_blank" rel="noopener">Télécharger l’app</a></div>`)};
 put();setTimeout(put,800);

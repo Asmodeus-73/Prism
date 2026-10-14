@@ -2,6 +2,10 @@
 
 Application de retouche photo pour Mac et Windows, construite avec [Tauri 2](https://tauri.app) à partir de la version web de Prism.
 
+**Pour télécharger Prism ou l'utiliser en ligne : [asmodeus-73.github.io/Prism](https://asmodeus-73.github.io/Prism/).**
+
+- `site/` : la page d'accueil du site, publiée avec `web/` (sous `/app/`) sur GitHub Pages par `.github/workflows/site.yml`.
+
 ## Organisation
 
 - `web/` : la version web telle que publiée (page et fichiers : IA, RAW, PDF, HEIC, AVIF, PSD, gestion des couleurs). On ne la modifie pas à la main ; on la remplace par une nouvelle copie quand la version web évolue.

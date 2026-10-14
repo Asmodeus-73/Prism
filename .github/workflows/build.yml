@@ -50,9 +50,13 @@ jobs:
           tagName: v__VERSION__
           releaseName: Prism __VERSION__
           releaseBody: |
-            Mac : téléchargez le fichier .dmg, ouvrez-le et glissez Prism dans Applications.
-            Windows : téléchargez le fichier -setup.exe et lancez-le.
-            Déjà installé ? Prism propose la mise à jour tout seul au lancement.
+            Le plus simple : téléchargez Prism depuis son site, https://asmodeus-73.github.io/Prism/ (le bouton choisit le bon fichier pour votre ordinateur).
+
+            Sinon, dans la liste « Assets » ci-dessous, prenez un seul fichier :
+            - Mac : le fichier qui finit par .dmg. Ouvrez-le et glissez Prism dans Applications. La première fois, faites clic droit sur Prism puis Ouvrir.
+            - Windows : le fichier qui finit par -setup.exe. Lancez-le. Si Windows affiche un avertissement, cliquez sur « Informations complémentaires » puis « Exécuter quand même ».
+
+            Les autres fichiers (.tar.gz, .sig, latest.json, Source code) servent aux mises à jour automatiques ou aux développeurs : inutile de les télécharger.
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
