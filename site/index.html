@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prism · Retouche photo gratuite pour Mac, Windows et navigateur</title>
+<meta name="description" content="Prism est un logiciel de retouche photo gratuit : calques, réglages, fichiers RAW, outils d’IA et photothèque. Pour Mac, Windows, ou directement dans le navigateur.">
+<meta property="og:title" content="Prism · Retouche photo gratuite">
+<meta property="og:description" content="Calques, réglages, RAW, IA et photothèque. Pour Mac, Windows ou dans le navigateur.">
+<meta property="og:image" content="editeur.jpg">
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+<style>
+:root{--bg:#0e0e11;--bg-2:#16161a;--line:rgba(255,255,255,.08);--fg:#f2f2f5;--fg-2:#a4a4ae;--accent:#5b67f0;--accent-2:#7b85ff;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 16px/1.6 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+header{position:sticky;top:0;z-index:10;background:rgba(14,14,17,.8);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;gap:24px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:18px;letter-spacing:-.02em;text-decoration:none}
+.brand img{width:32px;height:32px}
+.nav nav{display:flex;gap:22px;margin-left:auto;font-size:14.5px;color:var(--fg-2)}
+.nav nav a{text-decoration:none}.nav nav a:hover{color:var(--fg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;height:46px;padding:0 22px;border-radius:12px;font:600 15.5px/1 inherit;font-family:inherit;text-decoration:none;border:1px solid var(--line);background:var(--bg-2);color:var(--fg);cursor:pointer;transition:background .15s,transform .15s}
+.btn:hover{background:#1f1f25}
+.btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.btn.primary:hover{background:var(--accent-2)}
+.btn.sm{height:38px;padding:0 16px;font-size:14px;border-radius:10px}
+.btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.hero{text-align:center;padding:88px 0 40px;position:relative}
+.hero:before{content:"";position:absolute;inset:-80px 0 auto;height:520px;background:radial-gradient(600px 300px at 50% 30%,rgba(91,103,240,.28),transparent 70%),radial-gradient(400px 200px at 70% 50%,rgba(240,120,170,.12),transparent 70%);pointer-events:none;z-index:-1}
+.hero img.logo{width:88px;height:88px}
+h1{font-size:clamp(38px,6vw,64px);line-height:1.05;letter-spacing:-.035em;margin:18px 0 18px;font-weight:700}
+.lead{font-size:clamp(17px,2vw,20px);color:var(--fg-2);max-width:640px;margin:0 auto 34px}
+.ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.meta{margin-top:14px;font-size:13.5px;color:var(--fg-2)}
+.meta a{color:var(--fg-2)}
+.shot{margin:56px auto 0;max-width:1120px;border-radius:16px;overflow:hidden;border:1px solid var(--line);box-shadow:0 40px 120px -30px rgba(91,103,240,.35),0 20px 60px -20px rgba(0,0,0,.8)}
+.shot img{display:block;width:100%;height:auto}
+section{padding:96px 0 0}
+h2{font-size:clamp(28px,4vw,40px);letter-spacing:-.03em;line-height:1.1;margin:0 0 12px;text-align:center}
+.sub{color:var(--fg-2);text-align:center;max-width:620px;margin:0 auto 44px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--bg-2);border:1px solid var(--line);border-radius:16px;padding:26px}
+.card h3{margin:14px 0 6px;font-size:17px;letter-spacing:-.01em}
+.card p{margin:0;color:var(--fg-2);font-size:15px}
+.ic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:rgba(91,103,240,.14);color:var(--accent-2)}
+.ic svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dl{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.dl .card{display:flex;flex-direction:column;gap:10px}
+.dl .card h3{margin:4px 0 0;font-size:20px}
+.dl .card .btn{margin-top:auto}
+.dl .card.on{border-color:rgba(91,103,240,.6);box-shadow:0 0 0 1px rgba(91,103,240,.35) inset}
+.note{font-size:13.5px;color:var(--fg-2)}
+.note b{color:var(--fg)}
+footer{margin-top:110px;border-top:1px solid var(--line);padding:30px 0 40px;color:var(--fg-2);font-size:14px}
+footer .wrap{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+footer a{text-decoration:none}footer a:hover{color:var(--fg)}
+footer .sp{flex:1}
+@media (max-width:860px){.grid,.dl{grid-template-columns:1fr}.nav nav{display:none}.nav .btn{margin-left:auto}.hero{padding-top:56px}section{padding-top:72px}}
+</style>
+</head>
+<body>
+<header><div class="wrap nav">
+  <a class="brand" href="#"><img src="icon.png" alt="">Prism</a>
+  <nav><a href="#fonctions">Fonctionnalités</a><a href="#telecharger">Télécharger</a></nav>
+  <a class="btn sm" href="app/">Utiliser en ligne</a>
+</div></header>
+
+<main>
+<div class="wrap hero">
+  <img class="logo" src="icon.png" alt="">
+  <h1>Retouchez vos photos,<br>tout simplement.</h1>
+  <p class="lead">Prism est un logiciel de retouche photo gratuit : calques, réglages précis, fichiers RAW, outils d’IA et une photothèque pour tout ranger. Pour Mac, Windows, ou directement dans votre navigateur.</p>
+  <div class="ctas">
+    <a class="btn primary" id="heroDl" href="#telecharger"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Télécharger Prism</span></a>
+    <a class="btn" href="app/">Utiliser en ligne</a>
+  </div>
+  <div class="meta" id="heroMeta">Gratuit · Mac et Windows</div>
+  <div class="shot"><img src="editeur.jpg" alt="L’éditeur de Prism avec une photo de lac au crépuscule" width="2400" height="1500"></div>
+</div>
+
+<section id="fonctions"><div class="wrap">
+  <h2>Tout ce qu’il faut pour retoucher</h2>
+  <p class="sub">Les outils d’un logiciel professionnel, dans une interface claire et en français.</p>
+  <div class="grid">
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5"/></svg></div><h3>Calques et masques</h3><p>Calques de photo et de réglage, modes de fusion, masques et sélections au lasso ou à la baguette.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></div><h3>Réglages précis</h3><p>Balance des blancs, exposition, ombres et hautes lumières, clarté, vibrance, préréglages et réglage automatique.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></div><h3>Outils d’IA</h3><p>Gomme IA pour effacer un élément, détection du sujet et correcteur pour les taches et les poussières.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-5 5 5 3-3 5 5"/></svg></div><h3>RAW, HEIC, PSD</h3><p>Ouvre les fichiers RAW des appareils photo, les photos d’iPhone, les fichiers Photoshop, les PDF et plus encore.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div><h3>Photothèque</h3><p>Notes, drapeaux, étiquettes de couleur, albums et recherche pour retrouver chaque photo en un instant.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div><h3>Votre travail reste chez vous</h3><p>Vos photos sont enregistrées sur votre ordinateur, sans compte. L’application marche même hors ligne.</p></div>
+  </div>
+</div></section>
+
+<section id="telecharger"><div class="wrap">
+  <h2>Télécharger Prism</h2>
+  <p class="sub" id="dlSub">Gratuit, sans compte et sans publicité.</p>
+  <div class="dl">
+    <div class="card" id="cMac">
+      <h3>Mac</h3>
+      <p class="note">Puces Apple et Intel. macOS 10.15 ou plus récent.</p>
+      <p class="note">Ouvrez le fichier .dmg et glissez Prism dans Applications. La première fois, faites <b>clic droit sur Prism puis Ouvrir</b>.</p>
+      <a class="btn primary" id="bMac" href="https://github.com/Asmodeus-73/Prism/releases/latest"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Télécharger pour Mac</a>
+    </div>
+    <div class="card" id="cWin">
+      <h3>Windows</h3>
+      <p class="note">Windows 10 et 11, 64 bits.</p>
+      <p class="note">Lancez le fichier d’installation. Si Windows affiche un avertissement, cliquez sur <b>Informations complémentaires puis Exécuter quand même</b>.</p>
+      <a class="btn primary" id="bWin" href="https://github.com/Asmodeus-73/Prism/releases/latest"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Télécharger pour Windows</a>
+    </div>
+    <div class="card" id="cWeb">
+      <h3>Dans le navigateur</h3>
+      <p class="note">Rien à installer. Marche dans Chrome, Edge, Firefox et Safari, sur ordinateur comme sur tablette.</p>
+      <p class="note">Vos photos sont enregistrées dans le navigateur.</p>
+      <a class="btn" href="app/">Utiliser en ligne</a>
+    </div>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <a class="brand" href="#"><img src="icon.png" alt="" style="width:22px;height:22px">Prism</a>
+  <span class="sp"></span>
+  <a href="app/">Utiliser en ligne</a>
+  <a href="#telecharger">Télécharger</a>
+  <a href="https://github.com/Asmodeus-73/Prism">Code source</a>
+</div></footer>
+
+<script>
+(() => {
+  const ua = navigator.userAgent, pf = navigator.platform || '';
+  const touch = navigator.maxTouchPoints > 1;
+  const os = /Win/.test(pf) || /Windows/.test(ua) ? 'win' : (/Mac/.test(pf) && !touch) ? 'mac' : null;
+  const hero = document.getElementById('heroDl'), meta = document.getElementById('heroMeta');
+  if (os) {
+    document.getElementById(os === 'mac' ? 'cMac' : 'cWin').classList.add('on');
+    hero.querySelector('span').textContent = os === 'mac' ? 'Télécharger pour Mac' : 'Télécharger pour Windows';
+    hero.href = document.getElementById(os === 'mac' ? 'bMac' : 'bWin').href;
+    meta.innerHTML = 'Gratuit · ' + (os === 'mac' ? 'Aussi pour <a href="#telecharger">Windows</a>' : 'Aussi pour <a href="#telecharger">Mac</a>');
+  } else {
+    // phone or tablet: the browser version is the one that works here
+    hero.querySelector('span').textContent = 'Utiliser en ligne';
+    hero.href = 'app/';
+    hero.nextElementSibling.textContent = 'Version Mac et Windows';
+    hero.nextElementSibling.href = '#telecharger';
+    document.getElementById('cWeb').classList.add('on');
+  }
+  // Point each button straight at the installer of the latest version.
+  fetch('https://api.github.com/repos/Asmodeus-73/Prism/releases/latest')
+    .then(r => (r.ok ? r.json() : null))
+    .then(j => {
+      if (!j) return;
+      const find = re => (j.assets || []).find(a => re.test(a.name));
+      const mac = find(/\.dmg$/i), win = find(/-setup\.exe$/i);
+      if (mac) document.getElementById('bMac').href = mac.browser_download_url;
+      if (win) document.getElementById('bWin').href = win.browser_download_url;
+      const v = String(j.tag_name || '').replace(/^v/, '');
+      if (v) document.getElementById('dlSub').textContent = 'Version ' + v + '. Gratuit, sans compte et sans publicité.';
+      if (os === 'mac' && mac) hero.href = mac.browser_download_url;
+      if (os === 'win' && win) hero.href = win.browser_download_url;
+    })
+    .catch(() => {});
+})();
+</script>
+</body>
+</html>
