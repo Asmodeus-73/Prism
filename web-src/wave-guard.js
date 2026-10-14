@@ -60,6 +60,7 @@ m.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefau
 /* ===== wave51: quand la colonne d'infos est ouverte à droite, la croix enregistre les modifications puis ferme seulement cette colonne ===== */
 (()=>{
 const info=()=>LIB.open&&LIB.sel&&LIB.sel.size>0;
+{const st=document.createElement('style');st.textContent='#lbBack{display:none!important}';document.head.appendChild(st)} /* plus de bouton « Retour à … » : la croix ramène à la retouche */
 document.addEventListener('pointerover',e=>{const x=e.target.closest&&e.target.closest('#lbX');if(!x)return;const t=info()?'Enregistrer et fermer les infos':'Fermer la photothèque';if(x.title!==t){x.title=t;x.setAttribute('aria-label',t)}},true);
 document.addEventListener('click',async e=>{const x=e.target.closest&&e.target.closest('#lbX');if(!x||!info())return;e.preventDefault();e.stopPropagation();
   const a=document.activeElement;if(a&&a.closest&&a.closest('#lbInfo'))a.blur();
