@@ -57,3 +57,13 @@ const go=()=>{if(typeof LIB!=='undefined'&&LIB.open)return;try{openLibrary()}cat
 m.addEventListener('click',go);
 m.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}});
 })();
+/* ===== wave51: la croix de la photothèque enregistre la photo ouverte, la ferme, puis ferme la photothèque ===== */
+(()=>{
+const T='Enregistrer et fermer';
+document.addEventListener('pointerover',e=>{const x=e.target.closest&&e.target.closest('#lbX');if(x&&x.title!==T){x.title=T;x.setAttribute('aria-label','Enregistrer la photo, la fermer et fermer la photothèque')}},true);
+document.addEventListener('click',async e=>{const x=e.target.closest&&e.target.closest('#lbX');if(!x)return;e.preventDefault();e.stopPropagation();
+  try{await flushSave()}catch(err){console.warn(err)}
+  closeLibrary();
+  if(S.doc){try{closeDoc()}catch(err){console.warn(err)}}
+},true);
+})();
