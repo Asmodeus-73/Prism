@@ -8852,6 +8852,17 @@ document.addEventListener('keydown',e=>{if(e.key!=='Escape'||!LIB.open||!$('#lib
 const st=document.createElement('style');st.textContent='.menu{max-width:min(420px,calc(100vw - 16px))}';document.head.appendChild(st);
 document.addEventListener('keydown',e=>{if(e.key!=='Escape'||!$('#review')||document.querySelector('#scrim,.menu'))return;e.preventDefault();e.stopPropagation();closeReview()},true);
 })();
+/* ===== wave53: le logo Prism apparaît aussi en haut à gauche de la photothèque et permet d'en sortir (vers la photo ouverte ou l'accueil) ===== */
+(()=>{
+const st=document.createElement('style');st.textContent='.lb-top .lb-mark{cursor:pointer;flex:none}.lb-top .lb-mark:focus{outline:none}.lb-top .lb-mark:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:8px}';document.head.appendChild(st);
+const _o=openLibrary;openLibrary=async function(...a){const r=await _o.apply(this,a);
+  const top=$('#library .lb-top'),src=$('header.bar .mark');
+  if(top&&src&&!top.querySelector('.lb-mark')){const m=src.cloneNode(true);m.removeAttribute('id');m.classList.add('lb-mark');m.tabIndex=0;m.setAttribute('role','button');
+    const t=S.doc?'Quitter la photothèque et revenir à la photo':'Quitter la photothèque';m.title=t;m.setAttribute('aria-label',t);
+    const go=e=>{e.stopPropagation();closeLibrary()};m.addEventListener('click',go);m.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go(e)}});
+    top.insertBefore(m,top.firstChild)}
+  return r};
+})();
 </script>
 
 </body></html>
