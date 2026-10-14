@@ -209,7 +209,8 @@
     }
     if (!found) { if (manual) toast('Prism est à jour.'); return; }
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const notes = found.notes && found.notes.trim() ? `<p class="muted" style="white-space:pre-wrap">${esc(found.notes.trim())}</p>` : '';
+    // The release notes are download instructions for the website, not a changelog: not shown here.
+    const notes = '';
     const install = async () => {
       try { if (typeof flushSave === 'function') await flushSave(); } catch (e) {}
       busy(true, 'Installation de la mise à jour…', null);
