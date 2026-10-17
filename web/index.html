@@ -8919,6 +8919,2069 @@ upscaleCanvas=async function(src,scale,model,onP){
   const a=resample(src,W*scale,H*scale);og.globalCompositeOperation='destination-in';og.drawImage(a,0,0);return out};
 }
 
+
+/* ===== feat: feat/aidenoise.js ===== */
+{
+/* ================= Débruitage IA (SCUNet, réseau neuronal exécuté localement par ONNX Runtime web) ================= */
+/* Modèle : SCUNet "real image" (Zhang et al., KAIR/SCUNet), poids fp16 découpés en 4 morceaux ai/aidenoise/N.wasm, tuiles fixes 256 px. */
+const DN={sess:null,loadP:null,TILE:256,OV:32,N:4,tms:null,abort:false,busyNow:false,lastEp:'wasm'};
+DN.WSRC=`let sess=null;
+self.onmessage=async e=>{const m=e.data;
+ if(m.t==='init'){try{
+   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
+   const n=m.chunks.length,parts=new Array(n);let done=0;
+   await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.85})}));
+   const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
+   postMessage({t:'prog',v:0.92,prep:1});
+   sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});postMessage({t:'ready',threads:ort.env.wasm.numThreads})}
+  catch(err){postMessage({t:'err',msg:String(err&&err.message||err)})}}
+ else if(m.t==='run'){try{const ort=self.ort;const out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',new Float32Array(m.buf),m.dims)});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
+  catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
+DN.abs=u=>new URL(u,location.href).href;
+DN.load=()=>DN.sess?Promise.resolve(DN.sess):(DN.loadP||(DN.loadP=DN._load().finally(()=>{DN.loadP=null})));
+DN._load=()=>new Promise(res=>{DN.loadRes=res;
+  busy(true,'Chargement du moteur IA…',0.02);
+  let w;try{w=new Worker(URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'})))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
+  const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
+  w.onmessage=e=>{const m=e.data;
+    if(m.t==='prog'){DN.busyCancel(true);busy(true,m.prep?'Préparation du modèle…':'Téléchargement du modèle de débruitage (43 Mo, une seule fois)…',m.v);DN.busyCancel(true)}
+    else if(m.t==='ready'){DN.threads=m.threads;DN.loadRes=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
+    else if(m.t==='err'){console.error(m.msg);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+m.msg,5000);res(null)}};
+  w.onerror=e=>{console.error(e);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||'worker'),5000);res(null)};
+  w.postMessage({t:'init',ort:DN.abs(asset('ai/ort.wasm.min.js')),wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
+DN.pend=new Map();DN.rid=0;
+DN._onmsg=e=>{const m=e.data,p=DN.pend.get(m.id);if(!p)return;DN.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
+DN.tile=(f,dims)=>new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
+/* annulation immédiate : on arrête le worker (le modèle sera rechargé au prochain usage) */
+DN.kill=()=>{if(DN.loadRes){DN.loadRes(null);DN.loadRes=null}if(DN.w){DN.w.terminate();DN.w=null;DN.sess=null}DN.pend.forEach(p=>p.rej(new Error('annulé')));DN.pend.clear()};
+/* indice miroir (bords de l'image) */
+const dnMir=(i,n)=>{if(n<2)return 0;const p=2*n-2;i=((i%p)+p)%p;return i<n?i:p-i};
+/* positions de tuiles sur un axe pour la zone [r0,r1[ */
+DN.axis=(r0,r1)=>{const T=DN.TILE,L=r1-r0,st=T-DN.OV;if(L<=T)return[r0-((T-L)>>1)];const a=[];for(let o=r0;;o+=st){if(o+T>=r1){a.push(r1-T);break}a.push(o)}return a};
+/* poids 1D d'une tuile : rampes sur les recouvrements avec les voisines (partition de l'unité) */
+DN.ramp=(o,prev,next,r0,r1)=>{const T=DN.TILE,w=new Float32Array(T);for(let i=0;i<T;i++){let v=1;const g=o+i;if(g<r0||g>=r1){w[i]=0;continue}
+    if(prev!=null){const lo=prev+T-o;if(lo>0&&i<lo)v=Math.min(v,(i+.5)/lo)}
+    if(next!=null){const ro=o+T-next;if(ro>0&&i>=T-ro)v=Math.min(v,1-(i-(T-ro)+.5)/ro)}
+    w[i]=v}return w};
+/* débruite la zone (rx0,ry0,rx1,ry1) de src (ImageData). Renvoie un Uint8ClampedArray RGBA de la taille de src (hors zone = inchangé). */
+DN.process=async(img,reg,onP)=>{const sess=await DN.load();if(!sess)return null;const T=DN.TILE,W=img.width,H=img.height,s=img.data;
+  const [x0,y0,x1,y1]=reg,xs=DN.axis(x0,x1),ys=DN.axis(y0,y1),res=new Uint8ClampedArray(s),acc=new Uint8Array(W*H),N=T*T,total=xs.length*ys.length;let k=0;
+  const t00=performance.now();DN.abort=false;
+  for(let j=0;j<ys.length;j++){const wy=DN.ramp(ys[j],j>0?ys[j-1]:null,j<ys.length-1?ys[j+1]:null,y0,y1);
+    for(let i=0;i<xs.length;i++){if(DN.abort)return null;
+      const wx=DN.ramp(xs[i],i>0?xs[i-1]:null,i<xs.length-1?xs[i+1]:null,x0,x1),ox=xs[i],oy=ys[j];
+      const f=new Float32Array(3*N);for(let yy=0;yy<T;yy++){const sy=dnMir(oy+yy,H)*W;for(let xx=0;xx<T;xx++){const q=(sy+dnMir(ox+xx,W))*4,p=yy*T+xx;f[p]=s[q]/255;f[p+N]=s[q+1]/255;f[p+2*N]=s[q+2]/255}}
+      const t0=performance.now();let o;try{o=await DN.tile(f,[1,3,T,T])}catch(err){if(DN.abort)return null;throw err}if(DN.abort)return null;const dt=performance.now()-t0;DN.tms=DN.tms==null?dt:DN.tms*.5+dt*.5;
+      for(let yy=0;yy<T;yy++){const gy=oy+yy;if(gy<y0||gy>=y1)continue;const wyv=wy[yy];if(wyv<=0)continue;
+        for(let xx=0;xx<T;xx++){const gx=ox+xx;if(gx<x0||gx>=x1)continue;const w=wx[xx]*wyv;if(w<=0)continue;const gi=gy*W+gx,q=gi*4,p=yy*T+xx,pv=acc[gi]/255,tot=pv+w,a=w/tot;
+          for(let c=0;c<3;c++){const nv=o[p+c*N]*255,cur=res[q+c];res[q+c]=pv>0?cur+(nv-cur)*a:nv}
+          acc[gi]=Math.min(255,Math.round(tot*255))}}
+      k++;onP&&onP(k,total);await tick()}}
+  return res};
+/* zone de travail : sélection ou image entière, + marge de contexte */
+DN.region=(d,W,H)=>{if(!d.sel)return[0,0,W,H];const a=rx(d.sel).getImageData(0,0,d.sel.width,d.sel.height).data,sw=d.sel.width,sh=d.sel.height;let x0=sw,y0=sh,x1=-1,y1=-1;
+  for(let y=0;y<sh;y++)for(let x=0;x<sw;x++)if(a[(y*sw+x)*4+3]>0){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+  if(x1<0)return null;return[Math.max(0,x0),Math.max(0,y0),Math.min(W,x1+1),Math.min(H,y1+1)]};
+DN.tilesFor=reg=>DN.axis(reg[0],reg[2]).length*DN.axis(reg[1],reg[3]).length;
+DN.fmtT=ms=>{const s=Math.round(ms/1000);return s<90?s+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1).replace('.',',')+' h'};
+/* mélange original / débruité selon la force (0..1) */
+DN.blend=(orig,den,k,W,H)=>{const o=new Uint8ClampedArray(orig.data);if(k>=1){for(let i=0;i<o.length;i+=4){o[i]=den[i];o[i+1]=den[i+1];o[i+2]=den[i+2]}}else{for(let i=0;i<o.length;i+=4){o[i]+=(den[i]-o[i])*k;o[i+1]+=(den[i+1]-o[i+1])*k;o[i+2]+=(den[i+2]-o[i+2])*k}}
+  const c=mk(W,H);rx(c).putImageData(new ImageData(o,W,H),0,0);return c};
+DN.busyCancel=on=>{const b=document.querySelector('#busy>div');if(!b)return;let e=b.querySelector('.dn-cancel');if(on&&!e){e=document.createElement('button');e.className='btn sm dn-cancel';e.textContent='Annuler';e.style.marginTop='10px';e.onclick=()=>{DN.abort=true;e.disabled=true;e.textContent='Annulation…';DN.kill()};b.appendChild(e)}else if(!on&&e)e.remove()};
+DN.onKey=e=>{if(e.key==='Escape'&&DN.busyNow){DN.abort=true;DN.kill();e.stopPropagation()}};
+DN.start=async()=>{const d=S.doc;if(!d)return;const mt=maskTarget();if(mt){toast('Le débruitage IA agit sur les pixels, pas sur un masque');return}
+  const L=pixelTarget();if(!L){toast('Aucun calque de pixels à filtrer');return}
+  if(L.visible===false){toast('Ce calque est masqué : affichez-le pour appliquer un filtre');return}
+  const W=L.canvas.width,H=L.canvas.height,reg=DN.region(d,W,H);if(!reg){toast('La sélection est vide');return}
+  const nt=DN.tilesFor(reg),per=DN.tms||12000,est=nt*per*1.08;
+  dialog({title:'Débruitage IA',light:true,body:`<p class="muted">Un réseau de neurones (SCUNet) réduit le bruit numérique en gardant les détails. Le calcul se fait sur votre appareil.${DN.sess?'':' Le premier usage télécharge le modèle (43 Mo).'}</p>
+      <p class="muted">${reg[2]-reg[0]} × ${reg[3]-reg[1]} px${d.sel?' (sélection)':''} · ${nt} tuile${nt>1?'s':''} · durée estimée ${DN.tms?'':'(prudente) '}${DN.fmtT(est)}.${est>600000?' C’est long : pensez à sélectionner la zone utile.':''}</p>`,
+    buttons:[{label:'Annuler'},{label:'Lancer',primary:true,onClick:()=>{setTimeout(()=>DN.run(d,L,reg),30)}}]})};
+DN.run=async(d,L,reg)=>{const W=L.canvas.width,H=L.canvas.height;if(DN.busyNow)return;DN.busyNow=true;DN.abort=false;document.addEventListener('keydown',DN.onKey,true);
+  try{const sess=await DN.load();if(!sess){busy(false);if(DN.abort)toast('Débruitage annulé');return}
+    busy(true,'Débruitage IA…',0);DN.busyCancel(true);await tick();
+    const img=rx(L.canvas).getImageData(0,0,W,H),t0=performance.now();
+    const den=await DN.process(img,reg,(k,n)=>{const el=(performance.now()-t0),left=el/k*(n-k);busy(true,`Débruitage IA : tuile ${k} sur ${n} · reste environ ${DN.fmtT(left)} (Échap pour annuler)`,k/n);DN.busyCancel(true)});
+    if(!den){busy(false);toast(DN.abort?'Débruitage annulé':'Débruitage impossible');return}
+    if(S.doc!==d||!d.layers.includes(L)){busy(false);toast('Débruitage annulé : le calque a changé');return}
+    busy(false);DN.ask(d,L,img,den)}
+  catch(e){console.error(e);busy(false);toast('Débruitage impossible : '+(e.message||e),5000)}
+  finally{DN.busyNow=false;document.removeEventListener('keydown',DN.onKey,true);DN.busyCancel(false)}};
+DN.ask=(d,L,img,den)=>{const W=img.width,H=img.height,orig=L.canvas;let k=1,tmr=null;
+  const mixSel=(o,r,sel)=>{const out=cloneC(o),g=cx(out);g.globalCompositeOperation='destination-out';g.drawImage(sel,0,0);const t=cloneC(r),tg=cx(t);tg.globalCompositeOperation='destination-in';tg.drawImage(sel,0,0);g.globalCompositeOperation='lighter';g.drawImage(t,0,0);return out};
+  const make=()=>{let r=DN.blend(img,den,k,W,H);if(d.sel)r=mixSel(orig,r,d.sel);return r};
+  const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!(S.doc===d&&d.layers.includes(L)))return;L.preview=make();markComp()},90)};
+  const clear=()=>{clearTimeout(tmr);delete L.preview};
+  DN.lastUI={set:v=>{k=v/100;prev()}};
+  dialog({title:'Débruitage IA',light:true,body:rangeRow('dn-k','Force',0,100,1,100,' %')+'<p class="muted">Mélange entre l’original (0) et la version débruitée (100).'+(d.sel?' Appliqué uniquement à la sélection.':'')+'</p>',
+    onOpen:el=>{const i=$('#dn-k',el);i.oninput=()=>{k=+i.value/100;$('#dn-k-o',el).textContent=fmtN(+i.value,1)+' %';prev()};prev()},
+    buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
+      {label:'Appliquer',primary:true,onClick:()=>{clear();if(!(S.doc===d&&d.layers.includes(L))){toast('Le calque n’existe plus');return}
+        try{const r=DN.blend(img,den,k,W,H);applyMasked(L,r,'Débruitage IA');toast('Débruitage IA appliqué')}catch(e){console.error(e);markComp();toast('Débruitage impossible : '+(e.message||e),4000);return false}}}]})};
+/* menu Filtre > Netteté et bruit, et palette Ctrl+K (la palette reprend les entrées de menu) */
+{const _fi=MENU2.filter.items;
+ MENU2.filter.items=function(){const a=_fi.apply(this,arguments),it=MI('Débruitage IA…',{icon:'filter',dis:S.doc?false:NODOC,fn:DN.start});
+  return a.map(x=>x&&x.label==='Netteté et bruit'&&typeof x.sub==='function'?{...x,sub:()=>[...x.sub(),it]}:x)}}
+
+}
+
+/* ===== feat: feat/denoise.js ===== */
+{
+/* ===== Réduction du bruit v2 : luminance (moyennes non locales) + couleur (filtre guidé) + détails + contours =====
+   Le noyau (entre CORE_BEGIN et CORE_END) est autonome : il tourne tel quel dans des Web Workers (Blob) et sur le fil principal (repli synchrone). */
+/*CORE_BEGIN*/
+function dnTile(job){
+  const P=job.P,W=P.W,H=P.H,ov=P.ov,c=job.core,rg=job.reg;
+  const wx0=c.x-ov,wy0=c.y-ov,ww=c.w+2*ov,wh=c.h+2*ov,n=ww*wh;
+  const Y=new Float32Array(n),Cb=new Float32Array(n),Cr=new Float32Array(n),A=new Uint8Array(n);
+  const rd=rg.data,KB=0.5389,KR=0.6350;
+  for(let j=0;j<wh;j++){let gy=wy0+j;gy=gy<0?0:gy>=H?H-1:gy;const ro=(gy-rg.y)*rg.w;
+    for(let i=0;i<ww;i++){let gx=wx0+i;gx=gx<0?0:gx>=W?W-1:gx;const q=(ro+gx-rg.x)*4,r=rd[q],g=rd[q+1],b=rd[q+2],k=j*ww+i;
+      const y=0.2126*r+0.7152*g+0.0722*b;Y[k]=y;Cb[k]=(b-y)*KB;Cr[k]=(r-y)*KR;A[k]=rd[q+3]}}
+  const sY=P.sY,S=P.S,lum=P.lum,col=P.col,det=P.det,prot=P.prot;
+  /* mesure de contour (dégradé du luma lissé 3x3), support 2 px */
+  const E=new Float32Array(n),Ys=new Float32Array(n);
+  if(lum>0||det>0){
+    for(let y=1;y<wh-1;y++)for(let x=1;x<ww-1;x++){const k=y*ww+x;Ys[k]=(Y[k-ww-1]+Y[k-ww]+Y[k-ww+1]+Y[k-1]+Y[k]+Y[k+1]+Y[k+ww-1]+Y[k+ww]+Y[k+ww+1])/9}
+    const t0=0.8*sY,t1=6*sY;
+    for(let y=2;y<wh-2;y++)for(let x=2;x<ww-2;x++){const k=y*ww+x,gx=Ys[k+1]-Ys[k-1],gy=Ys[k+ww]-Ys[k-ww],g=Math.sqrt(gx*gx+gy*gy);let t=(g-t0)/t1;t=t<0?0:t>1?1:t;E[k]=t*t*(3-2*t)}}
+  /* luma : moyennes non locales (symétriques, fenêtre de recherche S, patch 5x5) */
+  let Yd=Y;
+  if(lum>0){
+    const hb=P.hBase,hl=new Float32Array(n),acc=new Float32Array(n),ws=new Float32Array(n),sd=new Float32Array(n),hs=new Float32Array(n);
+    const pk=1-0.8*prot;for(let k=0;k<n;k++)hl[k]=hb*(1-0.8*prot*E[k]);
+    const LS=64,XM=6,lut=new Float32Array(XM*LS+2);for(let i=0;i<lut.length;i++)lut[i]=Math.exp(-i/LS);
+    const s2=2*sY*sY;
+    for(let dy=0;dy<=S;dy++)for(let dx=-S;dx<=S;dx++){
+      if(dy===0&&dx<=0)continue;
+      const o=dy*ww+dx,xl=2+(dx<0?-dx:0),xh=ww-3-(dx>0?dx:0),yl=2,yh=wh-3-dy;if(xh<xl||yh<yl)continue;
+      for(let y=yl-2;y<=yh+2;y++){const b=y*ww;for(let x=xl-2;x<=xh+2;x++){const d=Y[b+x]-Y[b+x+o];sd[b+x]=d*d}}
+      for(let y=yl-2;y<=yh+2;y++){const b=y*ww;for(let x=xl;x<=xh;x++){const k=b+x;hs[k]=sd[k-2]+sd[k-1]+sd[k]+sd[k+1]+sd[k+2]}}
+      for(let y=yl;y<=yh;y++){const b=y*ww;for(let x=xl;x<=xh;x++){const k=b+x,d2=(hs[k-2*ww]+hs[k-ww]+hs[k]+hs[k+ww]+hs[k+2*ww])*0.04,hq=0.5*(hl[k]+hl[k+o]);
+        let v=(d2-s2)/(hq*hq);if(v<0)v=0;if(v>=XM)continue;const w=lut[(v*LS)|0];acc[k]+=w*Y[k+o];ws[k]+=w;acc[k+o]+=w*Y[k];ws[k+o]+=w}}
+    }
+    Yd=new Float32Array(n);for(let k=0;k<n;k++)Yd[k]=(Y[k]+acc[k])/(1+ws[k]);
+  }
+  /* détails : on réinjecte la texture (résidu) là où la variance locale dépasse le bruit */
+  let Yo=Yd;
+  if(det>0&&lum>0){
+    Yo=new Float32Array(n);const m1=new Float32Array(n),m2=new Float32Array(n),h1=new Float32Array(n),h2=new Float32Array(n),s2=sY*sY;
+    for(let y=0;y<wh;y++)for(let x=2;x<ww-2;x++){const k=y*ww+x,a=Y[k-2],b=Y[k-1],cc=Y[k],d=Y[k+1],e=Y[k+2];h1[k]=a+b+cc+d+e;h2[k]=a*a+b*b+cc*cc+d*d+e*e}
+    for(let y=2;y<wh-2;y++)for(let x=2;x<ww-2;x++){const k=y*ww+x;m1[k]=(h1[k-2*ww]+h1[k-ww]+h1[k]+h1[k+ww]+h1[k+2*ww])*0.04;m2[k]=(h2[k-2*ww]+h2[k-ww]+h2[k]+h2[k+ww]+h2[k+2*ww])*0.04}
+    const dk=det/100;
+    for(let k=0;k<n;k++){const v=m2[k]-m1[k]*m1[k];let g=(v/s2-1.2)/1.0;g=g<0?0:g>1?1:g;g=0.08+0.92*g;Yo[k]=Yd[k]+dk*g*(Y[k]-Yd[k])}
+  }
+  /* couleur : filtre guidé (guide = luma débruité + un peu de chroma pour tenir les bords de couleur) */
+  let Cb2=Cb,Cr2=Cr;
+  if(col>0){
+    const r=P.rC,eps=P.eps,r2=Math.max(1,Math.round(r/2));
+    const cbs=new Float32Array(n),crs=new Float32Array(n);
+    for(let y=1;y<wh-1;y++)for(let x=1;x<ww-1;x++){const k=y*ww+x;let a=0,b=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){a+=Cb[k+dy*ww+dx];b+=Cr[k+dy*ww+dx]}cbs[k]=a/9;crs[k]=b/9}
+    /* le lissage de la chroma se fait à demi-résolution (cellules 2x2 alignées sur des coordonnées paires), coefficients ré-échantillonnés en bilinéaire */
+    const hw=(ww+1)>>1,hh=(wh+1)>>1,m=hw*hh,nb=()=>new Float32Array(m);
+    const down=src=>{const o=nb();for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){const x1=Math.min(ww-1,2*x+1),y1=Math.min(wh-1,2*y+1);o[y*hw+x]=(src[2*y*ww+2*x]+src[2*y*ww+x1]+src[y1*ww+2*x]+src[y1*ww+x1])*0.25}return o};
+    const bx=(src,rad)=>{
+      const t=new Float64Array(m);
+      for(let y=0;y<hh;y++){const b=y*hw;let s=0;const lim=Math.min(rad,hw-1);for(let x=0;x<=lim;x++)s+=src[b+x];
+        for(let x=0;x<hw;x++){if(x>0){const hi=x+rad,lo=x-rad-1;if(hi<hw)s+=src[b+hi];if(lo>=0)s-=src[b+lo]}t[b+x]=s}}
+      const o=nb();
+      for(let x=0;x<hw;x++){const cx2=Math.min(hw-1,x+rad)-Math.max(0,x-rad)+1;let s=0;const lim=Math.min(rad,hh-1);for(let y=0;y<=lim;y++)s+=t[y*hw+x];
+        for(let y=0;y<hh;y++){if(y>0){const hi=y+rad,lo=y-rad-1;if(hi<hh)s+=t[hi*hw+x];if(lo>=0)s-=t[lo*hw+x]}
+          o[y*hw+x]=s/((Math.min(hh-1,y+rad)-Math.max(0,y-rad)+1)*cx2)}}
+      return o};
+    const I=[Yd,cbs,crs],Ih=I.map(down),mI=Ih.map(v=>bx(v,r2));
+    const S6=[],tmp=nb();
+    for(let a=0;a<3;a++)for(let b=a;b<3;b++){for(let k=0;k<m;k++)tmp[k]=Ih[a][k]*Ih[b][k];const q=bx(tmp,r2);for(let k=0;k<m;k++)q[k]-=mI[a][k]*mI[b][k];S6.push(q)}
+    const iv=[nb(),nb(),nb(),nb(),nb(),nb()];
+    for(let k=0;k<m;k++){const a=S6[0][k]+eps,b=S6[1][k],c2=S6[2][k],d=S6[3][k]+eps,e=S6[4][k],f=S6[5][k]+eps;
+      const c00=d*f-e*e,c01=c2*e-b*f,c02=b*e-c2*d,c11=a*f-c2*c2,c12=b*c2-a*e,c22=a*d-b*b,det=a*c00+b*c01+c2*c02,id=1/det;
+      iv[0][k]=c00*id;iv[1][k]=c01*id;iv[2][k]=c02*id;iv[3][k]=c11*id;iv[4][k]=c12*id;iv[5][k]=c22*id}
+    /* échantillonnage bilinéaire (centres de cellules à 2x+0.5) */
+    const up=(src,dst)=>{for(let y=0;y<wh;y++){let fy=(y-0.5)/2;if(fy<0)fy=0;let y0=Math.floor(fy);if(y0>hh-1)y0=hh-1;const y1=Math.min(hh-1,y0+1),ty=fy-y0;
+        for(let x=0;x<ww;x++){let fx=(x-0.5)/2;if(fx<0)fx=0;let x0=Math.floor(fx);if(x0>hw-1)x0=hw-1;const x1=Math.min(hw-1,x0+1),tx=fx-x0;
+          dst[y*ww+x]=(src[y0*hw+x0]*(1-tx)+src[y0*hw+x1]*tx)*(1-ty)+(src[y1*hw+x0]*(1-tx)+src[y1*hw+x1]*tx)*ty}}return dst};
+    const gf=Pc=>{const Ph=down(Pc),mP=bx(Ph,r2),cv=[];
+      for(let a=0;a<3;a++){for(let k=0;k<m;k++)tmp[k]=Ih[a][k]*Ph[k];const q=bx(tmp,r2);for(let k=0;k<m;k++)q[k]-=mI[a][k]*mP[k];cv.push(q)}
+      const A0=nb(),A1=nb(),A2=nb(),B=nb();
+      for(let k=0;k<m;k++){const x=cv[0][k],y=cv[1][k],z=cv[2][k],a0=iv[0][k]*x+iv[1][k]*y+iv[2][k]*z,a1=iv[1][k]*x+iv[3][k]*y+iv[4][k]*z,a2=iv[2][k]*x+iv[4][k]*y+iv[5][k]*z;
+        A0[k]=a0;A1[k]=a1;A2[k]=a2;B[k]=mP[k]-a0*mI[0][k]-a1*mI[1][k]-a2*mI[2][k]}
+      const f0=up(bx(A0,r2),new Float32Array(n)),f1=up(bx(A1,r2),new Float32Array(n)),f2=up(bx(A2,r2),new Float32Array(n)),fb=up(bx(B,r2),new Float32Array(n)),o=new Float32Array(n),bl=P.cBlend;
+      for(let k=0;k<n;k++){const f=f0[k]*Yd[k]+f1[k]*cbs[k]+f2[k]*crs[k]+fb[k];o[k]=Pc[k]+(f-Pc[k])*bl}return o};
+    Cb2=gf(Cb);Cr2=gf(Cr);
+  }
+  const out=new Uint8ClampedArray(c.w*c.h*4);
+  for(let j=0;j<c.h;j++){const sb=(j+ov)*ww+ov;for(let i=0;i<c.w;i++){const k=sb+i,y=Yo[k],cb=Cb2[k]/KB,cr=Cr2[k]/KR,r=y+cr,b=y+cb,g=(y-0.2126*r-0.0722*b)/0.7152,q=(j*c.w+i)*4;
+    out[q]=r;out[q+1]=g;out[q+2]=b;out[q+3]=A[k]}}
+  return {out:out,x:c.x,y:c.y,w:c.w,h:c.h};
+}
+/* estimation du bruit (MAD du résidu laplacien) sur des blocs fixes ; getReg(x,y,w,h) -> {data,w,h} */
+function dnEstimate(W,H,getReg){
+  const BS=Math.min(160,W,H),nx=Math.min(4,Math.max(1,Math.floor(W/BS))),ny=Math.min(3,Math.max(1,Math.floor(H/BS))),ry=[],rc=[];
+  for(let by=0;by<ny;by++)for(let bx=0;bx<nx;bx++){
+    const x0=Math.round((bx+0.5)*W/nx-BS/2),y0=Math.round((by+0.5)*H/ny-BS/2),X=Math.max(0,Math.min(W-BS,x0)),Y0=Math.max(0,Math.min(H-BS,y0)),r=getReg(X,Y0,BS,BS),d=r.data,w=BS;
+    const Yb=new Float32Array(BS*BS),Cbb=new Float32Array(BS*BS),Crb=new Float32Array(BS*BS);
+    for(let k=0;k<BS*BS;k++){const R=d[k*4],G=d[k*4+1],B=d[k*4+2],y=0.2126*R+0.7152*G+0.0722*B;Yb[k]=y;Cbb[k]=(B-y)*0.5389;Crb[k]=(R-y)*0.635}
+    for(let y=1;y<BS-1;y++)for(let x=1;x<BS-1;x++){const k=y*w+x;
+      ry.push(Math.abs(Yb[k]-0.25*(Yb[k-1]+Yb[k+1]+Yb[k-w]+Yb[k+w])));
+      rc.push(Math.abs(Cbb[k]-0.25*(Cbb[k-1]+Cbb[k+1]+Cbb[k-w]+Cbb[k+w])));rc.push(Math.abs(Crb[k]-0.25*(Crb[k-1]+Crb[k+1]+Crb[k-w]+Crb[k+w])))}}
+  const med=a=>{const f=Float32Array.from(a).sort();return f[f.length>>1]||0};
+  const k=1.4826/Math.sqrt(1.25);
+  return {sY:Math.max(1.5,med(ry)*k),sC:Math.max(1,med(rc)*k)};
+}
+/* paramètres dérivés (identiques pour toutes les tuiles : c'est ce qui rend le résultat indépendant du découpage) */
+function dnPlan(W,H,p,getReg,tile){
+  const lum=Math.max(0,+(p.a==null?50:p.a)),col=Math.max(0,+(p.c==null?70:p.c)),det=Math.max(0,+(p.d==null?30:p.d)),prot=Math.min(1,Math.max(0,(p.e==null?60:p.e)/100));
+  const est=dnEstimate(W,H,getReg),mp=W*H/1e6,sc=Math.min(2,Math.max(1,Math.sqrt(mp/2)));
+  const S=lum<=0?0:lum<35?3:lum<70?4:5,rC=col>0?Math.min(16,Math.max(2,Math.round((2+0.12*col)*sc))):0;
+  const P={W:W,H:H,lum:lum,col:col,det:det,prot:prot,sY:est.sY,sC:est.sC,S:S,rC:rC,
+    hBase:est.sY*(0.1+lum/100*0.9),
+    eps:Math.pow(Math.max(3,est.sC*(0.8+col/100*4))*(1-0.6*prot)+2,2),gc:0.5,cBlend:Math.min(1,col/15)};
+  P.ov=Math.max(S+4,(col>0?S+2+2*rC+12:0),6);P.ov+=P.ov&1;
+  const T=(tile||512)&~1,tiles=[];
+  for(let y=0;y<H;y+=T)for(let x=0;x<W;x+=T)tiles.push({x:x,y:y,w:Math.min(T,W-x),h:Math.min(T,H-y)});
+  return {P:P,tiles:tiles};
+}
+function dnRegion(P,c){const ov=P.ov,x0=Math.max(0,c.x-ov),y0=Math.max(0,c.y-ov),x1=Math.min(P.W,c.x+c.w+ov),y1=Math.min(P.H,c.y+c.h+ov);return {x:x0,y:y0,w:x1-x0,h:y1-y0}}
+/*CORE_END*/
+
+/* ---- colle navigateur ---- */
+const DN={workers:null,src:null,wsrc(){if(!this.src)this.src=URL.createObjectURL(new Blob(['const dnTile='+dnTile.toString()+';onmessage=e=>{try{const r=dnTile(e.data);postMessage(r,[r.out.buffer])}catch(err){postMessage({err:String(err&&err.message||err)})}}'],{type:'text/javascript'}));return this.src}};
+const dnReg=g=>(x,y,w,h)=>{const im=g.getImageData(x,y,w,h);return {data:im.data,w:w,h:h}};
+/* synchrone (repli : effets modifiables, actions, dernier filtre) ; opts.tile pour les tests */
+function dnRunSync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),pl=dnPlan(W,H,p||{},dnReg(g),opts.tile),out=mk(W,H),og=cx(out);
+  for(const c of pl.tiles){const r=dnRegion(pl.P,c),im=g.getImageData(r.x,r.y,r.w,r.h),o=dnTile({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}});og.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y)}
+  return out}
+/* asynchrone par Workers, tuiles avec recouvrement, progression + annulation. region = {x,y,w,h} pour l'aperçu */
+function dnRunAsync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),pl=dnPlan(W,H,p||{},dnReg(g),opts.tile);
+  let tiles=pl.tiles;
+  const out=mk(W,H),og=cx(out);og.drawImage(s,0,0);
+  const nW=Math.max(1,Math.min(opts.workers||Math.min(4,Math.max(1,(navigator.hardwareConcurrency||4)-1)),tiles.length));
+  let next=0,done=0,fail=null,cancelled=false;const ws=[];
+  let rejectFn=null;const job={cancel(){if(cancelled)return;cancelled=true;ws.forEach(w=>w.terminate());if(rejectFn)rejectFn(Object.assign(new Error('annulé'),{code:'cancelled'}))},promise:null};
+  job.promise=new Promise((res,rej)=>{rejectFn=rej;
+    const finish=()=>{ws.forEach(w=>w.terminate());if(cancelled)rej(Object.assign(new Error('annulé'),{code:'cancelled'}));else if(fail)rej(fail);else res(out)};
+    const feed=w=>{if(cancelled||fail)return;if(next>=tiles.length){return}const c=tiles[next++],r=dnRegion(pl.P,c),im=g.getImageData(r.x,r.y,r.w,r.h);w.postMessage({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}},[im.data.buffer])};
+    for(let i=0;i<nW;i++){
+      const w=new Worker(DN.wsrc());ws.push(w);
+      w.onmessage=e=>{const o=e.data;if(o.err){fail=new Error(o.err);finish();return}
+        og.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y);done++;if(opts.onProgress)opts.onProgress(done/tiles.length);
+        if(done===tiles.length)finish();else feed(w)};
+      w.onerror=e=>{fail=new Error(e.message||'worker');finish()};
+      feed(w)}
+  });
+  job.promise.P=pl.P;job.P=pl.P;return job}
+
+/* ---- branchement dans les filtres ---- */
+{const F=FILTERS.denoise;
+ F.params=[['a','Luminance',0,100,1,50,' %'],['c','Couleur',0,100,1,70,' %'],['d','Détails',0,100,1,30,' %'],['e','Contours protégés',0,100,1,60,' %']];
+ F.run=function(s,p){F._lp={...p};const R=(window.PrismC&&window.PrismC.REC)||(typeof REC==='object'?REC:null);if(R)R.last={id:'denoise',p:{...p}};return dnRunSync(s,p)};
+ window.DNX={plan:dnPlan,tile:dnTile,runSync:dnRunSync,runAsync:dnRunAsync};
+ const _fd=filterDialog;
+ const dnTarget=()=>{const d=S.doc;if(!d)return null;const M=maskTarget();if(M)return{L:M,mask:true};const L=pixelTarget();return L?{L,mask:false}:null};
+ const alive=(d,L)=>S.doc===d&&d.layers.includes(L);
+ const mixSel=(o,r,sel)=>{const out=cloneC(o),g=cx(out);g.globalCompositeOperation='destination-out';g.drawImage(sel,0,0);const t=cloneC(r),tg=cx(t);tg.globalCompositeOperation='destination-in';tg.drawImage(sel,0,0);g.globalCompositeOperation='lighter';g.drawImage(t,0,0);return out};
+ filterDialog=function(id){
+  if(id!=='denoise')return _fd.apply(this,arguments);
+  const d=S.doc;if(!d)return;const T=dnTarget();if(!T){toast('Aucun calque de pixels à filtrer');return}
+  if(T.mask)return _fd.apply(this,arguments);
+  const L=T.L;if(L.visible===false){toast('Ce calque est masqué : affichez-le pour appliquer un filtre');return}
+  const P=F.params,p={};P.forEach(q=>p[q[0]]=q[5]);const orig=L.canvas;let tmr=null,job=null,seq=0;
+  const clear=()=>{clearTimeout(tmr);seq++;if(job){job.cancel();job=null}delete L.preview};
+  const big=orig.width*orig.height>1.6e6;
+  /* aperçu : zone de 700x700 au centre de l'écran quand la photo est grande, photo entière sinon */
+  const prev=()=>{clearTimeout(tmr);const my=++seq;if(job){job.cancel();job=null}
+   tmr=setTimeout(async()=>{
+    try{const w=orig.width,h=orig.height;let x=0,y=0,cw=w,ch=h;
+     if(big){cw=Math.min(w,700);ch=Math.min(h,700);const cxp=(view.width/S.pr/2-S.panX)/S.zoom,cyp=(view.height/S.pr/2-S.panY)/S.zoom;x=Math.round(Math.max(0,Math.min(w-cw,cxp-cw/2)));y=Math.round(Math.max(0,Math.min(h-ch,cyp-ch/2)))}
+     const pr=big?await cropPrev(orig,x,y,cw,ch,p,j=>{job=j}):await new Promise((res,rej)=>{job=dnRunAsync(orig,p);job.promise.then(res,rej)});
+     if(my!==seq||!alive(d,L))return;job=null;let r=pr;if(d.sel)r=mixSel(orig,r,d.sel);L.preview=r;markComp()}
+    catch(e){if(e&&e.code==='cancelled')return;console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},150)};
+  /* aperçu local : on filtre un morceau avec les paramètres globaux de toute la photo (même résultat que l'application) */
+  async function cropPrev(src,x,y,cw,ch,p,setJob){
+   const pl=dnPlan(src.width,src.height,p,dnReg(cx(src))),res=mk(src.width,src.height),rg=cx(res);rg.drawImage(src,0,0);
+   const sg=cx(src);const jb={cancel(){this.c=true},c:false};setJob(jb);
+   for(const c of dnTilesIn(pl,x,y,cw,ch)){if(jb.c)throw Object.assign(new Error('annulé'),{code:'cancelled'});
+    const r=dnRegion(pl.P,c),im=sg.getImageData(r.x,r.y,r.w,r.h),o=dnTile({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}});rg.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y);await new Promise(r=>setTimeout(r,0))}
+   return res}
+  dialog({title:F.name,light:true,
+   body:P.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(big?'<p class="muted">Aperçu sur la zone centrale ; l’application traite toute la photo.</p>':'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+   onOpen:el=>{P.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});prev()},
+   buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
+    {label:'Appliquer',primary:true,onClick:()=>{clear();if(!alive(d,L)){toast('Le calque n’existe plus');return}
+      runApply(d,L,orig,p);}}]})};
+ async function runApply(d,L,orig,p){
+  const total=orig.width*orig.height;busy(true,'Réduction du bruit…',0);
+  let job,cancelled=false;const bz=$('#busy');let btn=null;
+  if(bz){const box=bz.firstElementChild;btn=document.createElement('button');btn.className='btn';btn.textContent='Annuler';btn.style.justifySelf='end';btn.onclick=()=>{cancelled=true;if(job)job.cancel()};box.appendChild(btn)}
+  try{
+   await new Promise(r=>setTimeout(r,30));
+   job=dnRunAsync(orig,p,{onProgress:f=>busy(true,'Réduction du bruit…',f)});
+   let r=await job.promise;
+   if(!alive(d,L)){toast('Le calque n’existe plus');return}
+   F._lp={...p};
+   applyMasked(L,r,F.name)}
+  catch(e){if(!(e&&e.code==='cancelled')){console.error(e);toast('Filtre impossible : '+(e.message||e),4000)}}
+  finally{if(btn)btn.remove();busy(false)}}
+ function dnTilesIn(pl,x,y,w,h){const T=pl.tiles,ts=[];const t=512;x&=~1;y&=~1;for(let ty=y;ty<y+h;ty+=t)for(let tx=x;tx<x+w;tx+=t)ts.push({x:tx,y:ty,w:Math.min(t,x+w-tx),h:Math.min(t,y+h-ty)});return ts}
+}
+
+}
+
+/* ===== feat: feat/esrgan4p.js ===== */
+{
+/* ---------- AI upscale "Qualité maximale": Real-ESRGAN x4plus (RRDBNet, 23 blocs) in tf.js, fp16 weights in 3 chunks ---------- */
+{
+const X4={m:null,rate:0};
+const half2f=h=>{const s=(h&0x8000)<<16,e=(h>>10)&31,m=h&1023;let b;if(e===0){if(m===0)b=s;else{let ee=113,mm=m;while(!(mm&1024)){mm<<=1;ee--}b=s|(ee<<23)|((mm&1023)<<13)}}else if(e===31)b=s|0x7f800000|(m<<13);else b=s|((e+112)<<23)|(m<<13);return b};
+const loadX4=async(onP)=>{
+  if(X4.m)return X4.m;
+  if(!window.tf)await loadScript(asset('ai/tf.min.js'));const tf=window.tf;
+  try{await tf.setBackend('webgl')}catch(e){}await tf.ready();
+  const meta=await fetch(asset('ai/esrgan4p/meta.json')).then(r=>r.json());
+  const all=new Uint8Array(meta.chunks.reduce((a,b)=>a+b,0));let off=0;
+  for(let i=0;i<meta.chunks.length;i++){const r=await fetch(asset(`ai/esrgan4p/${i}.wasm`));if(!r.ok)throw new Error('modèle introuvable');const b=new Uint8Array(await r.arrayBuffer());all.set(b,off);off+=b.length;onP&&onP((i+1)/meta.chunks.length)}
+  const u16=new Uint16Array(all.buffer,0,all.length>>1),f=new Float32Array(u16.length),fb=new Uint32Array(f.buffer);
+  for(let i=0;i<u16.length;i++)fb[i]=half2f(u16[i]);
+  const W={};off=0;for(const [k,sh] of meta.tensors){const n=sh.reduce((a,b)=>a*b,1);W[k]=[f.subarray(off,off+n),sh];off+=n}
+  const conv=name=>{const [d,sh]=W[name+'.weight'],[b]=W[name+'.bias'],[O,I,kh,kw]=sh,w=new Float32Array(kh*kw*I*O);
+    for(let o=0;o<O;o++)for(let i=0;i<I;i++)for(let y=0;y<kh;y++)for(let x=0;x<kw;x++)w[((y*kw+x)*I+i)*O+o]=d[((o*I+i)*kh+y)*kw+x];
+    return{w:tf.tensor4d(w,[kh,kw,I,O]),b:tf.tensor1d(b)}};
+  const C={first:conv('conv_first'),body:conv('conv_body'),up1:conv('conv_up1'),up2:conv('conv_up2'),hr:conv('conv_hr'),last:conv('conv_last'),rrdb:[]};
+  for(let i=0;i<meta.nb;i++){const r=[];for(let j=1;j<=3;j++){const d=[];for(let k=1;k<=5;k++)d.push(conv(`body.${i}.rdb${j}.conv${k}`));r.push(d)}C.rrdb.push(r)}
+  const cv=(x,c)=>tf.add(tf.conv2d(x,c.w,1,'same'),c.b),lr=x=>tf.leakyRelu(x,0.2);
+  const rdb=(x,d)=>{let cat=x;for(let k=0;k<4;k++){const y=lr(cv(cat,d[k]));cat=tf.concat([cat,y],3)}return tf.add(tf.mul(cv(cat,d[4]),0.2),x)};
+  X4.m={native:4,x4p:true,
+    /* x: [1,h,w,3] in 0..255 -> [1,4h,4w,3] in 0..255 */
+    predict(x){return tf.tidy(()=>{const inp=tf.div(x,255),fea=cv(inp,C.first);let t=fea;
+      for(const r of C.rrdb){let y=t;for(const d of r)y=rdb(y,d);t=tf.add(tf.mul(y,0.2),t)}
+      t=tf.add(cv(t,C.body),fea);
+      const up=y=>tf.image.resizeNearestNeighbor(y,[y.shape[1]*2,y.shape[2]*2]);
+      t=lr(cv(up(t),C.up1));t=lr(cv(up(t),C.up2));
+      return tf.mul(cv(lr(cv(t,C.hr)),C.last),255)})},
+    dispose(){}};
+  return X4.m};
+window.__x4p={load:loadX4,model:()=>X4.m};
+
+/* tiles: 64 px (48 on small-memory devices) with 10 px overlap; one tile at a time, nothing kept between tiles */
+const tileSize=()=>(navigator.deviceMemory||8)>=8?64:48;
+let CANCEL=false;
+const fmtT=s=>s<90?Math.max(1,Math.round(s))+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1).replace('.',',')+' h';
+async function benchRate(model){
+  if(X4.rate)return X4.rate;const tf=window.tf;
+  const run=async n=>{const x=tf.randomUniform([1,n,n,3],0,255),t0=performance.now(),y=model.predict(x);await y.data();y.dispose();x.dispose();return performance.now()-t0};
+  await run(8);const t=await run(16);X4.rate=t/256;return X4.rate}
+async function x4pCanvas(src,scale,model,onP,tileOpt){
+  const tf=window.tf,W=src.width,H=src.height,N=4,T=(tileOpt&&tileOpt.T)||tileSize(),P=(tileOpt&&tileOpt.P)||10,out=mk(W*scale,H*scale),og=cx(out);
+  og.imageSmoothingEnabled=true;og.imageSmoothingQuality='high';
+  const nx=Math.ceil(W/T),ny=Math.ceil(H/T),tot=nx*ny;let k=0;const t0=performance.now();
+  for(let ty=0;ty<ny;ty++)for(let tx=0;tx<nx;tx++){
+    if(CANCEL)throw new Error('annulé');
+    const x0=tx*T,y0=ty*T,tw=Math.min(T,W-x0),th=Math.min(T,H-y0),px0=Math.max(0,x0-P),py0=Math.max(0,y0-P),px1=Math.min(W,x0+tw+P),py1=Math.min(H,y0+th+P),pw=px1-px0,ph=py1-py0;
+    const tc=scr('upin',pw,ph),tg=cx(tc);tg.clearRect(0,0,pw,ph);tg.drawImage(src,px0,py0,pw,ph,0,0,pw,ph);
+    const res=tf.tidy(()=>model.predict(tf.browser.fromPixels(tc).toFloat().expandDims(0)).clipByValue(0,255).squeeze().round().toInt());
+    const oc=scr('upout',pw*N,ph*N);await tf.browser.toPixels(res,oc);res.dispose();
+    og.drawImage(oc,(x0-px0)*N,(y0-py0)*N,tw*N,th*N,x0*scale,y0*scale,tw*scale,th*scale);
+    if(CANCEL)throw new Error('annulé');
+    k++;const el=(performance.now()-t0)/1000,eta=el/k*(tot-k);onP&&onP(k/tot,eta,k,tot);await tick()}
+  const a=resample(src,W*scale,H*scale);og.globalCompositeOperation='destination-in';og.drawImage(a,0,0);return out}
+window.__x4p.canvas=x4pCanvas;window.__x4p.cancel=()=>{CANCEL=true};
+
+/* hook into the existing pipeline: AI.upscale(scale) untouched (Rapide); AI.upscale(scale,'max') = this model */
+const _upCanvas=upscaleCanvas;
+upscaleCanvas=async function(src,scale,model,onP){
+  if(model&&model.x4p)return x4pCanvas(src,scale,model,(p,eta)=>{AI._eta=eta;onP&&onP(p)});
+  return _upCanvas.apply(this,arguments)};
+const _ensM=AI.ensureUp;
+AI.ensureUp=function(scale){if(AI._max)return AI._max();return _ensM.apply(this,arguments)};
+const _up=AI.upscale;
+AI.upscale=async function(scale,quality){
+  if(quality!=='max')return _up.apply(this,arguments);
+  const d=S.doc;if(!d)return;if(AI._xBusy)return;
+  if(d.w*scale*d.h*scale>MAX_PX){toast(`Résultat trop grand (${d.w*scale} × ${d.h*scale}). Recadrez ou réduisez d’abord la photo.`,4500);return}
+  AI._xBusy=true;CANCEL=false;
+  const onKey=e=>{if(e.key==='Escape'){CANCEL=true;e.stopPropagation()}};
+  addEventListener('keydown',onKey,true);
+  try{
+    let m;
+    AI.setState('up','load',0);busy(true,'Chargement du modèle haute qualité…',0.05);
+    try{m=await loadX4(p=>busy(true,'Chargement du modèle haute qualité…',p))}catch(e){console.error(e);AI.setState('up','error');busy(false);toast('Le modèle haute qualité n’a pas pu se charger : '+(e.message||e),5000);return}
+    AI.setState('up','ready');
+    busy(true,'Estimation de la durée…',null);await tick();
+    const rate=await benchRate(m),px=d.layers.filter(l=>l.kind==='pixel').length*d.w*d.h,est=rate*px/1000;
+    busy(false);if(CANCEL)return;
+    if(est>45){const ok=await new Promise(res=>dialog({title:'Qualité maximale',body:`<p style="margin:0 0 8px">Ce traitement prendra environ <b>${fmtT(est)}</b> sur cet appareil${px>d.w*d.h?' (plusieurs calques à traiter)':''}.</p><p class="muted" style="margin:0">Vous pourrez l’annuler à tout moment avec Échap. Le mode Rapide est bien plus court.</p>`,buttons:[{label:'Annuler',onClick:()=>res(false)},{label:'Continuer',primary:true,onClick:()=>res(true)}]}));if(!ok)return}
+    if(CANCEL)return;
+    AI._max=()=>Promise.resolve(m);
+    let cb=null;AI._eta=null;
+    busy(true,'Qualité maximale…',0);
+    const bx=document.querySelector('#busy>div');if(bx&&!bx.querySelector('.x4cancel')){cb=document.createElement('button');cb.className='btn sm x4cancel';cb.textContent='Annuler';cb.onclick=()=>{CANCEL=true;cb.disabled=true;cb.textContent='Annulation…'};bx.appendChild(cb)}
+    try{await _up.call(AI,scale)}finally{AI._max=null;if(cb)cb.remove()}
+    if(CANCEL)toast('Agrandissement annulé');
+  }finally{AI._xBusy=false;AI._max=null;CANCEL=false;removeEventListener('keydown',onKey,true);busy(false)}};
+
+/* the progress callback of the shared pipeline only passes a fraction: add the remaining time to the message */
+const _busy0=busy;
+busy=function(on,msg,p){if(on&&AI._max&&/^Agrandissement ×/.test(msg||'')){msg=msg.replace('Agrandissement','Qualité maximale')+(AI._eta!=null?' · reste '+fmtT(AI._eta):'')}return _busy0.call(this,on,msg,p)};
+
+/* one entry: Image > Agrandir ×2 avec l'IA… opens a small choice */
+function upDialog(){
+  const d=S.doc;if(!d)return;
+  const f=PREF.get('upQ','fast'),sc=PREF.get('upS',2);
+  const fits=s=>d.w*s*d.h*s<=MAX_PX;
+  const row=(n,v,t,sub,chk,dis)=>`<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;${dis?'opacity:.5':''}"><input type="radio" name="${n}" value="${v}" ${chk?'checked':''} ${dis?'disabled':''} style="margin-top:3px"><span><b style="font-weight:600">${t}</b><br><span class="muted" style="font-size:12px">${sub}</span></span></label>`;
+  dialog({title:'Agrandir avec l’IA',body:`<p class="muted" style="margin:0 0 6px">Actuellement ${d.w} × ${d.h} px.</p>
+    ${row('upq','fast','Rapide','Quelques secondes. Bords et textes nets.',f!=='max')}
+    ${row('upq','max','Qualité maximale','Plus de détails dans les textures, mais bien plus lent. Premier usage : modèle de 33 Mo à télécharger.',f==='max')}
+    <hr style="border:0;border-top:1px solid var(--line-2);margin:6px 0">
+    <div style="display:flex;gap:20px">${row('ups',2,'×2',`${d.w*2} × ${d.h*2}`,sc!==4||!fits(4),!fits(2))}${row('ups',4,'×4',`${d.w*4} × ${d.h*4}`,sc===4&&fits(4),!fits(4))}</div>`,
+    buttons:[{label:'Annuler'},{label:'Agrandir',primary:true,onClick:dl=>{const q=dl.querySelector('input[name=upq]:checked').value,s=+dl.querySelector('input[name=ups]:checked').value;PREF.set('upQ',q);PREF.set('upS',s);setTimeout(()=>AI.upscale(s,q==='max'?'max':undefined),30)}}]});
+}
+window.__x4p.dialog=upDialog;
+const _mi=MENU2.image.items;
+MENU2.image.items=()=>{const a=_mi();const it=a.find(x=>x&&x.label&&/^Agrandir ×2 avec l’IA/.test(x.label));if(it)it.fn=upDialog;return a};
+}
+
+}
+
+/* ===== feat: feat/lama.js ===== */
+{
+/* ================= Suppression d'objet par réseau neuronal (LaMa "big-lama", ONNX Runtime web) ================= */
+/* Disponible seulement si ai/lama/meta.json existe (application de bureau). Sinon : l'ancien remplissage par patchs est utilisé, sans message. */
+/* Modèle : LaMa (Suvorov et al., Samsung AI), FFT remplacée par produit matriciel DFT, poids int8 par canal + fp16, découpé en morceaux ai/lama/N.wasm, taille H x W dynamique (multiples de 8). */
+const LM={meta:null,availP:null,w:null,loadP:null,loadRes:null,pend:new Map(),rid:0,abort:false,busyNow:false,MAXS:512,MINS:256,tpp:null,last:null,
+  /* limite de la zone : fraction de l'image couverte par le cadre de l'objet */
+  GUARD:0.45};
+LM.WSRC=`let sess=null;
+self.onmessage=async e=>{const m=e.data;
+ if(m.t==='init'){try{
+   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
+   const n=m.chunks.length,parts=new Array(n);let done=0;
+   await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.8})}));
+   const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(let i=0;i<n;i++){buf.set(parts[i],o);o+=parts[i].length;parts[i]=null}
+   postMessage({t:'prog',v:0.9,prep:1});
+   sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});postMessage({t:'ready',threads:ort.env.wasm.numThreads})}
+  catch(err){postMessage({t:'err',msg:String(err&&err.message||err)})}}
+ else if(m.t==='run'){try{const ort=self.ort;const out=await sess.run({img:new ort.Tensor('float32',new Float32Array(m.img),m.dims),mask:new ort.Tensor('float32',new Float32Array(m.mask),[1,1,m.dims[2],m.dims[3]])});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
+  catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
+LM.abs=u=>new URL(u,location.href).href;
+/* le modèle est-il livré avec cette version ? (réponse mémorisée) */
+LM.avail=()=>{if(window.LAMA_DISABLE)return Promise.resolve(false);return LM.availP||(LM.availP=(async()=>{try{
+    const u=asset('ai/lama/meta.json');let r=await fetch(u,{method:'HEAD',cache:'no-store'});if(!r.ok)return false;
+    r=await fetch(u,{cache:'no-store'});if(!r.ok)return false;const m=JSON.parse(await r.text());if(!(m&&m.chunks>0))return false;LM.meta=m;return true}catch(e){return false}})())};
+LM.load=()=>LM.w?Promise.resolve(LM.w):(LM.loadP||(LM.loadP=LM._load().finally(()=>{LM.loadP=null})));
+LM._load=()=>new Promise(res=>{LM.loadRes=res;
+  busy(true,'Chargement du moteur IA…',0.02);LM.busyCancel(true);
+  let w;try{w=new Worker(URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'})))}catch(e){console.warn('lama',e);res(null);return}
+  LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
+  const fail=msg=>{console.warn('lama',msg);try{w.terminate()}catch(e){}LM.loadRes=null;res(null)};
+  w.onmessage=e=>{const m=e.data;
+    if(m.t==='prog'){busy(true,m.prep?'Préparation du modèle…':'Chargement du modèle de suppression…',m.v);LM.busyCancel(true)}
+    else if(m.t==='ready'){LM.threads=m.threads;LM.loadRes=null;LM.loadW=null;LM.w=w;w.onmessage=LM._onmsg;res(w)}
+    else if(m.t==='err')fail(m.msg)};
+  w.onerror=e=>fail(e.message||'worker');
+  w.postMessage({t:'init',ort:LM.abs(asset('ai/ort.wasm.min.js')),wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
+LM._onmsg=e=>{const m=e.data,p=LM.pend.get(m.id);if(!p)return;LM.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
+LM.infer=(img,mask,h,w)=>new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
+/* annulation : pendant le chargement on arrête le worker ; pendant le calcul on abandonne le résultat (le modèle reste en mémoire pour la prochaine fois) */
+LM.cancel=()=>{LM.abort=true;if(LM.loadRes){const r=LM.loadRes;LM.loadRes=null;try{LM.loadW&&LM.loadW.terminate()}catch(e){}LM.loadW=null;r(null)}};
+LM.busyCancel=on=>{const b=document.querySelector('#busy>div');if(!b)return;let e=b.querySelector('.lm-cancel');if(on&&!e){e=document.createElement('button');e.className='btn sm lm-cancel';e.textContent='Annuler';e.style.marginTop='10px';e.onclick=()=>{e.disabled=true;e.textContent='Annulation…';LM.cancel()};b.appendChild(e)}else if(!on&&e)e.remove()};
+LM.onKey=e=>{if(e.key==='Escape'&&LM.busyNow){LM.cancel();e.stopPropagation()}};
+/* fenêtre de contexte autour de l'objet : marge, au moins 256 px, multiple de 8 ; échelle <= 1 pour tenir dans 512 px */
+LM.plan=(bx,W,H)=>{const hw=bx.x1-bx.x0,hh=bx.y1-bx.y0,m=Math.max(hw,hh),mg=Math.max(48,Math.round(m*0.75));
+  const axis=(a,b,N)=>{a=Math.max(0,Math.floor(a-mg));b=Math.min(N,Math.ceil(b+mg));const need=Math.min(LM.MINS,N);
+    if(b-a<need){const c=(a+b)/2;a=Math.round(c-need/2);b=a+need;if(a<0){b-=a;a=0}if(b>N){a-=b-N;b=N}}
+    return[a,b]};
+  let[x0,x1]=axis(bx.x0,bx.x1,W),[y0,y1]=axis(bx.y0,bx.y1,H);
+  const w=x1-x0,h=y1-y0,f=Math.min(1,LM.MAXS/Math.max(w,h));
+  let rw,rh;
+  if(f>=1){rw=Math.ceil(w/8)*8;rh=Math.ceil(h/8)*8;
+    /* on agrandit la fenêtre vers l'intérieur de l'image quand c'est possible, le reste (hors image) sera traité comme une zone à remplir puis jeté */
+    const ext=(a,b,t,N)=>{let d=t-(b-a);const e=Math.min(d,N-b);b+=e;d-=e;const s=Math.min(d,a);a-=s;d-=s;return[a,b+d]};
+    [x0,x1]=ext(x0,x1,rw,W);[y0,y1]=ext(y0,y1,rh,H)}
+  else{rw=Math.max(8,Math.round(w*f/8)*8);rh=Math.max(8,Math.round(h*f/8)*8)}
+  return{x0,y0,x1,y1,rw,rh,f,fx:rw/(x1-x0),fy:rh/(y1-y0)}};
+LM.fmtT=ms=>{const s=Math.round(ms/1000);return s<90?s+' s':Math.round(s/60)+' min'};
+/* Cœur : remplit la zone de masque (alpha de maskC, repère de L.canvas) ; renvoie {res,soft,plan,hole} ou null si annulé/échec. */
+LM.fill=async(L,maskC,bx)=>{const d=S.doc,W=L.canvas.width,H=L.canvas.height,P=LM.plan(bx,W,H),{x0,y0,x1,y1,rw,rh,fx,fy}=P,n=rw*rh;
+  const src=mk(rw,rh),sg=rx(src);sg.imageSmoothingQuality='high';sg.drawImage(L.canvas,x0,y0,x1-x0,y1-y0,0,0,(x1-x0)*fx,(y1-y0)*fy);
+  const mc=mk(rw,rh),mg=rx(mc);mg.imageSmoothingQuality='high';mg.drawImage(maskC,x0,y0,x1-x0,y1-y0,0,0,(x1-x0)*fx,(y1-y0)*fy);
+  const sd=sg.getImageData(0,0,rw,rh).data,md=mg.getImageData(0,0,rw,rh).data;let hole=new Uint8Array(n),hc=0;
+  for(let y=0;y<rh;y++){const gy=y0+(y+.5)/fy,iy=gy>=0&&gy<H;for(let x=0;x<rw;x++){const gx=x0+(x+.5)/fx,i=y*rw+x;if(md[i*4+3]>10){hole[i]=1;hc++}else if(!iy||gx<0||gx>=W)hole[i]=2}}
+  if(!hc)return null;
+  /* le masque est légèrement agrandi pour emporter les bords de l'objet ; les zones hors image restent à remplir (2) */
+  const grow=3;for(let pass=0;pass<grow;pass++){const h2=hole.slice();for(let y=0;y<rh;y++)for(let x=0;x<rw;x++){const i=y*rw+x;if(hole[i])continue;if((x>0&&hole[i-1]===1)||(x<rw-1&&hole[i+1]===1)||(y>0&&hole[i-rw]===1)||(y<rh-1&&hole[i+rw]===1))h2[i]=1}hole=h2}
+  const fi=new Float32Array(3*n),fm=new Float32Array(n);
+  for(let i=0;i<n;i++){const hv=hole[i]>0;fm[i]=hv?1:0;if(!hv){fi[i]=sd[i*4]/255;fi[i+n]=sd[i*4+1]/255;fi[i+2*n]=sd[i*4+2]/255}}
+  const sess=await LM.load();if(!sess||LM.abort){return null}
+  const pl=LM.tpp,est=pl?pl*n:null,t0=performance.now();let tm=null;
+  busy(true,'Suppression de l’objet…',est?0:null);LM.busyCancel(true);
+  if(est)tm=setInterval(()=>{busy(true,'Suppression de l’objet… (Échap pour annuler)',Math.min(0.95,(performance.now()-t0)/est));LM.busyCancel(true)},250);
+  let o;const ip=LM.infer(fi,fm,rh,rw);
+  const ab=new Promise(r=>{const chk=setInterval(()=>{if(LM.abort){clearInterval(chk);r(null)}},120);ip.finally(()=>clearInterval(chk)).catch(()=>{})});
+  try{o=await Promise.race([ip,ab])}catch(e){clearInterval(tm);throw e}finally{clearInterval(tm)}
+  if(!o||LM.abort)return null;
+  const dt=performance.now()-t0;LM.tpp=LM.tpp==null?dt/n:LM.tpp*.5+dt/n*.5;LM.last={ms:Math.round(dt),w:rw,h:rh,f:P.f};
+  const res=mk(rw,rh),rg=cx(res),ri=rg.createImageData(rw,rh);
+  for(let i=0;i<n;i++){const k=i*4;if(hole[i]===1){ri.data[k]=Math.max(0,Math.min(255,o[i]*255+.5));ri.data[k+1]=Math.max(0,Math.min(255,o[i+n]*255+.5));ri.data[k+2]=Math.max(0,Math.min(255,o[i+2*n]*255+.5));ri.data[k+3]=255}}
+  rg.putImageData(ri,0,0);return{res,plan:P}};
+/* brique commune : applique le résultat à L (même historique et même gestion de sélection que l'ancienne gomme) */
+LM.removeObject=async function(L,maskC,bx,clip,prev){const d=S.doc,doc0=d,h0=S.history[S.hi];
+  if(LM.busyNow)return;LM.busyNow=true;LM.abort=false;document.addEventListener('keydown',LM.onKey,true);
+  let r;try{r=await LM.fill(L,maskC,bx)}catch(e){console.warn('lama',e);r=null;LM.failed=String(e&&e.message||e)}
+  finally{LM.busyNow=false;document.removeEventListener('keydown',LM.onKey,true);busy(false);LM.busyCancel(false)}
+  if(LM.abort){toast('Suppression annulée');return true}
+  if(!r)return false;                      /* échec du réseau : l'appelant bascule sur l'ancienne méthode */
+  if(S.doc!==doc0||S.history[S.hi]!==h0||!doc0.layers.includes(L)){toast('Opération annulée : le document a changé');return true}
+  const{res,plan:P}=r,{x0,y0,x1,y1,rw,rh}=P;const soft=blurCanvas(res,1.2);
+  if(clip&&clip===d.sel){const full=mk(x1-x0,y1-y0),fg=cx(full);fg.imageSmoothingQuality='high';fg.drawImage(soft,0,0,rw,rh,0,0,x1-x0,y1-y0);fg.globalCompositeOperation='destination-in';fg.drawImage(clip,-x0,-y0);const g=editCanvas(L);g.drawImage(full,x0,y0)}
+  else{const g=editCanvas(L);g.imageSmoothingQuality='high';g.drawImage(soft,0,0,rw,rh,x0,y0,x1-x0,y1-y0)}
+  markComp();pushHistory('Gomme magique');return true};
+/* clipSel (sélection active pendant un coup de pinceau "gomme magique") est privé au moteur : on le déduit en enveloppant endStroke */
+{const _es=endStroke;endStroke=function(){const st=S.stroke,d=S.doc;LM.strokeSel=st&&d&&st.tool==='remove'&&d.sel?d.sel:null;
+  const r=_es.apply(this,arguments);Promise.resolve(r).then(()=>{LM.strokeSel=null},()=>{LM.strokeSel=null});return r}}
+/* on enveloppe la gomme existante : réseau si le modèle est livré, sinon (ou en cas d'échec) l'ancien remplissage */
+{const _ro=removeObject,E0={x0:0,y0:0,x1:0,y1:0};
+ removeObject=async function(L,maskC,bx){const d=S.doc,args=arguments,self=this;
+  if(!d||!(await LM.avail())||S.doc!==d)return _ro.apply(self,args);
+  const clip=LM.strokeSel;
+  const hw=bx.x1-bx.x0,hh=bx.y1-bx.y0;if(hw<2||hh<2)return _ro.apply(self,args);
+  if(hw*hh>d.w*d.h*LM.GUARD){_ro.call(self,L,maskC,E0);toast('Zone trop grande : peignez seulement l’objet à effacer');return}
+  const ok=await LM.removeObject(L,maskC,bx,clip);
+  if(ok===false){console.warn('lama: repli sur l’ancienne méthode');return _ro.apply(self,args)}
+  _ro.call(self,L,maskC,E0)}}               /* remet clipSel à zéro, comme l'ancienne version */
+window.LM=LM;
+
+}
+
+/* ===== feat: feat/lens.js ===== */
+{
+/* ===== lens : Correction de l'objectif (distorsion, vignettage, aberration chromatique, franges, perspective) =====
+   Un filtre de plus dans FILTERS (donc modifiable via « Effets du calque… », enregistrable dans les actions).
+   Calcul : WebGL2 (un seul passage de rééchantillonnage bicubique pour la géométrie et les 3 canaux, puis passage de franges),
+   par bandes avec await tick() pour ne pas figer l'onglet ; repli CPU (bilinéaire) si WebGL2 est absent. */
+(()=>{
+const NAME='Correction de l’objectif';
+const PAR=[
+ ['dist','Distorsion',-100,100,1,0,''],
+ ['dist2','Bords',-100,100,1,0,''],
+ ['fill','Remplir le cadre',0,1,1,1,''],
+ ['vig','Vignettage',-100,100,1,0,''],
+ ['vmid','Point médian',0,100,1,50,' %'],
+ ['vfea','Progressivité',0,100,1,50,' %'],
+ ['car','Rouge',-100,100,0.5,0,''],
+ ['cab','Bleu',-100,100,0.5,0,''],
+ ['fr','Intensité',0,100,1,0,' %'],
+ ['frw','Largeur',1,10,1,3,' px'],
+ ['pv','Verticale',-100,100,1,0,''],
+ ['ph','Horizontale',-100,100,1,0,'']];
+const DEF={};PAR.forEach(q=>DEF[q[0]]=q[5]);
+const NP=p=>{const o={};for(const k in DEF){const v=p&&p[k];o[k]=(typeof v==='number'&&isFinite(v))?v:DEF[k]}return o};
+const idle=p=>!p.dist&&!p.dist2&&!p.vig&&!p.car&&!p.cab&&!p.fr&&!p.pv&&!p.ph;
+const CLAMP=(v,a,b)=>v<a?a:v>b?b:v;
+
+/* ---------------- modèle géométrique (partagé par le GPU, le CPU et le calcul du zoom) ---------------- */
+function model(w,h,p){
+ const m={w,h,H:Math.hypot(w,h)/2,f:1.5,z:1};
+ m.thx=CLAMP(p.pv/100,-1,1)*0.44;m.thy=CLAMP(p.ph/100,-1,1)*0.44;   /* 25° au maximum : le zoom de remplissage reste raisonnable */
+ m.a=p.dist/100*0.35;m.b=p.dist2/100*0.35;
+ m.kr=p.car*5e-5;m.kb=p.cab*5e-5;
+ m.fill=p.fill?1:0;
+ m.va=p.vig/100;m.vmid=p.vmid/100;m.vhw=0.05+0.55*p.vfea/100;
+ m.fr=p.fr/100;m.rad=Math.max(1,p.frw*Math.max(w,h)/2400);
+ m.z=fitZoom(m);return m}
+function geo(m,u,v,o){   /* (u,v) normalisés par la demi-diagonale, sortie : position dans l'image source (avant échelle par canal) */
+ let x=u,y=v,z=m.f;
+ if(m.thx){const c=Math.cos(m.thx),s=Math.sin(m.thx),y1=y*c-z*s,z1=y*s+z*c;y=y1;z=z1}
+ if(m.thy){const c=Math.cos(m.thy),s=Math.sin(m.thy),x1=x*c+z*s,z1=-x*s+z*c;x=x1;z=z1}
+ const k=m.f/Math.max(z,0.05),x2=x*k,y2=y*k,r2=x2*x2+y2*y2,fac=Math.max(1-m.a*r2-m.b*r2*r2,0.15);
+ o[0]=x2*fac;o[1]=y2*fac}
+function fitZoom(m){
+ if(!m.fill)return 1;const o=[0,0],K=[0,m.kr,m.kb],w=m.w,h=m.h,H=m.H,N=48,pts=[];
+ for(let i=0;i<=N;i++){const t=i/N;pts.push([(-w/2+t*w)/H,-h/2/H],[(-w/2+t*w)/H,h/2/H],[-w/2/H,(-h/2+t*h)/H],[w/2/H,(-h/2+t*h)/H])}
+ for(let z=1;z<4;z*=1.004){let ok=true;
+  for(const [u,v] of pts){geo(m,u/z,v/z,o);for(const k of K){const sx=w/2+o[0]*(1+k)*H,sy=h/2+o[1]*(1+k)*H;if(sx<-1e-6||sx>w+1e-6||sy<-1e-6||sy>h+1e-6){ok=false;break}}if(!ok)break}
+  if(ok)return z}
+ return 4}
+const hueW=(r,g,b)=>{const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;if(d<=0)return[0,0,0];let hh;if(mx===r)hh=((g-b)/d+6)%6;else if(mx===g)hh=(b-r)/d+2;else hh=(r-g)/d+4;hh*=60;return[hh,d/Math.max(mx,1e-6),0]};
+const sstep=(a,b,x)=>{const t=CLAMP((x-a)/(b-a),0,1);return t*t*(3-2*t)};
+const fringeW=(hh,sat)=>Math.max(sstep(235,265,hh)*(1-sstep(315,345,hh)),sstep(60,85,hh)*(1-sstep(150,175,hh)))*sstep(0.12,0.4,sat);
+
+/* ---------------- WebGL2 ---------------- */
+const VS=`#version 300 es
+in vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
+const FS1=`#version 300 es
+precision highp float;precision highp int;precision highp sampler2D;
+uniform sampler2D uSrc;uniform vec2 uSize,uRot,uDist,uCA;uniform vec3 uVig;uniform float uH,uZ,uF;uniform int uQ,uFill;
+out vec4 o;
+vec4 tf(ivec2 p){p=clamp(p,ivec2(0),ivec2(uSize)-ivec2(1));vec4 t=texelFetch(uSrc,p,0);return vec4(t.rgb*t.a,t.a);}
+vec4 cr(float t){float t2=t*t,t3=t2*t;return vec4(-.5*t3+t2-.5*t,1.5*t3-2.5*t2+1.,-1.5*t3+2.*t2+.5*t,.5*t3-.5*t2);}
+vec4 samp(vec2 sp){vec2 fl=floor(sp),t=sp-fl;ivec2 b=ivec2(fl);
+ if(uQ==0){vec4 a=mix(tf(b),tf(b+ivec2(1,0)),t.x),c=mix(tf(b+ivec2(0,1)),tf(b+ivec2(1,1)),t.x);return mix(a,c,t.y);}
+ vec4 wx=cr(t.x),wy=cr(t.y),acc=vec4(0.);
+ for(int j=0;j<4;j++){vec4 row=vec4(0.);for(int i=0;i<4;i++)row+=tf(b+ivec2(i-1,j-1))*wx[i];acc+=row*wy[j];}
+ acc.a=clamp(acc.a,0.,1.);acc.rgb=clamp(acc.rgb,0.,acc.a);return acc;}
+float cov(vec2 sp){vec2 c=sp+.5;return clamp(min(min(c.x,uSize.x-c.x),min(c.y,uSize.y-c.y))+.5,0.,1.);}
+void main(){
+ vec2 uv=(gl_FragCoord.xy-uSize*.5)/(uH*uZ);vec3 d=vec3(uv,uF);
+ if(uRot.x!=0.){float c=cos(uRot.x),s=sin(uRot.x);d=vec3(d.x,d.y*c-d.z*s,d.y*s+d.z*c);}
+ if(uRot.y!=0.){float c=cos(uRot.y),s=sin(uRot.y);d=vec3(d.x*c+d.z*s,d.y,-d.x*s+d.z*c);}
+ vec2 u2=d.xy*(uF/max(d.z,.05));float r2=dot(u2,u2);
+ vec2 q=u2*max(1.-uDist.x*r2-uDist.y*r2*r2,.15);
+ vec2 spG=uSize*.5+q*uH-.5;vec4 sg=samp(spG),sr=sg,sb=sg;
+ if(uCA.x!=0.)sr=samp(uSize*.5+q*(1.+uCA.x)*uH-.5);
+ if(uCA.y!=0.)sb=samp(uSize*.5+q*(1.+uCA.y)*uH-.5);
+ float cv=uFill==1?1.:cov(spG),a=sg.a*cv;
+ vec3 c=vec3(sr.r/max(sr.a,1e-4),sg.g/max(sg.a,1e-4),sb.b/max(sb.a,1e-4));
+ if(sg.a<1e-4)c=vec3(0.);
+ if(uVig.x!=0.){float t=smoothstep(uVig.y-uVig.z,uVig.y+uVig.z,length(q));float g=uVig.x>0.?1./(1.-.8*uVig.x*t):1.+uVig.x*t;c*=g;}
+ o=vec4(clamp(c,0.,1.),a);}`;
+const FS2=`#version 300 es
+precision highp float;precision highp int;precision highp sampler2D;
+uniform sampler2D uSrc;uniform vec2 uSize;uniform float uAmt,uRad;out vec4 o;
+float lum(vec3 c){return dot(c,vec3(.299,.587,.114));}
+float ss(float a,float b,float x){float t=clamp((x-a)/(b-a),0.,1.);return t*t*(3.-2.*t);}
+void main(){ivec2 p=ivec2(gl_FragCoord.xy);vec4 c=texelFetch(uSrc,p,0);float lo=1.,hi=0.,st=uRad*.5;
+ for(int j=-2;j<=2;j++)for(int i=-2;i<=2;i++){ivec2 q=clamp(p+ivec2(floor(vec2(float(i),float(j))*st+.5)),ivec2(0),ivec2(uSize)-ivec2(1));float l=lum(texelFetch(uSrc,q,0).rgb);lo=min(lo,l);hi=max(hi,l);}
+ float ew=ss(.15,.45,hi-lo);float mx=max(c.r,max(c.g,c.b)),mn=min(c.r,min(c.g,c.b)),dd=mx-mn;
+ if(dd>0.&&ew>0.){float hh;if(mx==c.r)hh=mod((c.g-c.b)/dd+6.,6.);else if(mx==c.g)hh=(c.b-c.r)/dd+2.;else hh=(c.r-c.g)/dd+4.;hh*=60.;
+  float sat=dd/max(mx,1e-6);float w=max(ss(235.,265.,hh)*(1.-ss(315.,345.,hh)),ss(60.,85.,hh)*(1.-ss(150.,175.,hh)))*ss(.12,.4,sat)*ew*uAmt;
+  c.rgb=mix(c.rgb,vec3(lum(c.rgb)),w);}
+ o=c;}`;
+let GLS=null,GLBAD=false;
+function glInit(){
+ if(GLBAD)return null;if(GLS&&!GLS.gl.isContextLost())return GLS;
+ try{const cv=document.createElement('canvas');cv.width=cv.height=1;
+  const gl=cv.getContext('webgl2',{alpha:true,antialias:false,depth:false,stencil:false,premultipliedAlpha:false,preserveDrawingBuffer:false});
+  if(!gl){GLBAD=true;return null}
+  const prog=(fs)=>{const mkS=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(x));return x};
+   const P=gl.createProgram();gl.attachShader(P,mkS(gl.VERTEX_SHADER,VS));gl.attachShader(P,mkS(gl.FRAGMENT_SHADER,fs));gl.bindAttribLocation(P,0,'a');gl.linkProgram(P);
+   if(!gl.getProgramParameter(P,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(P));return P};
+  const p1=prog(FS1),p2=prog(FS2),vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const vao=gl.createVertexArray();gl.bindVertexArray(vao);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+  GLS={gl,cv,p1,p2,vao};return GLS}
+ catch(e){console.warn('lens: WebGL2 indisponible',e);GLBAD=true;return null}}
+const BAND=3e6;   /* pixels par bande */
+function* glRender(src,p,Q){
+ const G=glInit();if(!G)return null;const gl=G.gl,w=src.width,h=src.height;
+ if(w>gl.getParameter(gl.MAX_TEXTURE_SIZE)||h>gl.getParameter(gl.MAX_TEXTURE_SIZE)||w>gl.getParameter(gl.MAX_RENDERBUFFER_SIZE))return null;
+ const m=model(w,h,p),tex=[],fbo=[];
+ const mkT=(img)=>{const t=gl.createTexture();tex.push(t);gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  if(img)gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,img);else gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);return t};
+ const mkF=(t)=>{const f=gl.createFramebuffer();fbo.push(f);gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw new Error('framebuffer');return f};
+ try{
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+  const p3=src._cs==='display-p3';if('unpackColorSpace' in gl)try{gl.unpackColorSpace=p3?'display-p3':'srgb'}catch(e){}
+  const tS=mkT(src);const tA=mkT(null),fA=mkF(tA);let tB=null,fB=null;const needFr=m.fr>0;if(needFr){tB=mkT(null);fB=mkF(tB)}
+  gl.disable(gl.BLEND);gl.disable(gl.DEPTH_TEST);gl.viewport(0,0,w,h);gl.enable(gl.SCISSOR_TEST);
+  const np=needFr?2:1,tiny=new Uint8Array(4);let rows=Math.max(16,Math.min(h,Math.ceil(2e5/w))),pi=0;
+  /* chaque bande est dessinée puis attendue (lecture d'un pixel) : on règle sa hauteur pour qu'elle dure ~90 ms, donc l'onglet reste réactif même sur un GPU logiciel */
+  const strips=function*(){let y=0;while(y<h){const n=Math.min(rows,h-y),t=performance.now();gl.scissor(0,y,w,n);gl.drawArrays(gl.TRIANGLES,0,3);gl.readPixels(0,y,1,1,gl.RGBA,gl.UNSIGNED_BYTE,tiny);
+    const dt=performance.now()-t;y+=n;rows=CLAMP(Math.round(rows*90/Math.max(dt,4)),16,h);yield(pi+y/h)/(np+1)}pi++};
+  /* passe 1 : géométrie + canaux + vignettage */
+  gl.useProgram(G.p1);gl.bindVertexArray(G.vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tS);
+  const U=n=>gl.getUniformLocation(G.p1,n);
+  gl.uniform1i(U('uSrc'),0);gl.uniform2f(U('uSize'),w,h);gl.uniform2f(U('uRot'),m.thx,m.thy);gl.uniform2f(U('uDist'),m.a,m.b);gl.uniform2f(U('uCA'),m.kr,m.kb);
+  gl.uniform3f(U('uVig'),m.va,m.vmid,m.vhw);gl.uniform1f(U('uH'),m.H);gl.uniform1f(U('uZ'),m.z);gl.uniform1f(U('uF'),m.f);gl.uniform1i(U('uQ'),Q?1:0);gl.uniform1i(U('uFill'),m.fill);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,fA);
+  yield* strips();
+  let last=fA;
+  if(needFr){
+   gl.useProgram(G.p2);gl.bindTexture(gl.TEXTURE_2D,tA);const V=n=>gl.getUniformLocation(G.p2,n);
+   gl.uniform1i(V('uSrc'),0);gl.uniform2f(V('uSize'),w,h);gl.uniform1f(V('uAmt'),m.fr);gl.uniform1f(V('uRad'),m.rad);gl.bindFramebuffer(gl.FRAMEBUFFER,fB);
+   yield* strips();
+   last=fB}
+  /* lecture par bandes */
+  gl.disable(gl.SCISSOR_TEST);gl.bindFramebuffer(gl.FRAMEBUFFER,last);
+  const out=mk(w,h),og=cx(out),rr=Math.max(64,Math.ceil(BAND/w));
+  for(let y=0;y<h;y+=rr){const sh=Math.min(rr,h-y),im=new ImageData(w,sh,{colorSpace:p3?'display-p3':'srgb'});
+   gl.readPixels(0,y,w,sh,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array(im.data.buffer));og.putImageData(im,0,y);yield(np+Math.min(1,(y+sh)/h))/(np+1)}
+  if(gl.isContextLost())throw new Error('contexte WebGL perdu');
+  return out}
+ finally{try{tex.forEach(t=>gl.deleteTexture(t));fbo.forEach(f=>gl.deleteFramebuffer(f));gl.bindFramebuffer(gl.FRAMEBUFFER,null)}catch(e){}}}
+
+/* ---------------- repli CPU (bilinéaire) ---------------- */
+function* cpuRender(src,p,Q){
+ const w=src.width,h=src.height,m=model(w,h,p),sd=rx(src).getImageData(0,0,w,h).data,buf=new Uint8ClampedArray(w*h*4),o=[0,0],H=m.H,cxp=w/2,cyp=h/2;
+ const smp=(x,y,ch,res)=>{   /* x,y : coordonnées en centre de texel ; res[0]=couleur prémultipliée, res[1]=alpha */
+  const x0=Math.floor(x),y0=Math.floor(y),fx=x-x0,fy=y-y0;let c=0,a=0;
+  for(let j=0;j<2;j++)for(let i=0;i<2;i++){const xx=CLAMP(x0+i,0,w-1),yy=CLAMP(y0+j,0,h-1),k=(yy*w+xx)*4,wt=(i?fx:1-fx)*(j?fy:1-fy),al=sd[k+3]/255;a+=al*wt;if(ch>=0)c+=sd[k+ch]/255*al*wt}
+  res[0]=c;res[1]=a};
+ const r1=[0,0],r2=[0,0],r3=[0,0];let acc=0;
+ for(let y=0;y<h;y++){
+  for(let x=0;x<w;x++){
+   const u=(x+.5-cxp)/(H*m.z),v=(y+.5-cyp)/(H*m.z);geo(m,u,v,o);const qx=o[0],qy=o[1];
+   const gx=cxp+qx*H-.5,gy=cyp+qy*H-.5;smp(gx,gy,1,r2);
+   if(m.kr)smp(cxp+qx*(1+m.kr)*H-.5,cyp+qy*(1+m.kr)*H-.5,0,r1);else smp(gx,gy,0,r1);
+   if(m.kb)smp(cxp+qx*(1+m.kb)*H-.5,cyp+qy*(1+m.kb)*H-.5,2,r3);else smp(gx,gy,2,r3);
+   let a=r2[1];if(!m.fill){const px=gx+.5,py=gy+.5;a*=CLAMP(Math.min(px,w-px,py,h-py)+.5,0,1)}
+   const j=(y*w+x)*4;if(r2[1]<1e-4){buf[j]=buf[j+1]=buf[j+2]=buf[j+3]=0;continue}
+   let R=r1[0]/Math.max(r1[1],1e-4),G=r2[0]/r2[1],B=r3[0]/Math.max(r3[1],1e-4);
+   if(m.va){const t=sstep(m.vmid-m.vhw,m.vmid+m.vhw,Math.hypot(qx,qy)),g=m.va>0?1/(1-.8*m.va*t):1+m.va*t;R*=g;G*=g;B*=g}
+   buf[j]=CLAMP(R,0,1)*255+.5;buf[j+1]=CLAMP(G,0,1)*255+.5;buf[j+2]=CLAMP(B,0,1)*255+.5;buf[j+3]=CLAMP(a,0,1)*255+.5}
+  acc+=w;if(acc>1.5e5){acc=0;yield y/h*.7}}
+ let fin=buf;
+ if(m.fr>0){fin=new Uint8ClampedArray(buf);const st=m.rad*.5;acc=0;
+  for(let y=0;y<h;y++){for(let x=0;x<w;x++){let lo=1,hi=0;
+    for(let j=-2;j<=2;j++){const yy=CLAMP(y+Math.floor(j*st+.5),0,h-1);for(let i=-2;i<=2;i++){const xx=CLAMP(x+Math.floor(i*st+.5),0,w-1),k=(yy*w+xx)*4,l=(buf[k]*.299+buf[k+1]*.587+buf[k+2]*.114)/255;if(l<lo)lo=l;if(l>hi)hi=l}}
+    const ew=sstep(.15,.45,hi-lo);if(ew<=0)continue;const k=(y*w+x)*4,rr=buf[k]/255,gg=buf[k+1]/255,bb=buf[k+2]/255,hs=hueW(rr,gg,bb);if(hs[1]<=0)continue;
+    const wt=fringeW(hs[0],hs[1])*ew*m.fr;if(wt<=0)continue;const l=rr*.299+gg*.587+bb*.114;
+    fin[k]=(rr+(l-rr)*wt)*255+.5;fin[k+1]=(gg+(l-gg)*wt)*255+.5;fin[k+2]=(bb+(l-bb)*wt)*255+.5}
+   acc+=w;if(acc>1e5){acc=0;yield .7+y/h*.3}}}
+ const out=mk(w,h);cx(out).putImageData(new ImageData(fin,w,h,{colorSpace:src._cs==='display-p3'?'display-p3':'srgb'}),0,0);return out}
+
+/* ---------------- pilotes synchrone / asynchrone ---------------- */
+function runSync(src,p0,Q=true){
+ const p=NP(p0);if(idle(p))return cloneC(src);
+ let r=null;
+ try{const g=glRender(src,p,Q);let s=g.next();while(!s.done)s=g.next();r=s.value}catch(e){console.warn('lens: GPU',e);r=null}
+ if(!r){const g=cpuRender(src,p,Q);let s=g.next();while(!s.done)s=g.next();r=s.value}
+ return r}
+async function runAsync(src,p0,Q=true,onP,stale){
+ const p=NP(p0);if(idle(p))return cloneC(src);
+ const drive=async(g)=>{let s=g.next();while(!s.done){if(stale&&stale()){g.return(null);return undefined}onP&&onP(s.value);await tick();s=g.next()}return s.value};
+ let r=null;
+ try{r=await drive(glRender(src,p,Q));if(r===undefined)return null}catch(e){console.warn('lens: GPU',e);r=null}
+ if(!r){r=await drive(cpuRender(src,p,Q));if(r===undefined)return null}
+ return r}
+
+/* ---------------- aberration chromatique automatique ---------------- */
+function autoCA(src){
+ const s=Math.min(1,1000/Math.max(src.width,src.height)),w=Math.max(8,Math.round(src.width*s)),h=Math.max(8,Math.round(src.height*s)),sm=s<1?resample(src,w,h):src;
+ const d=rx(sm).getImageData(0,0,w,h).data,N=w*h,ch=[new Float32Array(N),new Float32Array(N),new Float32Array(N)];
+ for(let i=0;i<N;i++){const a=d[i*4+3]/255;for(let c=0;c<3;c++)ch[c][i]=d[i*4+c]*a}
+ /* passe-haut : canal moins son flou en boîte (rayon 3) */
+ const hp=ch.map(v=>{const t=new Float32Array(N),o=new Float32Array(N),R=3;
+  for(let y=0;y<h;y++){let a=0;const r=y*w;for(let x=-R;x<=R;x++)a+=v[r+CLAMP(x,0,w-1)];for(let x=0;x<w;x++){t[r+x]=a/(2*R+1);a+=v[r+CLAMP(x+R+1,0,w-1)]-v[r+CLAMP(x-R,0,w-1)]}}
+  for(let x=0;x<w;x++){let a=0;for(let y=-R;y<=R;y++)a+=t[CLAMP(y,0,h-1)*w+x];for(let y=0;y<h;y++){o[y*w+x]=v[y*w+x]-a/(2*R+1);a+=t[CLAMP(y+R+1,0,h-1)*w+x]-t[CLAMP(y-R,0,h-1)*w+x]}}
+  return o});
+ const cxp=w/2,cyp=h/2,Rm=Math.hypot(w,h)/2,G=hp[1];
+ const ncc=(X,k)=>{let sab=0,saa=0,sbb=0;
+  for(let y=2;y<h-2;y+=2)for(let x=2;x<w-2;x+=2){const dx=x+.5-cxp,dy=y+.5-cyp;if(dx*dx+dy*dy<(0.2*Rm)*(0.2*Rm))continue;
+   const sx=cxp+dx*(1+k)-.5,sy=cyp+dy*(1+k)-.5;if(sx<0||sy<0||sx>=w-1||sy>=h-1)continue;
+   const x0=sx|0,y0=sy|0,fx=sx-x0,fy=sy-y0,j=y0*w+x0,a=(X[j]*(1-fx)+X[j+1]*fx)*(1-fy)+(X[j+w]*(1-fx)+X[j+w+1]*fx)*fy,b=G[y*w+x];sab+=a*b;saa+=a*a;sbb+=b*b}
+  return{c:sab/Math.sqrt(saa*sbb+1e-9),e:sbb}};
+ const est=(X)=>{
+  const base=ncc(X,0);if(base.e<N*0.02)return null;   /* presque pas de contours */
+  let best=0,bv=-2;for(let k=-0.006;k<=0.00601;k+=0.0005){const v=ncc(X,k).c;if(v>bv){bv=v;best=k}}
+  let st=0.0005;for(let i=0;i<5;i++){st/=2;for(const k of[best-st,best+st]){const v=ncc(X,k).c;if(v>bv){bv=v;best=k}}}
+  return{k:best,before:base.c,after:bv}};
+ const r=est(hp[0]),b=est(hp[2]);if(!r||!b)return null;
+ const sl=k=>CLAMP(Math.round(k/5e-5*10)/10,-100,100);
+ return{car:sl(r.k),cab:sl(b.k),kr:r.k,kb:b.k,conf:{r:[r.before,r.after],b:[b.before,b.after]}}}
+
+/* ---------------- interface ---------------- */
+let pendingSrc=null,inMine=false;
+function styleOnce(){if(document.getElementById('lensCSS'))return;const st=document.createElement('style');st.id='lensCSS';
+ st.textContent='.lensH{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);margin:14px 0 2px}.lensH:first-child{margin-top:0}.lensDlg{max-height:calc(100vh - 120px)!important}.lensA{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:2px 0 0;font-size:11.5px;color:var(--fg-3)}';
+ document.body.appendChild(st)}
+function setVal(dl,id,v){const r=dl.querySelector('#f-'+id);if(!r)return;r.value=v;r.dispatchEvent(new Event('input',{bubbles:true}))}
+function decorate(dl,srcFn){
+ styleOnce();dl.classList.add('lensDlg');
+ const H=(before,t)=>{const row=dl.querySelector('#f-'+before);const r=row&&row.closest('.row');if(!r)return;const h=document.createElement('div');h.className='lensH';h.textContent=t;r.parentNode.insertBefore(h,r)};
+ H('dist','Distorsion');H('vig','Vignettage');H('car','Aberration chromatique latérale');H('fr','Franges');H('pv','Perspective');
+ const cab=dl.querySelector('#f-cab'),row=cab&&cab.closest('.row');
+ if(row){const a=document.createElement('div');a.className='lensA';a.innerHTML='<span>Rouge et bleu par rapport au vert</span><button class="btn sm" type="button">Auto</button>';
+  row.after(a);const btn=a.querySelector('button');
+  btn.onclick=async()=>{const src=srcFn&&srcFn();if(!src)return;busy(true,'Analyse de l’aberration chromatique…',null);await tick();let r=null;
+   try{r=autoCA(src)}catch(e){console.error(e)}finally{busy(false)}
+   if(!r){toast('Pas assez de contours nets pour estimer l’aberration chromatique');return}
+   setVal(dl,'car',r.car);setVal(dl,'cab',r.cab);toast('Aberration estimée : rouge '+r.car.toFixed(1)+', bleu '+r.cab.toFixed(1))}}}
+{const _d=dialog;
+ dialog=function(o){const dl=_d.apply(this,arguments);
+  try{if(o&&o.light&&o.title===NAME){const f=pendingSrc;pendingSrc=null;
+   decorate(dl,f||(()=>{const L=pixelTarget();if(!L)return null;return(L.fbase&&L.filters&&L.fout===L.canvas)?L.fbase:L.canvas}))}}catch(e){console.error(e)}
+  return dl}}
+
+function lensDialog(){
+ const d=S.doc;if(!d)return;
+ if(maskTarget()){toast('La correction de l’objectif s’applique à la photo, pas au masque : choisissez le calque de photo');return}
+ const L=pixelTarget();if(!L){toast('Aucun calque de pixels à corriger');return}
+ if(L.visible===false){toast('Ce calque est masqué : affichez-le pour appliquer une correction');return}
+ const orig=L.canvas,p=NP({}),F=FILTERS.lens;
+ let tmr=null,seq=0,closed=false,pv=null;
+ const small=()=>{if(pv)return pv;const k=1400/Math.max(orig.width,orig.height);return pv=k<1?resample(orig,Math.max(8,Math.round(orig.width*k)),Math.max(8,Math.round(orig.height*k))):orig};
+ const clear=()=>{closed=true;seq++;clearTimeout(tmr);delete L.preview};
+ const prev=()=>{clearTimeout(tmr);const my=++seq;tmr=setTimeout(async()=>{
+   if(closed||S.doc!==d)return;
+   if(idle(p)){delete L.preview;markComp();return}
+   try{const s=small();let r=await runAsync(s,p,s===orig,null,()=>my!==seq||closed);if(!r||my!==seq||closed)return;
+    if(s!==orig){const up=mk(orig.width,orig.height),g=cx(up);g.imageSmoothingQuality='high';g.drawImage(r,0,0,up.width,up.height);r=up}
+    if(d.sel&&window.PrismFX&&PrismFX.mixSel)r=PrismFX.mixSel(orig,r,d.sel);
+    L.preview=r;markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},60)};
+ pendingSrc=()=>orig;
+ dialog({title:NAME,light:true,
+  body:PAR.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+  onOpen:el=>{PAR.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}})},
+  buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
+   {label:'Appliquer',primary:true,onClick:()=>{clear();if(idle(p)){toast('Aucune correction à appliquer');markComp();return}applyLens(d,L,orig,{...p})}}]})}
+async function applyLens(d,L,orig,p){
+ busy(true,'Correction de l’objectif…',0);
+ try{const r=await runAsync(orig,p,true,f=>busy(true,'Correction de l’objectif…',f));
+  if(!r)return;
+  if(S.doc!==d||!d.layers.includes(L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : correction annulée');return}
+  F_lp(p);applyMasked(L,r,NAME)}
+ catch(e){console.error(e);markComp();toast('Correction impossible : '+(e.message||e),4000)}
+ finally{busy(false)}}
+function F_lp(p){FILTERS.lens._lp={...p};const R=window.PrismC&&window.PrismC.REC;if(R)R.last={id:'lens',p:{...p}}}
+
+FILTERS.lens={name:NAME,params:PAR,run:(s,p)=>{const q=NP(p);F_lp(q);return runSync(s,q,true)}};
+{const _fd=filterDialog;filterDialog=function(id){if(id==='lens')return lensDialog();return _fd.apply(this,arguments)}}
+/* menu Filtre : une entrée avant « Effets du calque… » (donc aussi dans Ctrl+K) */
+{const _fi=MENU2.filter.items;
+ MENU2.filter.items=()=>{const a=_fi(),it=MI(NAME+'…',{icon:'filter',dis:S.doc?false:NODOC,fn:lensDialog});
+  const i=a.findIndex(x=>x&&/^Effets/.test(x.label||''));if(i<0)return[...a,SEP,it];
+  const at=(i>0&&a[i-1]===SEP)?i-1:i;a.splice(at,0,it);return a}}
+window.PrismLens={NAME,DEF,NP,model,runSync,runAsync,cpuRender,glRender,autoCA,lensDialog,glOK:()=>!!glInit()};
+})();
+
+}
+
+/* ===== feat: feat/lutxmp.js ===== */
+{
+/* ===== lutxmp: import of colour LUTs (.cube) and Lightroom / Camera Raw presets (.xmp) =====
+   Design
+   - A LUT is applied by a normal adjust layer: L.dev.lut = {id, name, k}. k = Intensité 0..100. The key only exists when a LUT is set, so devIsId(dev) is false
+     for such layers and the renderers do not skip them. Everything else of dev (sliders) keeps working and runs BEFORE the LUT.
+   - Rendering: applyAdjust (8-bit stack) and devFloat (16-bit / float stack) are wrapped. The LUT stage runs on the CPU (tetrahedral interpolation,
+     1D shaper first when a file has both), respecting the layer mask and opacity. No GPU stage: a 3D texture stage in the develop shader was judged too
+     invasive; the CPU stage is exact and costs about 30-60 ms per Mpx.
+   - Library: IndexedDB 'prism-looks' (own database, does not touch the project DB). Items: {id, kind:'cube'|'xmp', name, ...}. Projects embed the LUTs
+     they use (manifest.luts, 16-bit quantised, base64) and import them back on load, so a project opens identically on another machine.
+   - XMP mapping (Lightroom crs: -> Prism dev), ranges in brackets:
+       Exposure2012 [-5,5 EV] -> exposure (same unit)            Contrast2012/Highlights2012/Shadows2012/Whites2012/Blacks2012 [-100,100] -> same names
+       Texture, Clarity2012, Dehaze, Vibrance, Saturation [-100,100] -> texture, clarity, dehaze, vibrance, saturation
+       Temperature: |v|<=100 taken as relative; otherwise Kelvin: (K-5500)/50 clamped to [-100,100] (approximate, Prism has no Kelvin scale)
+       Tint [-150,150] -> tint * 100/150            ConvertToGrayscale=True -> saturation -100
+       Sharpness [0,150] -> sharpen, SharpenRadius [0.5,3] -> sharpRadius, LuminanceSmoothing [0,100] -> noise
+       ToneCurvePV2012 / Red / Green / Blue (points "x, y" on 0..255) -> curve.rgb / r / g / b (0..1)
+       HueAdjustment/SaturationAdjustment/LuminanceAdjustment + Red,Orange,Yellow,Green,Aqua,Blue,Purple,Magenta [-100,100] -> hslH/hslS/hslL[0..7]
+       SplitToningShadowHue/Saturation, SplitToningHighlightHue/Saturation, SplitToningBalance -> shH/shS, hiH/hiS, balance
+       ColorGradeMidtoneHue/Sat -> midH/midS
+       PostCropVignetteAmount/Midpoint/Feather -> vignette, vigMid, vigFeather      GrainAmount/GrainSize -> grain, grainSize
+     Everything else (parametric curve, colour-grade luminance/global/blending, lens, calibration, masks, embedded RGBTable looks...) is counted as ignored. */
+(function(){
+'use strict';
+const LK={items:new Map(),loaded:false,_p:null,warned:new Set()};
+window.LUTX=LK;
+const CRS='http://ns.adobe.com/camera-raw-settings/1.0/';
+
+/* ---------------------------------------------------------------- .cube parser */
+function parseCube(text,fname){
+  const bad=m=>{throw new Error('Fichier .cube invalide : '+m)};
+  const lines=String(text).replace(/^﻿/,'').split(/\r\n|\r|\n/);
+  let title=(fname||'LUT').replace(/\.cube$/i,''),n1=0,n3=0,dmin=[0,0,0],dmax=[1,1,1],r1=null,r3=null;const rows=[];
+  const num=s=>{const v=parseFloat(s);return v};
+  for(let raw of lines){const h=raw.indexOf('#');if(h>=0)raw=raw.slice(0,h);const s=raw.trim();if(!s)continue;
+    const c=s.charCodeAt(0);
+    if((c>=48&&c<=57)||c===45||c===43||c===46){const t=s.split(/\s+/);if(t.length<3)bad('ligne de données incomplète');const a=num(t[0]),b=num(t[1]),d=num(t[2]);if(!isFinite(a)||!isFinite(b)||!isFinite(d))bad('valeur non numérique');rows.push(a,b,d);continue}
+    const t=s.split(/\s+/),k=t[0].toUpperCase();
+    if(k==='TITLE'){const m=/"([^"]*)"/.exec(s);const v=(m?m[1]:t.slice(1).join(' ')).trim();if(v)title=v}
+    else if(k==='DOMAIN_MIN'){dmin=[num(t[1]),num(t[2]),num(t[3])];if(dmin.some(v=>!isFinite(v)))bad('DOMAIN_MIN')}
+    else if(k==='DOMAIN_MAX'){dmax=[num(t[1]),num(t[2]),num(t[3])];if(dmax.some(v=>!isFinite(v)))bad('DOMAIN_MAX')}
+    else if(k==='LUT_1D_SIZE'){n1=parseInt(t[1],10)}
+    else if(k==='LUT_3D_SIZE'){n3=parseInt(t[1],10)}
+    else if(k==='LUT_1D_INPUT_RANGE'){r1=[num(t[1]),num(t[2])]}
+    else if(k==='LUT_3D_INPUT_RANGE'){r3=[num(t[1]),num(t[2])]}
+    /* unknown keywords (LUT_IN_VIDEO_RANGE, etc.) are ignored */
+  }
+  if(!(n1>=2)&&!(n3>=2))bad('ni LUT_1D_SIZE ni LUT_3D_SIZE');
+  if(n1&&(n1<2||n1>65536))bad('LUT_1D_SIZE hors limites');
+  if(n3&&(n3<2||n3>129))bad('LUT_3D_SIZE hors limites (2 à 129)');
+  const need=(n1>=2?n1:0)+(n3>=2?n3*n3*n3:0);
+  if(rows.length/3!==need)bad(`${rows.length/3} lignes de données au lieu de ${need}`);
+  for(let i=0;i<3;i++)if(!(dmax[i]>dmin[i]))bad('DOMAIN_MAX doit dépasser DOMAIN_MIN');
+  const rec={kind:'cube',name:title,dmin,dmax,n1:0,n3:0,t1:null,t3:null};
+  let o=0;
+  if(n1>=2){rec.n1=n1;rec.t1=Float32Array.from(rows.slice(0,n1*3));o=n1*3;if(r1){rec.dmin1=[r1[0],r1[0],r1[0]];rec.dmax1=[r1[1],r1[1],r1[1]]}}
+  if(n3>=2){rec.n3=n3;rec.t3=Float32Array.from(rows.slice(o));if(r3){rec.dmin=[r3[0],r3[0],r3[0]];rec.dmax=[r3[1],r3[1],r3[1]]}}
+  return rec}
+
+/* ---------------------------------------------------------------- LUT evaluation */
+/* a: Uint8ClampedArray (mx=255) or Float32Array (mx=1) RGBA, W x H. flip: rows are bottom-up (float stack).
+   amt: 0..1 (intensity x layer opacity). mask: top-down RGBA bytes or null. */
+function lutRun(a,W,H,flip,mx,lu,amt,mask){
+  if(amt<=0)return;
+  const n1=lu.n1,t1=lu.t1,n3=lu.n3,t3=lu.t3,inv=1/mx;
+  const d0=lu.dmin,d1=lu.dmax,e0=lu.dmin1||d0,e1=lu.dmax1||d1;
+  const s1=[0,1,2].map(i=>1/(e1[i]-e0[i])),s3=[0,1,2].map(i=>1/(d1[i]-d0[i]));
+  const m1=n1-1,m3=n3-1,sG=n3,sB=n3*n3;
+  const mix=new Float32Array(3);
+  for(let y=0;y<H;y++){const ry=flip?(H-1-y):y;
+    for(let x=0;x<W;x++){const j=(ry*W+x)*4;
+      let m=amt;if(mask)m*=mask[(y*W+x)*4+3]/255;if(m<=0)continue;
+      let r=a[j]*inv,g=a[j+1]*inv,b=a[j+2]*inv;const r0=r,g0=g,b0=b;
+      if(n1>=2){
+        let p;
+        p=(r-e0[0])*s1[0];p=p<0?0:p>1?1:p;p*=m1;let i=p|0;if(i>=m1)i=m1-1;let f=p-i;r=t1[i*3]+(t1[(i+1)*3]-t1[i*3])*f;
+        p=(g-e0[1])*s1[1];p=p<0?0:p>1?1:p;p*=m1;i=p|0;if(i>=m1)i=m1-1;f=p-i;g=t1[i*3+1]+(t1[(i+1)*3+1]-t1[i*3+1])*f;
+        p=(b-e0[2])*s1[2];p=p<0?0:p>1?1:p;p*=m1;i=p|0;if(i>=m1)i=m1-1;f=p-i;b=t1[i*3+2]+(t1[(i+1)*3+2]-t1[i*3+2])*f}
+      if(n3>=2){
+        let px=(r-d0[0])*s3[0],py=(g-d0[1])*s3[1],pz=(b-d0[2])*s3[2];
+        px=px<0?0:px>1?1:px;py=py<0?0:py>1?1:py;pz=pz<0?0:pz>1?1:pz;px*=m3;py*=m3;pz*=m3;
+        let ix=px|0,iy=py|0,iz=pz|0;if(ix>=m3)ix=m3-1;if(iy>=m3)iy=m3-1;if(iz>=m3)iz=m3-1;
+        const fx=px-ix,fy=py-iy,fz=pz-iz,o=(ix+iy*sG+iz*sB)*3;
+        const o100=o+3,o010=o+sG*3,o001=o+sB*3,o110=o010+3,o101=o001+3,o011=o001+sG*3,o111=o011+3;
+        for(let c=0;c<3;c++){const c000=t3[o+c],c100=t3[o100+c],c010=t3[o010+c],c001=t3[o001+c],c110=t3[o110+c],c101=t3[o101+c],c011=t3[o011+c],c111=t3[o111+c];let v;
+          if(fx>=fy){if(fy>=fz)v=c000+fx*(c100-c000)+fy*(c110-c100)+fz*(c111-c110);else if(fx>=fz)v=c000+fx*(c100-c000)+fz*(c101-c100)+fy*(c111-c101);else v=c000+fz*(c001-c000)+fx*(c101-c001)+fy*(c111-c101)}
+          else{if(fz>=fy)v=c000+fz*(c001-c000)+fy*(c011-c001)+fx*(c111-c011);else if(fz>=fx)v=c000+fy*(c010-c000)+fz*(c011-c010)+fx*(c111-c011);else v=c000+fy*(c010-c000)+fx*(c110-c010)+fz*(c111-c110)}
+          mix[c]=v}
+        r=mix[0];g=mix[1];b=mix[2]}
+      r=r<0?0:r>1?1:r;g=g<0?0:g>1?1:g;b=b<0?0:b>1?1:b;
+      a[j]=(r0+(r-r0)*m)*mx;a[j+1]=(g0+(g-g0)*m)*mx;a[j+2]=(b0+(b-b0)*m)*mx}}}
+LK.lutRun=lutRun;LK.parseCube=parseCube;
+
+/* ---------------------------------------------------------------- renderer hooks */
+const stripLut=dv=>{const o={...dv};delete o.lut;return o};
+function getLut(lt){const r=LK.items.get(lt.id);if(r&&r.kind==='cube')return r;
+  if(!LK.loaded){LK.load().then(()=>{try{markComp()}catch(e){}})}
+  else if(!LK.warned.has(lt.id)){LK.warned.add(lt.id);try{toast('La LUT « '+(lt.name||'?')+' » n’est plus dans la bibliothèque : réimportez-la.',5000)}catch(e){}}
+  return null}
+{const _aa=applyAdjust;
+ applyAdjust=function(tc,W,H,L,mc,o){const lt=L.dev&&L.dev.lut;if(!lt)return _aa.apply(this,arguments);
+  const rest=stripLut(L.dev);if(!devIsId(rest))_aa(tc,W,H,{...L,dev:rest},mc,o);
+  const lu=getLut(lt);if(!lu)return;
+  const img=tc.getImageData(0,0,W,H);
+  lutRun(img.data,W,H,false,255,lu,(lt.k==null?100:lt.k)/100*L.opacity,mc?rx(mc).getImageData(0,0,W,H).data:null);
+  tc.putImageData(img,0,0)};
+ const _df=devFloat;
+ devFloat=function(F,W,H,L,mc,o){const lt=L.dev&&L.dev.lut;if(!lt)return _df.apply(this,arguments);
+  const rest=stripLut(L.dev);if(!devIsId(rest))F=_df(F,W,H,{...L,dev:rest},mc,o);
+  const lu=getLut(lt);if(!lu)return F;
+  lutRun(F,W,H,true,1,lu,(lt.k==null?100:lt.k)/100*L.opacity,mc?rx(mc).getImageData(0,0,W,H).data:null);return F}}
+
+/* ---------------------------------------------------------------- library (IndexedDB 'prism-looks') */
+const DB={db:null,open(){if(this.db)return this.db;this.db=new Promise((res,rej)=>{let r;try{r=indexedDB.open('prism-looks',1)}catch(e){rej(e);return}
+  r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('items'))r.result.createObjectStore('items',{keyPath:'id'})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});this.db.catch(()=>{});return this.db},
+  async tx(mode,fn){const db=await this.open();return new Promise((res,rej)=>{const t=db.transaction('items',mode);let out;const q=fn(t.objectStore('items'));if(q)q.onsuccess=()=>out=q.result;t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})},
+  put(rec){return this.tx('readwrite',s=>s.put(rec))},del(id){return this.tx('readwrite',s=>s.delete(id))},all(){return this.tx('readonly',s=>s.getAll())}};
+LK.load=function(){if(this._p)return this._p;this._p=DB.all().then(a=>{for(const r of a||[])if(!LK.items.has(r.id))LK.items.set(r.id,r);LK.loaded=true;return LK.items}).catch(e=>{LK.loaded=true;console.warn('bibliothèque de looks indisponible',e);return LK.items});return this._p};
+const fnv=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36)};
+function fpCube(rec){let h=2166136261;const mix=t=>{if(!t)return;const st=Math.max(1,(t.length/4096)|0);for(let i=0;i<t.length;i+=st){h^=Math.round(t[i]*65535);h=Math.imul(h,16777619)}};mix(rec.t1);mix(rec.t3);return (h>>>0).toString(36)+'_'+rec.n1+'_'+rec.n3}
+async function addItem(rec){await LK.load();LK.items.set(rec.id,rec);try{await DB.put(rec)}catch(e){console.warn(e)}return rec}
+LK.remove=async function(id){LK.items.delete(id);try{await DB.del(id)}catch(e){console.warn(e)}};
+
+LK.packLut=null;LK.unpackLut=null;
+/* embed / restore in projects */
+const b64=u8=>{let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));return btoa(s)};
+const unb64=s=>{const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+const q16=t=>{if(!t)return null;const u=new Uint16Array(t.length);for(let i=0;i<t.length;i++){const v=t[i];u[i]=v<=0?0:v>=1?65535:Math.round(v*65535)}return b64(new Uint8Array(u.buffer))};
+const dq16=s=>{if(!s)return null;const u8=unb64(s),u=new Uint16Array(u8.buffer,u8.byteOffset,u8.length>>1),t=new Float32Array(u.length);for(let i=0;i<u.length;i++)t[i]=u[i]/65535;return t};
+function packLut(r){return{id:r.id,name:r.name,dmin:r.dmin,dmax:r.dmax,dmin1:r.dmin1,dmax1:r.dmax1,n1:r.n1,n3:r.n3,t1:q16(r.t1),t3:q16(r.t3)}}
+function unpackLut(p){return{id:p.id,kind:'cube',name:p.name,dmin:p.dmin,dmax:p.dmax,dmin1:p.dmin1,dmax1:p.dmax1,n1:p.n1,n3:p.n3,t1:dq16(p.t1),t3:dq16(p.t3),t:Date.now()}}
+LK.packLut=packLut;LK.unpackLut=unpackLut;
+{const _bm=buildManifest;
+ buildManifest=async function(d){const m=await _bm.apply(this,arguments);
+  try{const D=d||S.doc;if(m&&D&&!(typeof noThumb!=='undefined'&&noThumb)){const ids=new Set();D.layers.forEach(l=>{if(l.kind==='adjust'&&l.dev&&l.dev.lut)ids.add(l.dev.lut.id)});
+    if(ids.size){const o={};ids.forEach(id=>{const r=LK.items.get(id);if(r&&r.kind==='cube')o[id]=packLut(r)});if(Object.keys(o).length)m.luts=o}}}catch(e){console.warn('luts',e)}
+  return m};
+ const _lm=loadManifest;
+ loadManifest=async function(m){try{if(m&&m.luts){await LK.load();for(const id in m.luts){if(!LK.items.has(id)){const r=unpackLut(m.luts[id]);LK.items.set(id,r);DB.put(r).catch(()=>{})}}}}catch(e){console.warn('luts',e)}
+  return _lm.apply(this,arguments)}}
+
+/* ---------------------------------------------------------------- .xmp parser + mapping */
+const META=new Set(['Version','ProcessVersion','PresetType','Cluster','UUID','SupportsAmount','SupportsAmount2','SupportsColor','SupportsMonochrome','SupportsHighDynamicRange','SupportsNormalDynamicRange','SupportsSceneReferred','SupportsOutputReferred','RequiresRGBTables','ShowInPresets','ShowInQuickActions','CameraModelRestriction','Copyright','ContactInfo','Name','Group','HasSettings','Description','Title','Look','CompatibleVersion']);
+const BANDS=['Red','Orange','Yellow','Green','Aqua','Blue','Purple','Magenta'];
+function parseXmp(text,fname){
+  const doc=new DOMParser().parseFromString(String(text).replace(/^﻿/,''),'application/xml');
+  if(doc.getElementsByTagName('parsererror').length)throw new Error('Fichier .xmp illisible');
+  const kv=new Map();
+  const descs=doc.getElementsByTagNameNS('*','Description');
+  if(!descs.length)throw new Error('Fichier .xmp sans réglages');
+  for(const ds of descs){
+    for(const a of ds.attributes)if(a.namespaceURI===CRS)kv.set(a.localName,a.value);
+    for(const c of ds.children)if(c.namespaceURI===CRS){const li=c.getElementsByTagNameNS('*','li');kv.set(c.localName,li.length?[...li].map(x=>x.textContent.trim()):c.textContent.trim())}}
+  if(!kv.size)throw new Error('Aucun réglage Camera Raw dans ce fichier');
+  let name=(fname||'Préréglage').replace(/\.xmp$/i,'');const nm=kv.get('Name');if(nm){const s=Array.isArray(nm)?nm[0]:nm;if(s)name=s}
+  const dv=DEV0(),done=new Set();let applied=0,ignored=0;const unk=[];
+  const f=k=>{const v=kv.get(k);if(v==null||Array.isArray(v))return null;const x=parseFloat(v);return isFinite(x)?x:null};
+  const set=(key,prop,scale=1,lo=-100,hi=100)=>{const x=f(key);if(x==null)return;dv[prop]=clamp(x*scale,lo,hi);done.add(key)};
+  set('Exposure2012','exposure',1,-5,5);
+  ['Contrast','Highlights','Shadows','Whites','Blacks'].forEach(n=>set(n+'2012',n.toLowerCase()));
+  set('Texture','texture');set('Clarity2012','clarity');set('Dehaze','dehaze');set('Vibrance','vibrance');set('Saturation','saturation');
+  {const t=f('Temperature');if(t!=null){dv.temp=clamp(Math.abs(t)<=100?t:(t-5500)/50,-100,100);done.add('Temperature')}}
+  set('Tint','tint',100/150);
+  if(/^true$/i.test(String(kv.get('ConvertToGrayscale')))){dv.saturation=-100;done.add('ConvertToGrayscale')}else if(kv.has('ConvertToGrayscale'))done.add('ConvertToGrayscale');
+  set('Sharpness','sharpen',1,0,150);set('SharpenRadius','sharpRadius',1,0.5,3);set('LuminanceSmoothing','noise',1,0,100);
+  const curve=(key,ch)=>{const v=kv.get(key);if(!Array.isArray(v))return;const pts=v.map(s=>s.split(/[,\s]+/).map(Number)).filter(p=>p.length>=2&&isFinite(p[0])&&isFinite(p[1])).map(p=>[clamp(p[0]/255,0,1),clamp(p[1]/255,0,1)]).sort((a,b)=>a[0]-b[0]);
+    const u=[];for(const p of pts)if(!u.length||p[0]>u[u.length-1][0]+1e-4)u.push(p);if(u.length>=2){dv.curve[ch]=u;done.add(key)}};
+  curve('ToneCurvePV2012','rgb');curve('ToneCurvePV2012Red','r');curve('ToneCurvePV2012Green','g');curve('ToneCurvePV2012Blue','b');
+  BANDS.forEach((b,i)=>{[['HueAdjustment','hslH'],['SaturationAdjustment','hslS'],['LuminanceAdjustment','hslL']].forEach(([p,a])=>{const k=p+b,x=f(k);if(x!=null){dv[a][i]=clamp(x,-100,100);done.add(k)}})});
+  set('SplitToningShadowHue','shH',1,0,360);set('SplitToningShadowSaturation','shS',1,0,100);set('SplitToningHighlightHue','hiH',1,0,360);set('SplitToningHighlightSaturation','hiS',1,0,100);set('SplitToningBalance','balance');
+  set('ColorGradeMidtoneHue','midH',1,0,360);set('ColorGradeMidtoneSat','midS',1,0,100);
+  set('PostCropVignetteAmount','vignette');set('PostCropVignetteMidpoint','vigMid',1,0,100);set('PostCropVignetteFeather','vigFeather',1,0,100);
+  set('GrainAmount','grain',1,0,100);set('GrainSize','grainSize',1,0,100);
+  for(const k of kv.keys()){if(META.has(k))continue;if(done.has(k))applied++;else{ignored++;if(unk.length<12)unk.push(k)}}
+  return{kind:'xmp',name,dev:dv,applied,ignored,ignoredKeys:unk}}
+LK.parseXmp=parseXmp;
+
+/* ---------------------------------------------------------------- applying */
+function nameLayer(p,n){return p+' · '+n}
+function newLutLayer(rec){const L=newAdjust(nameLayer('LUT',rec.name));L.dev.lut={id:rec.id,name:rec.name,k:100};return L}
+function newXmpLayer(rec){const L=newAdjust(nameLayer('Préréglage',rec.name));L.dev=Object.assign(DEV0(),JSON.parse(JSON.stringify(rec.dev)));return L}
+LK.applyNew=function(id){const rec=LK.items.get(id);if(!rec)return false;if(!S.doc){toast(NODOC);return false}
+  if(rec.kind==='cube'){insertLayer(newLutLayer(rec),'LUT : '+rec.name,true);switchTab('develop');toast('LUT « '+rec.name+' » ajoutée en calque de réglage. Réglez l’intensité dans Développer.',3600)}
+  else{insertLayer(newXmpLayer(rec),'Préréglage : '+rec.name,true);switchTab('develop');toast('Préréglage « '+rec.name+' » ajouté en calque de réglage.')}
+  return true};
+/* from the presets popover: reuse the active adjust layer when there is one */
+LK.applyHere=function(id){const rec=LK.items.get(id);if(!rec)return;const A=S.doc&&ADJ();if(!A)return LK.applyNew(id);
+  if(rec.kind==='cube'){A.dev.lut={id:rec.id,name:rec.name,k:100};pushHistory('LUT : '+rec.name)}
+  else{A.dev=Object.assign(DEV0(),JSON.parse(JSON.stringify(rec.dev)));pushHistory('Préréglage : '+rec.name)}
+  syncDev();markContent();scheduleThumbs&&scheduleThumbs()};
+
+/* ---------------------------------------------------------------- import */
+async function importFiles(files,opts={}){
+  files=[...files];const res={lut:0,xmp:0,applied:0,ignored:0,failed:[],added:[]};
+  await LK.load();
+  for(const f of files){try{
+    if(/\.cube$/i.test(f.name)){const rec=parseCube(await f.text(),f.name);rec.id='cube_'+fpCube(rec);rec.t=Date.now();await addItem(rec);res.lut++;res.added.push(rec)}
+    else if(/\.xmp$/i.test(f.name)){const rec=parseXmp(await f.text(),f.name);res.applied+=rec.applied;res.ignored+=rec.ignored;
+      const id='xmp_'+fnv(rec.name+JSON.stringify(rec.dev));const r2={id,kind:'xmp',name:rec.name,dev:rec.dev,applied:rec.applied,ignored:rec.ignored,t:Date.now()};await addItem(r2);res.xmp++;res.added.push(r2)}
+    else res.failed.push(f.name+' : format non pris en charge')}
+   catch(e){res.failed.push(f.name+' : '+(e&&e.message||e))}}
+  /* apply to the photo: every xmp becomes a layer; a single .cube is applied too */
+  const apply=opts.apply!==false&&S.doc;let layers=0;
+  if(apply){const cubes=res.added.filter(r=>r.kind==='cube');
+    for(const r of res.added){if(r.kind==='xmp'){insertLayer(newXmpLayer(r),'Préréglage : '+r.name,true);layers++}}
+    if(cubes.length===1){insertLayer(newLutLayer(cubes[0]),'LUT : '+cubes[0].name,true);layers++}
+    if(layers)switchTab('develop')}
+  refreshPop();
+  const parts=[];
+  if(res.lut)parts.push(res.lut+(res.lut>1?' LUT importées':' LUT importée'));
+  if(res.xmp)parts.push(res.xmp+(res.xmp>1?' préréglages importés':' préréglage importé')+' : '+res.applied+' réglage'+(res.applied>1?'s':'')+' appliqué'+(res.applied>1?'s':'')+', '+res.ignored+' ignoré'+(res.ignored>1?'s':''));
+  let msg=parts.join(' · ');
+  if(msg&&!apply)msg+=(res.lut||res.xmp)?'. Ouvrez une photo pour les appliquer.':'';
+  else if(msg&&res.lut>1&&!layers)msg+='. Choisissez-les dans Image > Looks et LUT.';
+  if(res.failed.length)msg=(msg?msg+' · ':'')+res.failed.length+' fichier'+(res.failed.length>1?'s':'')+' refusé'+(res.failed.length>1?'s':'')+' ('+res.failed[0]+')';
+  if(!msg)msg='Aucun fichier .cube ou .xmp';
+  toast(msg,6000);return res}
+LK.importFiles=importFiles;
+async function importDialog(){const fs=await pickFile('.cube,.xmp',true);if(fs&&fs.length)importFiles(fs)}
+
+/* ---------------------------------------------------------------- library dialog */
+function libDialog(){
+  const list=()=>[...LK.items.values()].sort((a,b)=>(a.kind===b.kind?0:a.kind==='cube'?-1:1)||a.name.localeCompare(b.name));
+  const rows=()=>{const a=list();return a.length?a.map(r=>`<div class="lkrow" data-id="${esc(r.id)}"><div class="lkn"><b>${esc(r.name)}</b><span class="muted">${r.kind==='cube'?('LUT '+(r.n3?r.n3+'³':'1D '+r.n1)):'Préréglage Lightroom'}</span></div><button class="btn sm" data-a="apply" ${S.doc?'':'disabled'}>Appliquer</button><button class="btn sm" data-a="del" aria-label="Supprimer ${esc(r.name)}">Supprimer</button></div>`).join(''):'<p class="muted">Aucun look importé. Importez des fichiers .cube (LUT) ou .xmp (préréglages Lightroom), ou glissez-les sur la fenêtre.</p>'};
+  dialog({title:'Looks et LUT',body:`<div id="lkList" class="lklist">${rows()}</div>`,buttons:[{label:'Fermer'},{label:'Importer…',primary:true,onClick:()=>{importDialog()}}],
+    onOpen:dl=>{dl.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b)return;const id=b.closest('.lkrow').dataset.id;
+      if(b.dataset.a==='apply'){closeDialog();LK.applyNew(id)}
+      else{await LK.remove(id);$('#lkList',dl).innerHTML=rows();refreshPop()}})}})}
+
+/* ---------------------------------------------------------------- menu + palette */
+{const _mi=MENU2.image.items;
+ MENU2.image.items=()=>{const a=_mi();
+  const items=[...LK.items.values()].sort((x,y)=>(x.kind===y.kind?0:x.kind==='cube'?-1:1)||x.name.localeCompare(y.name));
+  a.push(MI('Looks et LUT',{sub:()=>{const s=[MI('Importer des LUT et préréglages Lightroom…',{fn:importDialog})];
+    if(items.length){s.push(SEP);items.slice(0,14).forEach(r=>s.push(MI((r.kind==='cube'?'LUT : ':'Préréglage : ')+r.name,{fn:()=>LK.applyNew(r.id),dis:S.doc?false:NODOC})));s.push(SEP);s.push(MI('Gérer les looks…',{fn:libDialog}))}
+    return s}}));return a}}
+
+/* ---------------------------------------------------------------- develop pane: Intensité row + popover list */
+const css=document.createElement('style');
+css.textContent=`#lutRow{padding:6px 12px 4px}#lutRow .lt{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px;font-size:12px}#lutRow .lt b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#lutRow .lt button{flex:none}
+#lutRow .row{padding:0}
+#lutBox{padding:0 10px 12px}#lutBox .lkh{font-size:11px;letter-spacing:.04em;text-transform:uppercase;opacity:.65;margin:4px 0 6px}#lutBox .chips{display:flex;flex-wrap:wrap;gap:6px}
+.lklist{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto}.lkrow{display:flex;align-items:center;gap:8px}.lkrow .lkn{flex:1;min-width:0;display:flex;flex-direction:column}.lkrow .lkn b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`;
+document.body.appendChild(css);
+function lutRow(){const body=$('#devBody');if(!body)return;let row=$('#lutRow');const A=S.doc&&ADJ(),lt=A&&A.dev&&A.dev.lut;
+  if(!lt){if(row)row.remove();return}
+  if(!row){row=document.createElement('div');row.id='lutRow';
+    row.innerHTML=`<div class="lt"><b></b><button class="btn sm" type="button" id="lutDel">Retirer</button></div><div class="row"><label for="lutK" title="Double-clic pour réinitialiser">Intensité</label><input type="range" id="lutK" min="0" max="100" step="1"><output></output></div>`;
+    body.insertBefore(row,body.firstChild);
+    const k=$('#lutK',row);
+    k.addEventListener('input',()=>{const A=ADJ();if(!A||!A.dev.lut)return;A.dev.lut={...A.dev.lut,k:+k.value};row.querySelector('output').textContent=k.value+' %';markContent()});
+    k.addEventListener('change',()=>{if(ADJ()&&ADJ().dev.lut)pushHistory('Intensité de la LUT')});
+    k.addEventListener('dblclick',()=>{const A=ADJ();if(!A||!A.dev.lut)return;A.dev.lut={...A.dev.lut,k:100};k.value=100;row.querySelector('output').textContent='100 %';markContent();pushHistory('Intensité de la LUT')});
+    $('#lutDel',row).addEventListener('click',()=>{const A=ADJ();if(!A||!A.dev.lut)return;const d={...A.dev};delete d.lut;A.dev=d;pushHistory('Retirer la LUT');syncDev();markContent()})}
+  else if(row.parentNode!==body||body.firstChild!==row)body.insertBefore(row,body.firstChild);
+  row.querySelector('b').textContent='LUT : '+(lt.name||'');const k=$('#lutK',row);if(document.activeElement!==k)k.value=lt.k==null?100:lt.k;row.querySelector('output').textContent=k.value+' %'}
+{const _rt=renderTarget;renderTarget=function(){const r=_rt.apply(this,arguments);try{lutRow()}catch(e){console.warn(e)}return r}}
+function refreshPop(){const d=document.querySelector('#pane-develop details[data-sec=presets]');if(!d)return;let box=$('#lutBox',d);
+  const a=[...LK.items.values()].sort((x,y)=>(x.kind===y.kind?0:x.kind==='cube'?-1:1)||x.name.localeCompare(y.name));
+  if(!box){box=document.createElement('div');box.id='lutBox';d.appendChild(box);
+    box.addEventListener('click',e=>{const b=e.target.closest('[data-lk]');if(!b)return;e.stopPropagation();if(b.dataset.lk==='import'){importDialog();return}LK.applyHere(b.dataset.lk)})}
+  box.innerHTML=`<div class="lkh">Looks importés</div><div class="chips">${a.map(r=>`<button class="btn sm" type="button" data-lk="${esc(r.id)}" title="${r.kind==='cube'?'LUT':'Préréglage Lightroom'}">${esc(r.name)}</button>`).join('')}<button class="btn sm" type="button" data-lk="import">Importer…</button></div>`}
+{const pane=$('#pane-develop');if(pane)pane.addEventListener('toggle',e=>{const d=e.target;if(d&&d.matches&&d.matches('details[data-sec=presets]')&&d.open){LK.load().then(refreshPop)}},true)}
+
+/* palette: Ctrl+K already lists every leaf of the Image > Looks et LUT submenu (import, each look, manage) */
+
+/* ---------------------------------------------------------------- drag and drop (.cube / .xmp), capture phase so other drops stay untouched */
+document.addEventListener('drop',e=>{const fl=[...(e.dataTransfer&&e.dataTransfer.files||[])];if(!fl.length)return;
+  const mine=fl.filter(f=>/\.(cube|xmp)$/i.test(f.name));if(!mine.length)return;
+  const bz=$('#busy');if(bz&&!bz.hidden)return;
+  if(mine.length===fl.length){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();try{dragN=0;$('#drop').hidden=true}catch(_){}}
+  importFiles(mine)},true);
+
+/* load the library once the page is idle (never at startup critical path) */
+setTimeout(()=>{LK.load().then(refreshPop)},1500);
+})();
+
+}
+
+/* ===== feat: feat/pano.js ===== */
+{
+/* ================= pano: panorama pro (homographies, projection plane/cylindre, gains, raccord, multi-bandes) ================= */
+(()=>{
+'use strict';
+const PN={opts:{proj:'auto',bands:4,tile:1024,vignette:true},last:null,tests:{}};
+window.PrismPano=PN;
+const TILE_MARGIN=64,GAMMA=2.2;
+let _ly=0;
+async function pump(msg,fr){busy(true,msg,fr);const t=performance.now();if(t-_ly>40){_ly=t;await new Promise(r=>setTimeout(r,0))}}
+
+/* ---------- algèbre ---------- */
+const I3=()=>Float64Array.from([1,0,0,0,1,0,0,0,1]);
+const m3mul=(a,b)=>{const r=new Float64Array(9);for(let i=0;i<3;i++)for(let j=0;j<3;j++)r[i*3+j]=a[i*3]*b[j]+a[i*3+1]*b[3+j]+a[i*3+2]*b[6+j];return r};
+const m3inv=a=>{const A=a[4]*a[8]-a[5]*a[7],B=a[5]*a[6]-a[3]*a[8],C=a[3]*a[7]-a[4]*a[6],det=a[0]*A+a[1]*B+a[2]*C;if(!isFinite(det)||Math.abs(det)<1e-300)return null;const d=1/det;
+  return Float64Array.from([A*d,(a[2]*a[7]-a[1]*a[8])*d,(a[1]*a[5]-a[2]*a[4])*d,B*d,(a[0]*a[8]-a[2]*a[6])*d,(a[2]*a[3]-a[0]*a[5])*d,C*d,(a[1]*a[6]-a[0]*a[7])*d,(a[0]*a[4]-a[1]*a[3])*d])};
+const m3n=a=>{const s=a[8];if(!isFinite(s)||Math.abs(s)<1e-12)return a;const r=new Float64Array(9);for(let i=0;i<9;i++)r[i]=a[i]/s;return r};
+const trM=(x,y)=>Float64Array.from([1,0,x,0,1,y,0,0,1]);
+const scM=(s)=>Float64Array.from([s,0,0,0,s,0,0,0,1]);
+/* échelle homogène fixée de sorte que le point (x,y) ait w=1 (le signe d'un produit de matrices est arbitraire) */
+const normAt=(M,x,y)=>{if(!M)return M;const w=M[6]*x+M[7]*y+M[8];if(!isFinite(w)||Math.abs(w)<1e-12)return M;const r=new Float64Array(9);for(let i=0;i<9;i++)r[i]=M[i]/w;return r};
+const hap=(H,x,y)=>{const w=H[6]*x+H[7]*y+H[8];return[(H[0]*x+H[1]*y+H[2])/w,(H[3]*x+H[4]*y+H[5])/w,w]};
+function solveN(A,b,n){
+  for(let c=0;c<n;c++){let p=c,mx=Math.abs(A[c*n+c]);for(let r=c+1;r<n;r++){const v=Math.abs(A[r*n+c]);if(v>mx){mx=v;p=r}}
+    if(!(mx>1e-18))return null;
+    if(p!==c){for(let k=0;k<n;k++){const t=A[c*n+k];A[c*n+k]=A[p*n+k];A[p*n+k]=t}const t=b[c];b[c]=b[p];b[p]=t}
+    const d=1/A[c*n+c];
+    for(let r=c+1;r<n;r++){const f=A[r*n+c]*d;if(!f)continue;for(let k=c;k<n;k++)A[r*n+k]-=f*A[c*n+k];b[r]-=f*b[c]}}
+  const x=new Float64Array(n);
+  for(let r=n-1;r>=0;r--){let s=b[r];for(let k=r+1;k<n;k++)s-=A[r*n+k]*x[k];x[r]=s/A[r*n+r]}
+  return x}
+/* PRNG déterministe */
+function rng(seed){let s=seed>>>0||1;return()=>{s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296}}
+
+/* H (A -> B) moindres carrés normalisés (Hartley) sur P=[ax,ay,bx,by,...] ; idx optionnel */
+function fitH(P,idx){
+  const n=idx?idx.length:P.length>>2;if(n<4)return null;
+  let ax=0,ay=0,bx=0,by=0;
+  for(let t=0;t<n;t++){const k=(idx?idx[t]:t)*4;ax+=P[k];ay+=P[k+1];bx+=P[k+2];by+=P[k+3]}
+  ax/=n;ay/=n;bx/=n;by/=n;let da=0,db=0;
+  for(let t=0;t<n;t++){const k=(idx?idx[t]:t)*4;da+=Math.hypot(P[k]-ax,P[k+1]-ay);db+=Math.hypot(P[k+2]-bx,P[k+3]-by)}
+  da/=n;db/=n;if(da<1e-9||db<1e-9)return null;
+  const sa=Math.SQRT2/da,sb=Math.SQRT2/db,A=new Float64Array(64),b=new Float64Array(8),r1=new Float64Array(8),r2=new Float64Array(8);
+  for(let t=0;t<n;t++){const k=(idx?idx[t]:t)*4,x=(P[k]-ax)*sa,y=(P[k+1]-ay)*sa,u=(P[k+2]-bx)*sb,v=(P[k+3]-by)*sb;
+    r1[0]=x;r1[1]=y;r1[2]=1;r1[3]=0;r1[4]=0;r1[5]=0;r1[6]=-x*u;r1[7]=-y*u;
+    r2[0]=0;r2[1]=0;r2[2]=0;r2[3]=x;r2[4]=y;r2[5]=1;r2[6]=-x*v;r2[7]=-y*v;
+    for(let i=0;i<8;i++){const a1=r1[i],a2=r2[i];b[i]+=a1*u+a2*v;for(let j=i;j<8;j++)A[i*8+j]+=a1*r1[j]+a2*r2[j]}}
+  for(let i=0;i<8;i++)for(let j=0;j<i;j++)A[i*8+j]=A[j*8+i];
+  const h=solveN(A,b,8);if(!h)return null;
+  const Hn=Float64Array.from([h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1]);
+  const Ta=Float64Array.from([sa,0,-sa*ax,0,sa,-sa*ay,0,0,1]),Tb=Float64Array.from([1/sb,0,bx,0,1/sb,by,0,0,1]);
+  const H=m3n(m3mul(Tb,m3mul(Hn,Ta)));for(let i=0;i<9;i++)if(!isFinite(H[i]))return null;return H}
+/* H plausible pour une prise de vue (coins qui restent un quadrilatère convexe, aire raisonnable) */
+function plausibleH(H,wA,hA,loose){
+  const c=[[0,0],[wA,0],[wA,hA],[0,hA]],q=[];
+  for(const[x,y]of c){const p=hap(H,x,y);if(!(p[2]>0)||!isFinite(p[0])||!isFinite(p[1]))return false;q.push(p)}
+  let area=0,sg=0;
+  for(let i=0;i<4;i++){const a=q[i],b=q[(i+1)%4],d=q[(i+2)%4];area+=a[0]*b[1]-b[0]*a[1];const cr=(b[0]-a[0])*(d[1]-b[1])-(b[1]-a[1])*(d[0]-b[0]);if(cr===0)return false;const s=cr>0?1:-1;if(sg&&s!==sg)return false;sg=s}
+  area=Math.abs(area)/2;const r=area/(wA*hA);return loose||(r>.2&&r<5)}
+function ransacH(P,wA,hA,iters,thr,seed){
+  const n=P.length>>2;if(n<8)return null;const R=rng(seed||12345),pick=new Int32Array(4),thr2=thr*thr;
+  let best=null,bestN=0;
+  const tmp=new Float64Array(16);
+  for(let it=0;it<iters;it++){
+    let ok=true;for(let k=0;k<4;k++){let v,t=0;do{v=(R()*n)|0;t++}while(pick.indexOf(v)>=0&&pick.indexOf(v)<k&&t<20);pick[k]=v}
+    for(let a=0;a<4&&ok;a++)for(let b=a+1;b<4&&ok;b++){const ka=pick[a]*4,kb=pick[b]*4;if(Math.hypot(P[ka]-P[kb],P[ka+1]-P[kb+1])<4||Math.hypot(P[ka+2]-P[kb+2],P[ka+3]-P[kb+3])<4)ok=false}
+    if(!ok)continue;
+    for(let k=0;k<4;k++){tmp.set(P.subarray(pick[k]*4,pick[k]*4+4),k*4)}
+    /* trois points alignés ? */
+    let col=false;for(let a=0;a<4&&!col;a++){const i0=a,i1=(a+1)%4,i2=(a+2)%4;const cr=(tmp[i1*4]-tmp[i0*4])*(tmp[i2*4+1]-tmp[i0*4+1])-(tmp[i1*4+1]-tmp[i0*4+1])*(tmp[i2*4]-tmp[i0*4]);if(Math.abs(cr)<30)col=true}
+    if(col)continue;
+    const H=fitH(tmp,null);if(!H||!plausibleH(H,wA,hA))continue;
+    let cnt=0;for(let i=0;i<n;i++){const k=i*4,w=H[6]*P[k]+H[7]*P[k+1]+H[8];if(w<=0)continue;const dx=(H[0]*P[k]+H[1]*P[k+1]+H[2])/w-P[k+2],dy=(H[3]*P[k]+H[4]*P[k+1]+H[5])/w-P[k+3];if(dx*dx+dy*dy<thr2)cnt++}
+    if(cnt>bestN){bestN=cnt;best=H;if(cnt>n*.9)break}}
+  if(!best)return null;
+  /* raffinement sur les inliers */
+  let H=best,idx=null;
+  for(let rep=0;rep<4;rep++){
+    const ids=[];for(let i=0;i<n;i++){const k=i*4,w=H[6]*P[k]+H[7]*P[k+1]+H[8];if(w<=0)continue;const dx=(H[0]*P[k]+H[1]*P[k+1]+H[2])/w-P[k+2],dy=(H[3]*P[k]+H[4]*P[k+1]+H[5])/w-P[k+3];if(dx*dx+dy*dy<thr2)ids.push(i)}
+    if(ids.length<6)break;const H2=fitH(P,ids);if(!H2||!plausibleH(H2,wA,hA))break;H=H2;idx=ids}
+  if(!idx)return{H,idx:[],n:bestN};
+  return{H,idx,n:idx.length}}
+
+/* ---------- images ---------- */
+function mkImg(c,name){return{c,w:c.width,h:c.height,name,gc:{},gx:{}}}
+function cachedGray(im,kind,w,h){const k=kind+w;return im.gx[k]||(im.gx[k]=kind==='bp'?grayBP(im.c,w,h):grayF(im.c,w,h))}
+function grayF(c,w,h){const t=mk(w,h),g=cx(t);g.imageSmoothingQuality='high';g.drawImage(c,0,0,w,h);const d=rx(t).getImageData(0,0,w,h).data,a=new Float32Array(w*h);
+  for(let i=0;i<a.length;i++)a[i]=d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114;t.width=t.height=1;return a}
+function grayNorm(c,w,h){const a=grayF(c,w,h);let m=0;for(let i=0;i<a.length;i++)m+=a[i];m/=a.length;let v=0;for(let i=0;i<a.length;i++){const e=a[i]-m;v+=e*e}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]=(a[i]-m)/sd;return a}
+/* gris passe-bande normalisé : insensible à l'exposition, au vignettage et aux dégradés lents */
+function grayBP(c,w,h){const a=grayF(c,w,h),bl=boxBlurF(a,w,h,Math.max(3,Math.round(w/24)));let v=0;for(let i=0;i<a.length;i++){a[i]-=bl[i];v+=a[i]*a[i]}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]/=sd;return a}
+function gray8At(im,sc){const w=Math.max(8,Math.round(im.w*sc)),k=w+'x'+sc;if(im.gc[k])return im.gc[k];
+  const h=Math.max(8,Math.round(im.h*sc)),t=mk(w,h),g=cx(t);g.imageSmoothingQuality='high';g.drawImage(im.c,0,0,w,h);const d=rx(t).getImageData(0,0,w,h).data,a=new Uint8Array(w*h);
+  for(let i=0;i<a.length;i++)a[i]=(d[i*4]*77+d[i*4+1]*150+d[i*4+2]*29)>>8;t.width=t.height=1;
+  const keys=Object.keys(im.gc);if(keys.length>5)delete im.gc[keys[0]];return im.gc[k]={d:a,w,h}}
+function boxBlurF(a,w,h,r){const t=new Float32Array(a.length),o=new Float32Array(a.length),k=2*r+1;
+  for(let y=0;y<h;y++){const b=y*w;let s=0;for(let x=-r;x<=r;x++)s+=a[b+Math.min(w-1,Math.max(0,x))];for(let x=0;x<w;x++){t[b+x]=s/k;s+=a[b+Math.min(w-1,x+r+1)]-a[b+Math.max(0,x-r)]}}
+  for(let x=0;x<w;x++){let s=0;for(let y=-r;y<=r;y++)s+=t[Math.min(h-1,Math.max(0,y))*w+x];for(let y=0;y<h;y++){o[y*w+x]=s/k;s+=t[Math.min(h-1,y+r+1)*w+x]-t[Math.max(0,y-r)*w+x]}}
+  return o}
+const bil=(a,w,x,y)=>{const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0,i=y0*w+x0;return(a[i]*(1-fx)+a[i+1]*fx)*(1-fy)+(a[i+w]*(1-fx)+a[i+w+1]*fx)*fy};
+
+/* ---------- translation (valeur de départ, et repli) : b = a + (dx,dy) ---------- */
+function trErr(A,B,w,h,dx,dy,st,minOv){const x0=Math.max(0,-dx),x1=Math.min(w,w-dx),y0=Math.max(0,-dy),y1=Math.min(h,h-dy);
+  if(x1-x0<=0||y1-y0<=0||(x1-x0)*(y1-y0)<w*h*minOv)return 1e9;let s=0,n=0;
+  for(let y=y0;y<y1;y+=st){const ra=y*w,rb=(y+dy)*w+dx;for(let x=x0;x<x1;x+=st){const e=A[ra+x]-B[rb+x];s+=e<0?-e:e;n++}}return n?s/n:1e9}
+function transSearch(A,B){
+  const w0=Math.min(160,A.w),h0=Math.max(8,Math.round(A.h*w0/A.w));
+  const gA=cachedGray(A,'bp',w0,h0),gB=cachedGray(B,'bp',w0,h0);
+  let best=1e9,bx=0,by=0;const errs=[],cand=[];let q=0;
+  const rx0=Math.round(w0*.9),ry0=Math.round(h0*.6);
+  for(let dy=-ry0;dy<=ry0;dy++)for(let dx=-rx0;dx<=rx0;dx++){const e=trErr(gA,gB,w0,h0,dx,dy,2,.1);if(e>=1e8)continue;if((q++&15)===0)errs.push(e);cand.push(dx,dy,e);if(e<best){best=e;bx=dx;by=dy}}
+  errs.sort((a,b)=>a-b);const med=errs.length?errs[errs.length>>1]:1;
+  let w=w0,x=bx,y=by,e=best;
+  for(const target of[480,960]){const ww=Math.min(target,A.w);if(ww<=w+10)continue;const hh=Math.max(8,Math.round(A.h*ww/A.w)),f=ww/w,ga=cachedGray(A,'bp',ww,hh),gb=cachedGray(B,'bp',ww,hh),cxs=Math.round(x*f),cys=Math.round(y*f),Rr=Math.ceil(f)+1;
+    let b2=1e9,x2=cxs,y2=cys;for(let dy=cys-Rr;dy<=cys+Rr;dy++)for(let dx=cxs-Rr;dx<=cxs+Rr;dx++){const ee=trErr(ga,gb,ww,hh,dx,dy,2,.02);if(ee<b2){b2=ee;x2=dx;y2=dy}}
+    x=x2;y=y2;w=ww;e=b2}
+  /* second meilleur pic éloigné du premier : le pic doit être net */
+  let second=1e9;for(let k=0;k<cand.length;k+=3){if(Math.abs(cand[k]-bx)<=8||Math.abs(cand[k+1]-by)<=8)continue;if(cand[k+2]<second)second=cand[k+2]}
+  const s=A.w/w;
+  return{dx:x*s,dy:y*s,err:best,err2:second,med,good:best<.6*med&&best<.9&&second>best*1.2}}
+
+/* ---------- points d'intérêt (Harris) + descripteurs orientés ---------- */
+function harris(g,w,h,maxN,cell){
+  const n=w*h,ix=new Float32Array(n),iy=new Float32Array(n);
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x;ix[i]=(g[i+1]-g[i-1])*.5;iy[i]=(g[i+w]-g[i-w])*.5}
+  const xx=new Float32Array(n),yy=new Float32Array(n),xy=new Float32Array(n);
+  for(let i=0;i<n;i++){xx[i]=ix[i]*ix[i];yy[i]=iy[i]*iy[i];xy[i]=ix[i]*iy[i]}
+  const a=boxBlurF(xx,w,h,2),b=boxBlurF(yy,w,h,2),c=boxBlurF(xy,w,h,2),R=new Float32Array(n);let mx=0;
+  for(let i=0;i<n;i++){const t=a[i]+b[i],r=a[i]*b[i]-c[i]*c[i]-.04*t*t;R[i]=r;if(r>mx)mx=r}
+  const thr=mx*.002,B=14,cw=Math.ceil(w/cell),ch=Math.ceil(h/cell),bi=new Int32Array(cw*ch).fill(-1),bv=new Float32Array(cw*ch);
+  for(let y=B;y<h-B;y++)for(let x=B;x<w-B;x++){const r=R[y*w+x];if(r<=thr)continue;const ci=((y/cell)|0)*cw+((x/cell)|0);if(r>bv[ci]){bv[ci]=r;bi[ci]=y*w+x}}
+  const pts=[];for(let i=0;i<bi.length;i++)if(bi[i]>=0)pts.push([bi[i]%w,(bi[i]/w)|0,bv[i]]);
+  pts.sort((p,q)=>q[2]-p[2]);if(pts.length>maxN)pts.length=maxN;return pts}
+const DISK=(()=>{const o=[];for(let dy=-9;dy<=9;dy++)for(let dx=-9;dx<=9;dx++)if(dx*dx+dy*dy<=81)o.push([dx,dy]);return o})();
+function describe(gb,w,pts){
+  const N=pts.length,D=new Float32Array(N*64),ok=new Uint8Array(N);
+  for(let k=0;k<N;k++){const x=pts[k][0],y=pts[k][1];let s=0;for(const[dx,dy]of DISK)s+=gb[(y+dy)*w+x+dx];const m=s/DISK.length;let m10=0,m01=0;
+    for(const[dx,dy]of DISK){const v=gb[(y+dy)*w+x+dx]-m;m10+=dx*v;m01+=dy*v}
+    const th=Math.atan2(m01,m10),cs=Math.cos(th),sn=Math.sin(th);let mean=0;const o=k*64;
+    for(let j=0;j<8;j++)for(let i=0;i<8;i++){const ox=(i-3.5)*2.5,oy=(j-3.5)*2.5,v=bil(gb,w,x+cs*ox-sn*oy,y+sn*ox+cs*oy);D[o+j*8+i]=v;mean+=v}
+    mean/=64;let nn=0;for(let i=0;i<64;i++){const v=D[o+i]-mean;D[o+i]=v;nn+=v*v}nn=Math.sqrt(nn);
+    if(nn<1e-3){ok[k]=0;continue}for(let i=0;i<64;i++)D[o+i]/=nn;ok[k]=1}
+  return{D,ok}}
+/* appariement : ratio + croisé ; gate(ax,ay)->[cx,cy,r] optionnel */
+function matchDesc(pa,da,pb,db,gate){
+  const Na=pa.length,Nb=pb.length,Ds=da.D,Dt=db.D;
+  const bestA=new Int32Array(Na).fill(-1),r1=new Float32Array(Na).fill(-9),r2=new Float32Array(Na).fill(-9),bestB=new Int32Array(Nb).fill(-1),vB=new Float32Array(Nb).fill(-9);
+  for(let i=0;i<Na;i++){if(!da.ok[i])continue;let g=null;if(gate)g=gate(pa[i][0],pa[i][1]);const oi=i*64;
+    for(let j=0;j<Nb;j++){if(!db.ok[j])continue;if(g){const ddx=pb[j][0]-g[0],ddy=pb[j][1]-g[1];if(ddx*ddx+ddy*ddy>g[2]*g[2])continue}
+      const oj=j*64;let s=0;for(let k=0;k<64;k++)s+=Ds[oi+k]*Dt[oj+k];
+      if(s>r1[i]){r2[i]=r1[i];r1[i]=s;bestA[i]=j}else if(s>r2[i])r2[i]=s;
+      if(s>vB[j]){vB[j]=s;bestB[j]=i}}}
+  const out=[];
+  for(let i=0;i<Na;i++){const j=bestA[i];if(j<0||bestB[j]!==i)continue;const d1=Math.sqrt(Math.max(0,2-2*r1[i])),d2=Math.sqrt(Math.max(0,2-2*Math.max(r2[i],-1)));if(d2>0&&d1/d2>.85)continue;out.push([pa[i][0],pa[i][1],pb[j][0],pb[j][1]])}
+  return out}
+
+/* correspondances par points d'intérêt à l'échelle de travail : H (coordonnées pleine résolution) ou null */
+function featureH(A,B,H0,seed){
+  const wsA=Math.min(960,A.w),sA=wsA/A.w,hsA=Math.max(16,Math.round(A.h*sA)),wsB=Math.min(960,B.w),sB=wsB/B.w,hsB=Math.max(16,Math.round(B.h*sB));
+  const gA=cachedGray(A,'f',wsA,hsA),gB=cachedGray(B,'f',wsB,hsB),bA=boxBlurF(boxBlurF(boxBlurF(gA,wsA,hsA,1),wsA,hsA,1),wsA,hsA,1),bB=boxBlurF(boxBlurF(boxBlurF(gB,wsB,hsB,1),wsB,hsB,1),wsB,hsB,1);
+  const sg=boxBlurF(gA,wsA,hsA,1),sg2=boxBlurF(gB,wsB,hsB,1);
+  const pa=harris(sg,wsA,hsA,1100,12),pb=harris(sg2,wsB,hsB,1100,12);
+  if(pa.length<12||pb.length<12)return null;
+  const da=describe(bA,wsA,pa),db=describe(bB,wsB,pb);
+  let gate=null;
+  if(H0){const Hs=m3mul(scM(sB),m3mul(H0,scM(1/sA))),rad=Math.max(36,.09*Math.max(wsA,wsB));gate=(x,y)=>{const p=hap(Hs,x,y);return[p[0],p[1],rad]}}
+  const mt=matchDesc(pa,da,pb,db,gate);
+  if(mt.length<10)return null;
+  const P=new Float64Array(mt.length*4);mt.forEach((m,i)=>P.set(m,i*4));
+  const r=ransacH(P,wsA,hsA,2500,3,seed);
+  if(!r||r.n<12||r.n<mt.length*.18)return null;
+  const Hw=r.H,Hf=m3n(m3mul(scM(1/sB),m3mul(Hw,scM(sA))));
+  return{H:Hf,inl:r.n,tot:mt.length}}
+
+/* ---------- affinage par corrélation de patchs (NCC) à 0.5x puis pleine résolution ---------- */
+function patchMatch(gA,gB,Hs,R,half){
+  const wA=gA.w,hA=gA.h,wB=gB.w,hB=gB.h,mg=half+R+2;
+  /* zone de A dont l'image dans B est valide */
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  const inB=(x,y)=>{const p=hap(Hs,x,y);return p[2]>0&&p[0]>=mg&&p[1]>=mg&&p[0]<wB-1-mg&&p[1]<hB-1-mg};
+  for(let y=mg;y<hA-mg;y+=8)for(let x=mg;x<wA-mg;x+=8)if(inB(x,y)){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+  if(x1<x0)return[];
+  const area=(x1-x0)*(y1-y0),step=Math.max(6,Math.round(Math.sqrt(area/700))),T=new Float32Array((2*half+1)**2),n=T.length,out=[];
+  const bx=new Float32Array(n),by=new Float32Array(n),side=2*R+1,surf=new Float32Array(side*side);
+  for(let y=y0;y<=y1;y+=step)for(let x=x0;x<=x1;x+=step){
+    if(!inB(x,y))continue;
+    let s=0,k=0;for(let j=-half;j<=half;j++)for(let i=-half;i<=half;i++){const v=gA.d[(y+j)*wA+x+i];T[k++]=v;s+=v}
+    const m=s/n;let tn=0;for(let q=0;q<n;q++){T[q]-=m;tn+=T[q]*T[q]}if(tn<n*5)continue;tn=Math.sqrt(tn);
+    k=0;let okp=true;for(let j=-half;j<=half;j++)for(let i=-half;i<=half;i++){const p=hap(Hs,x+i,y+j);bx[k]=p[0];by[k]=p[1];k++}
+    let best=-2,bi=0,bj=0;
+    for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
+      let sb=0,sbb=0,stb=0;
+      for(let q=0;q<n;q++){const xx=bx[q]+dx,yy=by[q]+dy;if(xx<0||yy<0||xx>=wB-1||yy>=hB-1){sb=NaN;break}const v=bil(gB.d,wB,xx,yy);sb+=v;sbb+=v*v;stb+=T[q]*v}
+      let ncc=-2;if(sb===sb){const vb=sbb-sb*sb/n;if(vb>1e-6)ncc=stb/(tn*Math.sqrt(vb))}
+      surf[(dy+R)*side+dx+R]=ncc;if(ncc>best){best=ncc;bi=dx;bj=dy}}
+    if(best<.8||Math.abs(bi)===R||Math.abs(bj)===R)continue;
+    const c=(dx,dy)=>surf[(dy+R)*side+dx+R];let sx=0,sy=0;
+    {const a=c(bi-1,bj),b=c(bi,bj),d=c(bi+1,bj),den=a-2*b+d;if(den<-1e-9)sx=Math.max(-.5,Math.min(.5,.5*(a-d)/den))}
+    {const a=c(bi,bj-1),b=c(bi,bj),d=c(bi,bj+1),den=a-2*b+d;if(den<-1e-9)sy=Math.max(-.5,Math.min(.5,.5*(a-d)/den))}
+    const p=hap(Hs,x,y);out.push(x,y,p[0]+bi+sx,p[1]+bj+sy)}
+  return out}
+function robustFit(P,H0,thr0){
+  let H=H0,n=P.length>>2;
+  const resid=(H)=>{const r=new Float64Array(n);for(let i=0;i<n;i++){const k=i*4,p=hap(H,P[k],P[k+1]);r[i]=Math.hypot(p[0]-P[k+2],p[1]-P[k+3])}return r};
+  let idx=null,rr=resid(H);
+  for(let it=0;it<5;it++){
+    const s=Float64Array.from(rr).sort(),med=s[s.length>>1],th=Math.max(thr0,Math.min(3*med,6));
+    const ids=[];for(let i=0;i<n;i++)if(rr[i]<th)ids.push(i);
+    if(ids.length<10)return null;const Hn=fitH(P,ids);if(!Hn)return null;H=Hn;rr=resid(H);idx=ids}
+  const ids=[];let s2=0;for(let i=0;i<n;i++)if(rr[i]<Math.max(thr0,1.2)){ids.push(i);s2+=rr[i]*rr[i]}
+  return{H,ids,rms:Math.sqrt(s2/Math.max(1,ids.length))}}
+function refineH(A,B,H0){
+  let H=H0,last=null;
+  for(const sc of[.125,.25,.5,1]){
+    if(A.w*sc<110&&sc<1)continue;
+    const gA=gray8At(A,sc),gB=gray8At(B,sc),Hs=m3mul(scM(sc),m3mul(H,scM(1/sc))),lo=sc<=.25?12:18;
+    const P=patchMatch(gA,gB,Hs,sc<1?3:2,8);
+    if(P.length<4*lo)continue;
+    const rf=robustFit(Float64Array.from(P),Hs,sc<1?.6:.45);if(!rf||rf.ids.length<lo)continue;
+    const Hn=m3n(m3mul(scM(1/sc),m3mul(rf.H,scM(sc))));if(!plausibleH(Hn,A.w,A.h))continue;
+    H=Hn;const pts=new Float64Array(rf.ids.length*4);rf.ids.forEach((id,q)=>{for(let c=0;c<4;c++)pts[q*4+c]=P[id*4+c]/sc});
+    last={H,pts,rms:rf.rms/sc,n:rf.ids.length,sc}}
+  return last}
+
+/* estimation d'une paire (A -> B) en pleine résolution */
+async function estimatePair(A,B,H0hint,seed){
+  let tr=null,Hg=H0hint||null,conf=!!H0hint;const pf=PN.prof=PN.prof||{};let t0=performance.now();const lap=k=>{const t=performance.now();pf[k]=(pf[k]||0)+t-t0;t0=t};
+  if(!Hg){tr=transSearch(A,B);Hg=trM(tr.dx,tr.dy);conf=tr.good}
+  lap('trans');
+  let feat=featureH(A,B,conf?Hg:null,seed);
+  if(!feat&&conf)feat=featureH(A,B,null,seed+7);
+  lap('feat');
+  let H=null,method='none';
+  if(feat&&plausibleH(feat.H,A.w,A.h)){H=feat.H;method='feat'}
+  else if(conf){H=Hg;method='trans'}
+  else{H=trM(-A.w*.9,0);method='none'}
+  let rf=null;
+  if(method!=='none'){rf=refineH(A,B,H);if(rf&&method==='trans'){if(rf.n>=40&&rf.sc===1&&rf.rms<.8)method='refined';else rf=null}if(rf)H=rf.H}
+  lap('refine');
+  return{H,method,pts:rf?rf.pts:null,rms:rf?rf.rms:null,nInl:rf?rf.n:feat?feat.inl:0,tr}}
+
+/* ---------- ajustement global (Levenberg-Marquardt sur les 8 paramètres de chaque G) ---------- */
+function globalAdjust(G,ref,pairs,maxPts){
+  const n=G.length,R=new Map(),idxOf=i=>i===ref?-1:(i<ref?i:i-1);
+  const items=pairs.filter(p=>p.pts&&p.pts.length>=4*10);if(!items.length)return{G,rms0:0,rms1:0};
+  const sel=items.map(p=>{const m=p.pts.length>>2;let ids=[];if(m<=maxPts){for(let i=0;i<m;i++)ids.push(i)}else{const r=rng(7+p.i*31+p.j);const s=new Set();while(s.size<maxPts)s.add((r()*m)|0);ids=[...s]}
+    const a=new Float64Array(ids.length*4);ids.forEach((id,q)=>a.set(p.pts.subarray(id*4,id*4+4),q*4));return{i:p.i,j:p.j,P:a,w:p.w||1,cx:p.cx||0,cy:p.cy||0}});
+  const np=(n-1)*8,x=new Float64Array(np);
+  const unpack=(x)=>G.map((g,i)=>{if(i===ref)return g;const o=idxOf(i)*8,r=new Float64Array(9);for(let k=0;k<8;k++)r[k]=x[o+k];r[8]=1;return r});
+  const get=(g)=>{const r=new Float64Array(8);for(let k=0;k<8;k++)r[k]=g[k]/g[8];return r};
+  G.forEach((g,i)=>{if(i!==ref)x.set(get(g),idxOf(i)*8)});
+  const x0=Float64Array.from(x);
+  const resid=(x,out)=>{const Gs=unpack(x),inv=Gs.map(g=>m3inv(g));let q=0,tot=0;
+    for(const s of sel){const Gi=Gs[s.i],Gj=inv[s.j];if(!Gj){return null}const Mij=normAt(m3mul(Gj,Gi),s.cx,s.cy),P=s.P;
+      for(let k=0;k<P.length;k+=4){const p=hap(Mij,P[k],P[k+1]);let ex=(p[0]-P[k+2])*s.w,ey=(p[1]-P[k+3])*s.w;if(!isFinite(ex)||!isFinite(ey)||Math.abs(p[2])<1e-9){ex=50;ey=50}
+        /* Huber */const m=Math.hypot(ex,ey);if(m>3){const f=Math.sqrt(3/m);ex*=f;ey*=f}
+        if(out){out[q]=ex;out[q+1]=ey}q+=2;tot+=ex*ex+ey*ey}}
+    return{n:q,tot}};
+  const r0=resid(x,null);if(!r0)return{G,rms0:0,rms1:0};
+  const nr=r0.n,rv=new Float64Array(nr),rv2=new Float64Array(nr);
+  const scale=new Float64Array(np);for(let i=0;i<n;i++){if(i===ref)continue;const o=idxOf(i)*8;[1,1,100,1,1,100,1e-3,1e-3].forEach((v,k)=>scale[o+k]=v)}
+  let lam=1e-3,cost=r0.tot;const rms0=Math.sqrt(cost/(nr/2));
+  for(let it=0;it<25;it++){
+    resid(x,rv);const J=new Float64Array(nr*np);
+    for(let p=0;p<np;p++){const h=1e-6*scale[p],xs=x[p];x[p]=xs+h;resid(x,rv2);x[p]=xs;for(let r=0;r<nr;r++)J[r*np+p]=(rv2[r]-rv[r])/h}
+    const A=new Float64Array(np*np),b=new Float64Array(np);
+    for(let r=0;r<nr;r++){const o=r*np;for(let a=0;a<np;a++){const ja=J[o+a];if(ja===0)continue;b[a]-=ja*rv[r];for(let c=a;c<np;c++)A[a*np+c]+=ja*J[o+c]}}
+    for(let a=0;a<np;a++)for(let c=0;c<a;c++)A[a*np+c]=A[c*np+a];
+    let improved=false;
+    for(let tries=0;tries<6;tries++){
+      const A2=Float64Array.from(A),b2=Float64Array.from(b);for(let a=0;a<np;a++)A2[a*np+a]+=lam*(A[a*np+a]+1e-9/(scale[a]*scale[a]));
+      const d=solveN(A2,b2,np);if(!d){lam*=10;continue}
+      const xn=Float64Array.from(x);for(let a=0;a<np;a++)xn[a]+=d[a];
+      const Gs=unpack(xn);if(!Gs.every((g,i)=>i===ref||plausibleH(g,200,200,true))){lam*=10;continue}
+      const rn=resid(xn,null);if(rn&&rn.tot<cost){x.set(xn);const gain=cost-rn.tot;cost=rn.tot;lam=Math.max(1e-7,lam/4);improved=true;if(gain<1e-6*cost)it=99;break}lam*=8}
+    if(!improved)break}
+  const rms1=Math.sqrt(cost/(nr/2));
+  if(!(cost<=r0.tot))return{G,rms0,rms1:rms0};
+  const Gn=unpack(x);return{G:Gn.map(g=>m3n(g)),rms0,rms1}}
+
+/* ---------- focale (rotation pure, point principal au centre) ---------- */
+function focalsFromH(H,wA,hA,wB,hB){
+  /* H : A -> B en pixels ; on centre les deux images */
+  const h=m3mul(trM(-wB/2,-hB/2),m3mul(H,trM(wA/2,hA/2)));const n=m3n(h);
+  const out=[];
+  let d1=n[6]*n[7],d2=(n[7]-n[6])*(n[7]+n[6]),v1=-(n[0]*n[1]+n[3]*n[4])/d1,v2=(n[0]*n[0]+n[3]*n[3]-n[1]*n[1]-n[4]*n[4])/d2;
+  if(v1<v2){const t=v1;v1=v2;v2=t}
+  let f1=null;if(v1>0&&v2>0)f1=Math.sqrt(Math.abs(d1)>Math.abs(d2)?v1:v2);else if(v1>0)f1=Math.sqrt(v1);
+  d1=n[0]*n[3]+n[1]*n[4];d2=n[0]*n[0]+n[1]*n[1]-n[3]*n[3]-n[4]*n[4];v1=-n[2]*n[5]/d1;v2=(n[5]*n[5]-n[2]*n[2])/d2;
+  if(v1<v2){const t=v1;v1=v2;v2=t}
+  let f0=null;if(v1>0&&v2>0)f0=Math.sqrt(Math.abs(d1)>Math.abs(d2)?v1:v2);else if(v1>0)f0=Math.sqrt(v1);
+  if(f0&&isFinite(f0))out.push(f0);if(f1&&isFinite(f1))out.push(f1);return out}
+
+/* écart au modèle de rotation pure : M = K_B^-1 H K_A doit être une rotation (colonnes orthonormées) */
+function rotModelErr(H,wA,hA,wB,hB,f){
+  const KA=Float64Array.from([f,0,wA/2,0,f,hA/2,0,0,1]),KBi=m3inv(Float64Array.from([f,0,wB/2,0,f,hB/2,0,0,1]));if(!KBi)return 9;
+  let M=m3mul(KBi,m3mul(H,KA));const det=M[0]*(M[4]*M[8]-M[5]*M[7])-M[1]*(M[3]*M[8]-M[5]*M[6])+M[2]*(M[3]*M[7]-M[4]*M[6]);if(!isFinite(det)||Math.abs(det)<1e-12)return 9;
+  const k=1/Math.cbrt(det);let e=0;for(let i=0;i<3;i++)for(let j=0;j<3;j++){let d=0;for(let r=0;r<3;r++)d+=M[r*3+i]*M[r*3+j]*k*k;if(i===j)d-=1;e+=d*d}return Math.sqrt(e)}
+/* ---------- projection ---------- */
+function makeProj(kind,f,cxr,cyr){
+  if(kind==='cyl')return{kind,f,cx:cxr,cy:cyr,fwd:(X,Y)=>{const th=Math.atan2(X-cxr,f);return[f*th,(Y-cyr)*Math.cos(th),th]}};
+  return{kind:'plane',fwd:(X,Y)=>[X,Y,0]}}
+function outline(w,h,k){const o=[];for(let i=0;i<=k;i++){const t=i/k;o.push([t*w,0],[t*w,h],[0,t*h],[w,t*h])}return o}
+function geometry(ims,G,proj){
+  let minU=1e18,minV=1e18,maxU=-1e18,maxV=-1e18,maxTh=0;
+  for(let i=0;i<ims.length;i++)for(const[x,y]of outline(ims[i].w,ims[i].h,24)){const p=hap(G[i],x,y);if(!(p[2]>0)||!isFinite(p[0])||!isFinite(p[1]))return null;const q=proj.fwd(p[0],p[1]);
+    if(proj.kind==='cyl'){if(Math.abs(q[2])>1.45)return null;maxTh=Math.max(maxTh,Math.abs(q[2]))}
+    if(q[0]<minU)minU=q[0];if(q[0]>maxU)maxU=q[0];if(q[1]<minV)minV=q[1];if(q[1]>maxV)maxV=q[1]}
+  const W=Math.ceil(maxU-minU),H=Math.ceil(maxV-minV);if(!(W>0&&H>0))return null;
+  return{minU:Math.floor(minU),minV:Math.floor(minV),W:Math.ceil(maxU)-Math.floor(minU),H:Math.ceil(maxV)-Math.floor(minV),maxTh}}
+/* total angle seen from the reference (radians) given focal f */
+function totalAngle(ims,G,ref,f){
+  const cxr=ims[ref].w/2;let a=1e9,b=-1e9;
+  for(let i=0;i<ims.length;i++)for(const[x,y]of outline(ims[i].w,ims[i].h,8)){const p=hap(G[i],x,y);if(!(p[2]>0))return 9;const th=Math.atan2(p[0]-cxr,f);a=Math.min(a,th);b=Math.max(b,th)}
+  return b-a}
+function rescaleAll(ims,G,ref,s,proj){
+  const nims=ims.map(im=>{const w=Math.max(8,Math.round(im.w*s)),h=Math.max(8,Math.round(im.h*s)),c=mk(w,h),g=cx(c);g.imageSmoothingQuality='high';g.drawImage(im.c,0,0,w,h);return mkImg(c,im.name)});
+  const nG=G.map((g,i)=>{const si=nims[i].w/ims[i].w,sr=nims[ref].w/ims[ref].w;return m3n(m3mul(scM(sr),m3mul(g,scM(1/si))))});
+  const np=proj.kind==='cyl'?makeProj('cyl',proj.f*nims[ref].w/ims[ref].w,nims[ref].w/2,nims[ref].h/2):proj;
+  return{ims:nims,G:nG,proj:np}}
+
+/* ---------- warp bilinéaire : sortie (ow x oh) échantillonnée en u=u0+a*step ---------- */
+/* M : plan -> pixels source (incluant le décalage de la sous-copie), src : {d,w,h,ox,oy} ; vig : {lg,a,b,cx,cy,hd2,q} ou null */
+function warpInto(o,ow,oh,u0,v0,step,proj,M,src,rc,corr){
+  const rgb=o.rgb,valid=o.valid,r2o=o.r2,sd=src.d,sw=src.w,sh=src.h,ox=src.ox,oy=src.oy;
+  const m0=M[0],m1=M[1],m2=M[2],m3=M[3],m4=M[4],m5=M[5],m6=M[6],m7=M[7],m8=M[8];
+  const cyl=proj.kind==='cyl',f=proj.f,colX=new Float64Array(ow),colK=new Float64Array(ow);
+  for(let a=0;a<ow;a++){const u=u0+a*step;if(cyl){const th=u/f;colX[a]=proj.cx+f*Math.tan(th);colK[a]=Math.abs(th)<1.5?1/Math.cos(th):1e9}else{colX[a]=u;colK[a]=1}}
+  const cyc=cyl?proj.cy:0;
+  for(let b=0;b<oh;b++){const v=v0+b*step;
+    for(let a=0;a<ow;a++){
+      const X=colX[a],Y=cyc+v*colK[a],hw=m6*X+m7*Y+m8,idx=b*ow+a;
+      if(!(hw>1e-9)){valid[idx]=0;continue}
+      const sx=(m0*X+m1*Y+m2)/hw-ox,sy=(m3*X+m4*Y+m5)/hw-oy;
+      if(sx<0||sy<0||sx>=sw-1||sy>=sh-1){valid[idx]=0;continue}
+      const x0=sx|0,y0=sy|0,fx=sx-x0,fy=sy-y0,i=(y0*sw+x0)*4,j=i+sw*4,w00=(1-fx)*(1-fy),w10=fx*(1-fy),w01=(1-fx)*fy,w11=fx*fy;
+      let r=sd[i]*w00+sd[i+4]*w10+sd[j]*w01+sd[j+4]*w11,g=sd[i+1]*w00+sd[i+5]*w10+sd[j+1]*w01+sd[j+5]*w11,bl=sd[i+2]*w00+sd[i+6]*w10+sd[j+2]*w01+sd[j+6]*w11;
+      if(r2o||corr){const px=sx+ox-rc.cx,py=sy+oy-rc.cy,r2=(px*px+py*py)/rc.hd2;
+        if(r2o)r2o[idx]=r2;
+        if(corr){const fc=Math.exp(-(corr.lg+corr.a*r2+corr.b*r2*r2)/GAMMA);r*=fc;g*=fc;bl*=fc}}
+      const k=idx*3;rgb[k]=r>255?255:r;rgb[k+1]=g>255?255:g;rgb[k+2]=bl>255?255:bl;valid[idx]=1}}}
+
+/* ---------- pyramides ---------- */
+function reduceP(src,sw,sh,ch){
+  const dw=(sw+1)>>1,dh=(sh+1)>>1,tmp=new Float32Array(dw*sh*ch),dst=new Float32Array(dw*dh*ch);
+  for(let y=0;y<sh;y++){const ro=y*sw*ch;for(let x=0;x<dw;x++){const c=2*x,a0=Math.max(0,c-2),a1=Math.max(0,c-1),a3=Math.min(sw-1,c+1),a4=Math.min(sw-1,c+2),c0=Math.min(sw-1,c);
+    for(let k=0;k<ch;k++)tmp[(y*dw+x)*ch+k]=(src[ro+a0*ch+k]+4*src[ro+a1*ch+k]+6*src[ro+c0*ch+k]+4*src[ro+a3*ch+k]+src[ro+a4*ch+k])*.0625}}
+  for(let y=0;y<dh;y++){const c=2*y,r0=Math.max(0,c-2),r1=Math.max(0,c-1),r3=Math.min(sh-1,c+1),r4=Math.min(sh-1,c+2),r2=Math.min(sh-1,c);
+    for(let x=0;x<dw*ch;x++)dst[y*dw*ch+x]=(tmp[r0*dw*ch+x]+4*tmp[r1*dw*ch+x]+6*tmp[r2*dw*ch+x]+4*tmp[r3*dw*ch+x]+tmp[r4*dw*ch+x])*.0625}
+  return dst}
+function expandP(src,sw,sh,dw,dh,ch){
+  const dst=new Float32Array(dw*dh*ch),xi=new Int32Array(dw),xf=new Float32Array(dw);
+  for(let x=0;x<dw;x++){const s=x*.5,i=Math.min(sw-1,s|0);xi[x]=i;xf[x]=Math.min(1,s-i)}
+  for(let y=0;y<dh;y++){const s=y*.5,i=Math.min(sh-1,s|0),fy=Math.min(1,s-i),i2=Math.min(sh-1,i+1);
+    for(let x=0;x<dw;x++){const a=xi[x],b=Math.min(sw-1,a+1),fx=xf[x];
+      for(let k=0;k<ch;k++){const t0=src[(i*sw+a)*ch+k]*(1-fx)+src[(i*sw+b)*ch+k]*fx,t1=src[(i2*sw+a)*ch+k]*(1-fx)+src[(i2*sw+b)*ch+k]*fx;dst[(y*dw+x)*ch+k]=t0*(1-fy)+t1*fy}}}
+  return dst}
+/* remplit les pixels invalides par la couleur valide la plus proche sur la ligne puis la colonne */
+function fillInvalid(rgb,valid,w,h){
+  const ok=Uint8Array.from(valid);
+  for(let y=0;y<h;y++){let last=-1;const r=y*w;for(let x=0;x<w;x++){if(ok[r+x]){last=x}else if(last>=0){const s=(r+last)*3,d=(r+x)*3;rgb[d]=rgb[s];rgb[d+1]=rgb[s+1];rgb[d+2]=rgb[s+2];ok[r+x]=2}}
+    last=-1;for(let x=w-1;x>=0;x--){if(ok[r+x]===1){last=x}else if(ok[r+x]===0&&last>=0){const s=(r+last)*3,d=(r+x)*3;rgb[d]=rgb[s];rgb[d+1]=rgb[s+1];rgb[d+2]=rgb[s+2];ok[r+x]=2}}}
+  for(let x=0;x<w;x++){let last=-1;for(let y=0;y<h;y++){const i=y*w+x;if(ok[i]){last=y}else if(last>=0){const s=(last*w+x)*3,d=i*3;rgb[d]=rgb[s];rgb[d+1]=rgb[s+1];rgb[d+2]=rgb[s+2];ok[i]=2}}
+    last=-1;for(let y=h-1;y>=0;y--){const i=y*w+x;if(ok[i]){last=y}else if(last>=0){const s=(last*w+x)*3,d=i*3;rgb[d]=rgb[s];rgb[d+1]=rgb[s+1];rgb[d+2]=rgb[s+2];ok[i]=2}}}}
+
+/* ---------- distance au bord (chamfer) ---------- */
+function distMap(valid,w,h){
+  const d=new Float32Array(w*h),INF=1e9;for(let i=0;i<d.length;i++)d[i]=valid[i]?INF:0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;if(!d[i])continue;let v=d[i];
+    const l=x>0?d[i-1]+1:1,u=y>0?d[i-w]+1:1;v=Math.min(v,l,u);if(x>0&&y>0)v=Math.min(v,d[i-w-1]+1.414);if(x<w-1&&y>0)v=Math.min(v,d[i-w+1]+1.414);d[i]=v}
+  for(let y=h-1;y>=0;y--)for(let x=w-1;x>=0;x--){const i=y*w+x;if(!d[i])continue;let v=d[i];
+    const r=x<w-1?d[i+1]+1:1,dn=y<h-1?d[i+w]+1:1;v=Math.min(v,r,dn);if(x<w-1&&y<h-1)v=Math.min(v,d[i+w+1]+1.414);if(x>0&&y<h-1)v=Math.min(v,d[i+w-1]+1.414);d[i]=v}
+  return d}
+
+/* ---------- plus grand rectangle plein dans un masque ---------- */
+function largestRect(cov,w,h){
+  const hs=new Int32Array(w);let best=0,bx0=0,by0=0,bx1=0,by1=0;
+  for(let y=0;y<h;y++){for(let x=0;x<w;x++)hs[x]=cov[y*w+x]?hs[x]+1:0;
+    const st=[];for(let x=0;x<=w;x++){const cur=x<w?hs[x]:0;let start=x;while(st.length&&st[st.length-1][1]>=cur){const[sx,sh]=st.pop();const a=sh*(x-sx);if(a>best){best=a;bx0=sx;bx1=x-1;by1=y;by0=y-sh+1}start=sx}st.push([start,cur])}}
+  return{x0:bx0,y0:by0,x1:bx1,y1:by1,area:best}}
+
+/* ---------- raccords : coupe de coût minimal (programmation dynamique) par paire ---------- */
+function seamPair(i,j,lab,rgbs,valids,dists,aw,ah){
+  const vi=valids[i],vj=valids[j];let x0=aw,y0=ah,x1=-1,y1=-1,cnt=0;
+  for(let y=0;y<ah;y++)for(let x=0;x<aw;x++){const p=y*aw+x;if(vi[p]&&vj[p]&&(lab[p]===i||lab[p]===j)){cnt++;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}}
+  if(cnt<30)return 0;
+  const bw=x1-x0+1,bh=y1-y0+1,horiz=bw>=bh; /* coupe qui court horizontalement : une ligne par colonne */
+  const R=horiz?bw:bh,C=horiz?bh:bw,BIG=1e5,cost=new Float32Array(R*C),ri=rgbs[i],rj=rgbs[j],di=dists[i],dj=dists[j];
+  const at=(r,c)=>horiz?(y0+c)*aw+(x0+r):(y0+r)*aw+(x0+c);
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){const p=at(r,c);
+    if(!(vi[p]&&vj[p]&&(lab[p]===i||lab[p]===j))){cost[r*C+c]=BIG;continue}
+    const dr=ri[p*3]-rj[p*3],dg=ri[p*3+1]-rj[p*3+1],db=ri[p*3+2]-rj[p*3+2];
+    /* écart de gradient (structure) */
+    let gx=0;{const q=p+1<aw*ah?p+1:p,e1=(ri[q*3]+ri[q*3+1]+ri[q*3+2])-(ri[p*3]+ri[p*3+1]+ri[p*3+2]),e2=(rj[q*3]+rj[q*3+1]+rj[q*3+2])-(rj[p*3]+rj[p*3+1]+rj[p*3+2]);gx=(e1-e2)/3}
+    const e=Math.min(di[p],dj[p]);
+    cost[r*C+c]=dr*dr+dg*dg+db*db+gx*gx*.5+60*Math.exp(-e/6)}
+  const cum=new Float32Array(R*C),from=new Int8Array(R*C);
+  for(let c=0;c<C;c++)cum[c]=cost[c];
+  for(let r=1;r<R;r++)for(let c=0;c<C;c++){let b=1e30,bk=0;for(let k=-2;k<=2;k++){const cc=c+k;if(cc<0||cc>=C)continue;const v=cum[(r-1)*C+cc]+(k?Math.abs(k)*.5:0);if(v<b){b=v;bk=k}}cum[r*C+c]=b+cost[r*C+c];from[r*C+c]=bk}
+  let bc=0,bv=1e30;for(let c=0;c<C;c++)if(cum[(R-1)*C+c]<bv){bv=cum[(R-1)*C+c];bc=c}
+  const sp=new Int32Array(R);sp[R-1]=bc;for(let r=R-1;r>0;r--)sp[r-1]=sp[r]+from[r*C+sp[r]];
+  /* image du côté « bas » (indices c petits) */
+  let ci=0,cj=0,ni=0,nj=0;
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){const p=at(r,c);if(vi[p]){ci+=c;ni++}if(vj[p]){cj+=c;nj++}}
+  const lowImg=(ci/Math.max(1,ni))<=(cj/Math.max(1,nj))?i:j,highImg=lowImg===i?j:i;
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){const p=at(r,c);if(vi[p]&&vj[p]&&(lab[p]===i||lab[p]===j))lab[p]=c<sp[r]?lowImg:highImg}
+  return cnt}
+
+/* ---------- gains + vignettage (moindres carrés sur les recouvrements) ---------- */
+function solveExposure(n,prev,valids,r2s,aw,ah,pairs,withVig){
+  const lin=new Float32Array(256);for(let i=0;i<256;i++)lin[i]=Math.pow(i/255,GAMMA);
+  const samples=[]; /* [i,j,y,ri2,rj2] */
+  for(const[i,j]of pairs){const vi=valids[i],vj=valids[j],ri=prev[i],rj=prev[j];let cnt=0;for(let p=0;p<aw*ah;p++)if(vi[p]&&vj[p])cnt++;
+    if(cnt<200)continue;const st=Math.max(1,Math.floor(cnt/5000));let q=0;
+    for(let p=0;p<aw*ah;p++){if(!(vi[p]&&vj[p]))continue;if((q++%st)!==0)continue;
+      const Li=.299*ri[p*3]+.587*ri[p*3+1]+.114*ri[p*3+2],Lj=.299*rj[p*3]+.587*rj[p*3+1]+.114*rj[p*3+2];
+      if(Li<10||Lj<10||Li>245||Lj>245)continue;
+      samples.push([i,j,Math.log(Math.max(1e-4,Math.pow(Li/255,GAMMA)))-Math.log(Math.max(1e-4,Math.pow(Lj/255,GAMMA))),r2s[i][p],r2s[j][p]])}}
+  const sol=(useVig,wts)=>{const m=n+(useVig?2:0),A=new Float64Array(m*m),b=new Float64Array(m),row=new Float64Array(m);
+    samples.forEach((s,q)=>{const w=wts?wts[q]:1;row.fill(0);row[s[0]]+=1;row[s[1]]-=1;if(useVig){row[n]=s[3]-s[4];row[n+1]=s[3]*s[3]-s[4]*s[4]}
+      for(let a=0;a<m;a++){if(!row[a])continue;b[a]+=w*row[a]*s[2];for(let c=0;c<m;c++)if(row[c])A[a*m+c]+=w*row[a]*row[c]}});
+    const N=samples.length;for(let a=0;a<n;a++){for(let c=0;c<n;c++)A[a*m+c]+=N*10;A[a*m+a]+=N*1e-5}
+    if(useVig){A[n*m+n]+=N*1e-3;A[(n+1)*m+n+1]+=N*1e-3}
+    const x=solveN(A,b,m);return x};
+  if(samples.length<300)return{lg:new Float64Array(n),a:0,b:0,N:samples.length,vig:false};
+  const fit=useVig=>{let w=null,x=null;for(let it=0;it<3;it++){x=sol(useVig,w);if(!x)return null;
+    const res=samples.map(s=>s[2]-(x[s[0]]-x[s[1]]+(useVig?x[n]*(s[3]-s[4])+x[n+1]*(s[3]*s[3]-s[4]*s[4]):0)));const ab=res.map(Math.abs).sort((p,q)=>p-q),mad=Math.max(.02,ab[ab.length>>1]*1.48);
+    w=res.map(r=>{const a=Math.abs(r)/(1.5*mad);return a<1?1:1/a})}return x};
+  let x=withVig?fit(true):null,vig=false;
+  if(x){const a=x[n],b=x[n+1],e1=a+b;if(e1<=.1&&e1>=-1.6&&a<=.2)vig=true}
+  if(!vig)x=fit(false);
+  if(!x)return{lg:new Float64Array(n),a:0,b:0,N:samples.length,vig:false};
+  const lg=new Float64Array(n);for(let i=0;i<n;i++)lg[i]=x[i];
+  return{lg,a:vig?x[n]:0,b:vig?x[n+1]:0,N:samples.length,vig}}
+
+/* ---------- orchestrateur ---------- */
+function mapProj(proj,minU,minV){
+  return(u,v)=>{if(proj.kind==='cyl'){const th=(u+minU)/proj.f;return[proj.cx+proj.f*Math.tan(th),proj.cy+(v+minV)/Math.cos(th)]}return[u+minU,v+minV]}}
+
+async function stitchImages(canvases,names,optsIn){
+  const o=Object.assign({},PN.opts,optsIn||{}),T0=performance.now(),warn=[],stat={};
+  const ims=canvases.map((c,i)=>mkImg(c,names&&names[i]||('photo'+(i+1))));const n=ims.length;
+  if(n<2)throw new Error('il faut au moins deux photos');
+  /* 1. alignement par paires : translation -> points d'intérêt + RANSAC -> affinage par patchs */
+  const pairs=[],Hf=[];let tAl=performance.now();
+  for(let k=0;k<n-1;k++){
+    await pump('Alignement des photos '+(k+1)+' et '+(k+2)+'…',.08+.2*k/Math.max(1,n-1));
+    const r=await estimatePair(ims[k],ims[k+1],null,1000+k);pairs.push({i:k,j:k+1,...r});Hf.push(r.H);
+    if(r.method==='trans')warn.push('alignement par translation pour les photos '+(k+1)+' et '+(k+2));
+    if(r.method==='none')warn.push('recouvrement ou détails insuffisants entre les photos '+(k+1)+' et '+(k+2)+' : elles sont placées côte à côte')}
+  stat.methods=pairs.map(p=>p.method);stat.pairRms=pairs.map(p=>p.rms);stat.pairInl=pairs.map(p=>p.nInl);
+  let ref=n>>1;let G=new Array(n);G[ref]=I3();
+  for(let i=ref+1;i<n;i++)G[i]=m3n(m3mul(G[i-1],m3inv(Hf[i-1])));
+  for(let i=ref-1;i>=0;i--)G[i]=m3n(m3mul(G[i+1],Hf[i]));
+  /* paires non adjacentes qui se recouvrent */
+  const goodAdj=pairs.every(p=>p.method==='feat'||p.method==='refined');
+  if(n>=3){
+    for(let i=0;i<n-2;i++)for(let j=i+2;j<n;j++){
+      const Hij=normAt(m3mul(m3inv(G[j]),G[i]),ims[i].w/2,ims[i].h/2);if(!Hij)continue;
+      let inside=0,tot=0;for(let y=0;y<=8;y++)for(let x=0;x<=8;x++){tot++;const p=hap(Hij,x/8*ims[i].w,y/8*ims[i].h);if(p[2]>0&&p[0]>=0&&p[1]>=0&&p[0]<ims[j].w&&p[1]<ims[j].h)inside++}
+      if(inside/tot<.15)continue;
+      await pump('Alignement des photos '+(i+1)+' et '+(j+1)+'…',.3);
+      const r=await estimatePair(ims[i],ims[j],Hij,2000+i*7+j);
+      if((r.method==='feat'||r.method==='refined')&&r.pts&&r.pts.length>=4*25&&r.rms<1.5)pairs.push({i,j,...r,cx:ims[i].w/2,cy:ims[i].h/2})}}
+  /* points d'ancrage pour les paires en translation */
+  for(const p of pairs){if(!p.pts&&(p.method==='trans')){const P=[];for(let y=1;y<6;y++)for(let x=1;x<6;x++){const a=[x/6*ims[p.i].w,y/6*ims[p.i].h],b=hap(p.H,a[0],a[1]);if(b[0]>0&&b[1]>0&&b[0]<ims[p.j].w&&b[1]<ims[p.j].h)P.push(a[0],a[1],b[0],b[1])}if(P.length>=40){p.pts=Float64Array.from(P);p.w=.3}}}
+  for(const p of pairs){p.cx=ims[p.i].w/2;p.cy=ims[p.i].h/2}
+  await pump('Ajustement global…',.32);
+  let adj=null;
+  try{adj=globalAdjust(G,ref,pairs,260)}catch(e){console.warn('pano: ajustement global',e)}
+  stat.rms0=adj&&adj.rms0;stat.rms1=adj&&adj.rms1;
+  if(adj&&adj.rms1<=adj.rms0*1.0001&&adj.G.every((g,i)=>i===ref||plausibleH(g,ims[i].w,ims[i].h)))G=adj.G;
+  /* image de référence = la plus centrale (le champ ne dépasse pas 90 degrés de chaque côté) */
+  {const fq=(()=>{const c=[];for(const p of pairs)if(p.j===p.i+1&&(p.method==='feat'||p.method==='refined')){const H=m3mul(m3inv(G[p.j]),G[p.i]);if(H)for(const f of focalsFromH(H,ims[p.i].w,ims[p.i].h,ims[p.j].w,ims[p.j].h))if(f>.25*ims[ref].w&&f<6*ims[ref].w)c.push(f)}c.sort((a,b)=>a-b);return c.length?c[c.length>>1]:null})();
+   const cxr0=ims[ref].w/2,keys=G.map((g,i)=>{const p=hap(g,ims[i].w/2,ims[i].h/2);return fq?Math.atan2(p[0]-cxr0,fq):p[0]});
+   const mid=(Math.min(...keys)+Math.max(...keys))/2;let nr=ref,bd=Infinity;keys.forEach((k,i)=>{const d=Math.abs(k-mid);if(d<bd-1e-9){bd=d;nr=i}});
+   if(nr!==ref){const gi=m3inv(G[nr]);if(gi){G=G.map(g=>m3n(m3mul(gi,g)));ref=nr}}}
+  stat.tAlign=Math.round(performance.now()-tAl);stat.prof=Object.fromEntries(Object.entries(PN.prof||{}).map(([k,v])=>[k,Math.round(v)]));PN.prof={};
+  /* 2. focale / projection */
+  const fc=[];for(const p of pairs){if(p.j===p.i+1&&(p.method==='feat'||p.method==='refined')){const H=m3mul(m3inv(G[p.j]),G[p.i]);if(H)for(const f of focalsFromH(H,ims[p.i].w,ims[p.i].h,ims[p.j].w,ims[p.j].h))if(f>.25*ims[ref].w&&f<6*ims[ref].w)fc.push(f)}}
+  fc.sort((a,b)=>a-b);let fEst=fc.length?fc[fc.length>>1]:null;stat.f=fEst;stat.fCand=fc.length;
+  if(fEst){let me=0;for(const p of pairs){if(p.j!==p.i+1||!(p.method==='feat'||p.method==='refined'))continue;const H=m3mul(m3inv(G[p.j]),G[p.i]);if(H)me=Math.max(me,rotModelErr(normAt(H,ims[p.i].w/2,ims[p.i].h/2),ims[p.i].w,ims[p.i].h,ims[p.j].w,ims[p.j].h,fEst))}
+    stat.rotErr=me;if(me>.18){stat.fRejected=fEst;fEst=null}}
+  let kind='plane',ang=null,G2=null,Hd=null;
+  if(fEst){
+    /* caméra virtuelle au milieu du champ (rotation autour de l'axe vertical) : le champ reste dans +-90 degrés */
+    const cxr=ims[ref].w/2,cyr=ims[ref].h/2,th=G.map((g,i)=>{const q=hap(g,ims[i].w/2,ims[i].h/2);return Math.atan2(q[0]-cxr,fEst)}),mid=(Math.min(...th)+Math.max(...th))/2;
+    if(Math.abs(mid)>.02){const c=Math.cos(-mid),s=Math.sin(-mid),K=Float64Array.from([fEst,0,cxr,0,fEst,cyr,0,0,1]),Ki=m3inv(K),Ry=Float64Array.from([c,0,s,0,1,0,-s,0,c]);Hd=m3n(m3mul(K,m3mul(Ry,Ki)));G2=G.map(g=>m3n(m3mul(Hd,g)))}
+    ang=totalAngle(ims,G2||G,ref,fEst);stat.angDeg=ang*180/Math.PI;stat.virtual=!!G2}
+  if(o.proj==='cyl')kind=fEst?'cyl':'plane';else if(o.proj==='plane')kind='plane';else if(fEst&&ang>1.75&&ang<3)kind='cyl';
+  if(kind==='cyl'&&G2){G=G2}else Hd=null;
+  let proj=kind==='cyl'?makeProj('cyl',fEst,ims[ref].w/2,ims[ref].h/2):makeProj('plane');
+  let geo=geometry(ims,G,proj);
+  if(!geo&&kind==='cyl'){kind='plane';proj=makeProj('plane');geo=geometry(ims,G,proj);if(geo)warn.push('champ trop large pour la projection cylindrique')}
+  if(!geo)throw new Error('géométrie impossible (champ de vision trop large)');
+  /* taille maximale */
+  let ws=ims,wG=G,wproj=proj,wgeo=geo,sc=1;
+  if(geo.W*geo.H>MAX_PX){sc=Math.sqrt(MAX_PX/(geo.W*geo.H))*.985;if(sc<.03)throw new Error('panorama trop grand');
+    const rs=rescaleAll(ims,G,ref,sc,proj);ws=rs.ims;wG=rs.G;wproj=rs.proj;wgeo=geometry(ws,wG,wproj);
+    if(!wgeo)throw new Error('panorama trop grand');
+    while(wgeo.W*wgeo.H>MAX_PX&&sc>.05){sc*=.97;const r2=rescaleAll(ims,G,ref,sc,proj);ws=r2.ims;wG=r2.G;wproj=r2.proj;wgeo=geometry(ws,wG,wproj)}
+    warn.push('panorama réduit à '+wgeo.W+' × '+wgeo.H+' px')}
+  const W=wgeo.W,H=wgeo.H,minU=wgeo.minU,minV=wgeo.minV;stat.W=W;stat.H=H;stat.proj=wproj.kind;stat.scale=sc;
+  /* 3. analyse basse résolution : warp, gains, raccords */
+  await pump('Préparation des raccords…',.4);
+  const p=Math.min(1,3000/Math.max(W,H)),aw=Math.max(8,Math.ceil(W*p)),ah=Math.max(8,Math.ceil(H*p)),invStep=1/p;
+  const Ginv=wG.map((g,i)=>{const gi=m3inv(g),q=hap(g,ws[i].w/2,ws[i].h/2);return normAt(gi,q[0],q[1])}),prevSrc=[];
+  const q=p;
+  /* sous-copies des sources à l'échelle p (préfiltrées) */
+  for(let i=0;i<n;i++){const im=ws[i],sw=Math.max(8,Math.round(im.w*q)),sh=Math.max(8,Math.round(im.h*q)),c=mk(sw,sh),g=cx(c);g.imageSmoothingQuality='high';g.drawImage(im.c,0,0,sw,sh);
+    const d=rx(c).getImageData(0,0,sw,sh).data;prevSrc.push({d,w:sw,h:sh,ox:0,oy:0,q:sw/im.w,qy:sh/im.h});c.width=c.height=1}
+  const rgbU=[],valids=[],r2s=[],rawU=[];
+  const warpPrev=(i,vig)=>{const so=prevSrc[i],M=m3mul(Float64Array.from([so.q,0,.5*so.q-.5,0,so.qy,.5*so.qy-.5,0,0,1]),Ginv[i]);
+    const out={rgb:new Float32Array(aw*ah*3),valid:new Uint8Array(aw*ah),r2:new Float32Array(aw*ah)};
+    const im=ws[i],hd2=(im.w*im.w+im.h*im.h)/4,cxi=im.w/2,cyi=im.h/2;
+    warpInto(out,aw,ah,minU,minV,invStep,wproj,M,so,{cx:cxi*so.q,cy:cyi*so.qy,hd2:hd2*so.q*so.q},vig);
+    return out};
+  for(let i=0;i<n;i++){const w=warpPrev(i,null);rawU.push(w.rgb);valids.push(w.valid);r2s.push(w.r2);if((i&1)===0)await pump('Préparation des raccords…',.4+.04*i/n)}
+  /* paires exploitables pour l'exposition */
+  const expPairs=[];for(const pp of pairs)if(pp.method==='feat'||pp.method==='refined')expPairs.push([pp.i,pp.j]);
+  let ex={lg:new Float64Array(n),a:0,b:0,N:0,vig:false};
+  if(expPairs.length&&o.gain!==false){ex=solveExposure(n,rawU,valids,r2s,aw,ah,expPairs,o.vignette);}
+  stat.gains=Array.from(ex.lg).map(v=>Math.exp(v));stat.vig=ex.vig?{a:ex.a,b:ex.b}:null;stat.expSamples=ex.N;
+    for(let i=0;i<n;i++){const w=warpPrev(i,{lg:ex.lg[i],a:ex.a,b:ex.b});const u8=new Uint8ClampedArray(aw*ah*3);for(let k=0;k<u8.length;k++)u8[k]=w.rgb[k];rgbU[i]=u8;valids[i]=w.valid}
+  await pump('Placement des raccords…',.46);
+  const dists=valids.map(v=>distMap(v,aw,ah)),lab=new Int8Array(aw*ah).fill(-1);
+  for(let pp=0;pp<aw*ah;pp++){let b=-1,bd=0;for(let i=0;i<n;i++){const d=dists[i][pp];if(d>bd){bd=d;b=i}}lab[pp]=b}
+  for(let i=0;i<n-1;i++)seamPair(i,i+1,lab,rgbU,valids,dists,aw,ah);
+  for(let i=0;i<n;i++)for(let j=i+2;j<n;j++)seamPair(i,j,lab,rgbU,valids,dists,aw,ah);
+  /* recadrage : plus grand rectangle entièrement couvert */
+  const cov=new Uint8Array(aw*ah);for(let pp=0;pp<aw*ah;pp++)cov[pp]=lab[pp]>=0?1:0;
+  const lr=largestRect(cov,aw,ah);let cr={x0:0,y0:0,x1:W,y1:H},cropped=false;
+  const covN=cov.reduce((a,b)=>a+b,0);
+  if(lr.area<covN*.985&&lr.area>=aw*ah*.5){const pad=Math.ceil(1/p)+2;cr={x0:Math.ceil(lr.x0/p)+pad,y0:Math.ceil(lr.y0/p)+pad,x1:Math.floor((lr.x1+1)/p)-pad,y1:Math.floor((lr.y1+1)/p)-pad};
+    if(cr.x1-cr.x0>16&&cr.y1-cr.y0>16)cropped=true;else cr={x0:0,y0:0,x1:W,y1:H}}
+  const cw=cr.x1-cr.x0,chh=cr.y1-cr.y0;
+  /* 4. rendu par tuiles, multi-bandes */
+  const out=mk(cw,chh),og=cx(out);
+  const L=Math.max(1,Math.min(5,o.bands|0||4)),TS=o.tile,MG=TILE_MARGIN;
+  const tx0=Math.floor(cr.x0/TS)*TS,ty0=Math.floor(cr.y0/TS)*TS,tiles=[];
+  for(let ty=ty0;ty<cr.y1;ty+=TS)for(let tx=tx0;tx<cr.x1;tx+=TS)tiles.push([tx,ty]);
+  stat.tiles=tiles.length;stat.multi=0;
+  const full=[],pix=ws.map(()=>null);
+  const ind=(i)=>i; /* indicateur par image -> échantillonné dans lab */
+  const Mfull=ws.map((im,i)=>Ginv[i]);
+  const T1=performance.now();
+  let tdone=0;
+  for(const[tx,ty]of tiles){
+    const cx0=Math.max(tx,cr.x0),cy0=Math.max(ty,cr.y0),cx1=Math.min(tx+TS,cr.x1),cy1=Math.min(ty+TS,cr.y1);
+    const ex0=tx-MG,ey0=ty-MG,ew=Math.ceil((Math.min(tx+TS,cr.x1)+MG-ex0)/16)*16,eh=Math.ceil((Math.min(ty+TS,cr.y1)+MG-ey0)/16)*16;
+    /* labels présents dans la zone élargie (grille d'analyse) */
+    const ax0=Math.max(0,Math.floor(ex0*p)-2),ay0=Math.max(0,Math.floor(ey0*p)-2),ax1=Math.min(aw-1,Math.ceil((ex0+ew)*p)+2),ay1=Math.min(ah-1,Math.ceil((ey0+eh)*p)+2);
+    const present=new Set();for(let y=ay0;y<=ay1;y++)for(let x=ax0;x<=ax1;x++){const l=lab[y*aw+x];if(l>=0)present.add(l)}
+    const inv=[...present].sort((a,b)=>a-b);
+    const cwid=cx1-cx0,chei=cy1-cy0;
+    const res=new Uint8ClampedArray(cwid*chei*4);
+    if(inv.length===0){/* rien */}
+    else if(inv.length===1){
+      const i=inv[0],bufs=await warpTile(i,cx0,cy0,cwid,chei);
+      if(bufs){for(let k=0;k<cwid*chei;k++){if(bufs.valid[k]){res[k*4]=bufs.rgb[k*3];res[k*4+1]=bufs.rgb[k*3+1];res[k*4+2]=bufs.rgb[k*3+2];res[k*4+3]=255}}}}
+    else{
+      stat.multi++;
+      const weights=new Float32Array(ew*eh*inv.length);
+      const wb=[];for(const i of inv){const b=await warpTile(i,ex0,ey0,ew,eh);wb.push(b)}
+      /* poids : indicateur bilinéaire de la carte d'étiquettes x validité */
+      const ncl=inv.length,sum=new Float32Array(ew*eh);
+      for(let y=0;y<eh;y++){const ay=(ey0+y)*p,y0=Math.max(0,Math.min(ah-1,Math.floor(ay))),y1=Math.min(ah-1,y0+1),fy=Math.max(0,Math.min(1,ay-y0));
+        for(let x=0;x<ew;x++){const axx=(ex0+x)*p,xa=Math.max(0,Math.min(aw-1,Math.floor(axx))),xb=Math.min(aw-1,xa+1),fx=Math.max(0,Math.min(1,axx-xa));
+          const l00=lab[y0*aw+xa],l10=lab[y0*aw+xb],l01=lab[y1*aw+xa],l11=lab[y1*aw+xb];let s=0;
+          for(let c=0;c<ncl;c++){const li=inv[c];const b=wb[c];const v=(b&&b.valid[y*ew+x])?1:0;
+            const wgt=v?((l00===li?(1-fx)*(1-fy):0)+(l10===li?fx*(1-fy):0)+(l01===li?(1-fx)*fy:0)+(l11===li?fx*fy:0)):0;
+            weights[c*ew*eh+y*ew+x]=wgt;s+=wgt}
+          /* repli : si aucun poids, répartir entre les images valides */
+          if(s<=1e-6){let nv=0;for(let c=0;c<ncl;c++)if(wb[c]&&wb[c].valid[y*ew+x])nv++;if(nv){for(let c=0;c<ncl;c++)if(wb[c]&&wb[c].valid[y*ew+x]){weights[c*ew*eh+y*ew+x]=1/nv}s=1}}
+          else for(let c=0;c<ncl;c++)weights[c*ew*eh+y*ew+x]/=s;
+          sum[y*ew+x]=s}}
+      /* pyramides */
+      const dims=[[ew,eh]];for(let k=1;k<=L;k++)dims.push([(dims[k-1][0]+1)>>1,(dims[k-1][1]+1)>>1]);
+      const B=dims.map(d=>new Float32Array(d[0]*d[1]*3));
+      for(let c=0;c<ncl;c++){const b=wb[c];if(!b)continue;
+        fillInvalid(b.rgb,b.valid,ew,eh);
+        const Gp=[b.rgb];for(let k=1;k<=L;k++)Gp.push(reduceP(Gp[k-1],dims[k-1][0],dims[k-1][1],3));
+        let Mp=weights.subarray(c*ew*eh,(c+1)*ew*eh);const Mpy=[Mp];for(let k=1;k<=L;k++)Mpy.push(reduceP(Mpy[k-1],dims[k-1][0],dims[k-1][1],1));
+        for(let k=0;k<=L;k++){const w=dims[k][0],h=dims[k][1],g=Gp[k],m=Mpy[k],bk=B[k];
+          if(k<L){const up=expandP(Gp[k+1],dims[k+1][0],dims[k+1][1],w,h,3);for(let t=0;t<w*h;t++){const mm=m[t];if(mm===0)continue;bk[t*3]+=(g[t*3]-up[t*3])*mm;bk[t*3+1]+=(g[t*3+1]-up[t*3+1])*mm;bk[t*3+2]+=(g[t*3+2]-up[t*3+2])*mm}}
+          else for(let t=0;t<w*h;t++){const mm=m[t];bk[t*3]+=g[t*3]*mm;bk[t*3+1]+=g[t*3+1]*mm;bk[t*3+2]+=g[t*3+2]*mm}}
+        wb[c].rgb=null}
+      let acc=B[L];for(let k=L-1;k>=0;k--){const up=expandP(acc,dims[k+1][0],dims[k+1][1],dims[k][0],dims[k][1],3),bk=B[k];for(let t=0;t<up.length;t++)up[t]+=bk[t];acc=up}
+      for(let y=cy0;y<cy1;y++)for(let x=cx0;x<cx1;x++){const e=(y-ey0)*ew+(x-ex0),d=((y-cy0)*cwid+(x-cx0))*4;
+        if(sum[e]<=0)continue;let r=acc[e*3],g=acc[e*3+1],bb=acc[e*3+2];res[d]=r<0?0:r>255?255:r;res[d+1]=g<0?0:g>255?255:g;res[d+2]=bb<0?0:bb>255?255:bb;res[d+3]=255}
+    }
+    if(cwid>0&&chei>0)og.putImageData(new ImageData(res,cwid,chei),cx0-cr.x0,cy0-cr.y0);
+    tdone++;await pump('Fusion des photos…',.5+.46*tdone/tiles.length)}
+  stat.tRender=Math.round(performance.now()-T1);
+
+  async function warpTile(i,u0,v0,w,h){
+    const im=ws[i],Mi=Mfull[i];
+    /* boîte source de la tuile */
+    let sx0=1e9,sy0=1e9,sx1=-1e9,sy1=-1e9,any=false;
+    const mp=mapProj(wproj,minU,minV);
+    for(let a=0;a<=8;a++)for(let b=0;b<=8;b++){const pt=mp(u0+a/8*w,v0+b/8*h),hh=hap(Mi,pt[0],pt[1]);if(!(hh[2]>0)||!isFinite(hh[0]))continue;any=true;sx0=Math.min(sx0,hh[0]);sx1=Math.max(sx1,hh[0]);sy0=Math.min(sy0,hh[1]);sy1=Math.max(sy1,hh[1])}
+    if(!any)return null;
+    const pad=Math.ceil(Math.max(sx1-sx0,sy1-sy0)*.03)+4;sx0=Math.max(0,Math.floor(sx0-pad));sy0=Math.max(0,Math.floor(sy0-pad));sx1=Math.min(im.w,Math.ceil(sx1+pad));sy1=Math.min(im.h,Math.ceil(sy1+pad));
+    if(sx1-sx0<2||sy1-sy0<2)return null;
+    const id=rx(im.c).getImageData(sx0,sy0,sx1-sx0,sy1-sy0);
+    const o2={rgb:new Float32Array(w*h*3),valid:new Uint8Array(w*h)};
+    warpInto(o2,w,h,u0+minU,v0+minV,1,wproj,Mi,{d:id.data,w:id.width,h:id.height,ox:sx0,oy:sy0},{cx:im.w/2,cy:im.h/2,hd2:(im.w*im.w+im.h*im.h)/4},{lg:ex.lg[i],a:ex.a,b:ex.b});
+    return o2}
+  /* le warp ci-dessus reçoit u0+minU : warpInto attend des coordonnées u absolues (plan: X=u) */
+  const dt=Math.round(performance.now()-T0);stat.ms=dt;
+  PN.last={sr:ws[ref].w/ims[ref].w,Gv:Hd,proj:wproj,f:fEst,G:wG,Gorig:G,ref,minU,minV,W,H,crop:cr,cropped,lab,aw,ah,p,stat,warn,n,ims:null,scale:sc,pairs:pairs.map(p=>({i:p.i,j:p.j,method:p.method,rms:p.rms,nInl:p.nInl})),ex:{lg:Array.from(ex.lg),a:ex.a,b:ex.b,vig:ex.vig}};
+  return{canvas:out,warn,stat,cropped,kind:wproj.kind}}
+
+/* ---------- entrée fichiers + message final ---------- */
+function pickManyP(){return new Promise(res=>{const i=document.createElement('input');i.type='file';i.multiple=true;i.accept='image/*,.heic,.heif,.tif,.tiff,'+RAW_ACCEPT;i.onchange=()=>res([...i.files]);i.oncancel=()=>res([]);i.click()})}
+async function loadScaledP(f,maxPx){let bm=null;if(!RAW_EXT.test(f.name||'')&&!/\.(heic|heif|avif|tiff?)$/i.test(f.name||'')){try{bm=await createImageBitmap(f)}catch(e){}}
+  if(!bm){const src=await styleFromFile(f);const s=Math.min(1,maxPx/Math.max(src.width,src.height)),c=mk(Math.round(src.width*s),Math.round(src.height*s));cx(c).drawImage(src,0,0,c.width,c.height);return c}
+  const s=Math.min(1,maxPx/Math.max(bm.width,bm.height)),c=mk(Math.round(bm.width*s),Math.round(bm.height*s));cx(c).drawImage(bm,0,0,c.width,c.height);bm.close&&bm.close();return c}
+async function stitchFiles(files){
+  busy(true,'Assemblage du panorama…',0);await tick();
+  try{
+    const cs=[],names=[];for(const f of files){cs.push(await loadScaledP(f,4000));names.push(f.name||'')}
+    let pj='auto';try{pj=PREF.get('panoProj','auto')}catch(e){}
+    const r=await stitchImages(cs,names,{proj:pj});
+    busy(false);setDoc(r.canvas,'panorama.jpg',{});
+    const mode=r.kind==='cyl'?'projection cylindrique':'projection plane';
+    let msg='Panorama assemblé ('+cs.length+' photos, '+mode+(r.cropped?', recadré':'')+').';
+    if(r.warn.length)msg+=' Attention : '+r.warn.join(' ; ')+'.';
+    toast(msg,r.warn.length?9000:6000);
+  }catch(e){busy(false);console.error(e);toast('Panorama impossible : '+(e.message||e),5000)}}
+async function panoDialog2(){const fs=await pickManyP();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fs.sort((a,b)=>(a.name||'').localeCompare(b.name||''));stitchFiles(fs)}
+PN.stitchImages=stitchImages;PN.stitchFiles=stitchFiles;PN.estimatePair=async(a,b)=>estimatePair(mkImg(a),mkImg(b),null,5);PN.focalsFromH=focalsFromH;PN.fitH=fitH;PN.mkImg=mkImg;
+if(window.PrismF){PN.oldStitch=window.PrismF.stitch;window.PrismF.stitch=stitchFiles}
+/* remplace l'entrée de menu existante : même libellé, nouveau moteur */
+{const _f=MENU2.file.items;const mapIt=it=>{if(!it||it==='-'||typeof it!=='object')return it;if(it.label==='Panorama…')return{...it,fn:panoDialog2};if(it.sub){const s=it.sub;return{...it,sub:()=>s().map(mapIt)}}return it};
+ MENU2.file.items=()=>_f().map(mapIt)}
+})();
+
+}
+
+/* ===== feat: feat/sky.js ===== */
+{
+/* ================= Sélectionner le ciel : segmentation classique, sans modèle ================= */
+/* Pipeline : copie réduite (~800 px) -> croissance de région depuis le bord haut (continuité de couleur,
+   texture faible, familles de teintes ciel) -> nuages (clairs, sous la ligne basse du ciel) -> bord récupéré,
+   trous bouchés, horizon -> remontée à ~1600 px, détection des structures fines sombres (branches, fils)
+   -> filtre guidé (refineMask) sur la photo -> masque pleine résolution. */
+const SKY={};
+SKY.analyze=(rgba,W,H)=>{
+  const n=W*H,T=new Float32Array(n),F=()=>new Float32Array(n);
+  const R=F(),G=F(),B=F();for(let i=0;i<n;i++){R[i]=rgba[i*4]/255;G[i]=rgba[i*4+1]/255;B[i]=rgba[i*4+2]/255}
+  const sR=F(),sG=F(),sB=F();boxMean(R,W,H,1,sR,T);boxMean(G,W,H,1,sG,T);boxMean(B,W,H,1,sB,T);
+  const L=F(),L2=F(),m1=F(),m2=F(),tex=F();
+  for(let i=0;i<n;i++){const l=.299*sR[i]+.587*sG[i]+.114*sB[i];L[i]=l;L2[i]=l*l}
+  boxMean(L,W,H,2,m1,T);boxMean(L2,W,H,2,m2,T);for(let i=0;i<n;i++)tex[i]=Math.sqrt(Math.max(0,m2[i]-m1[i]*m1[i]));
+  // familles de teintes : 1 bleu, 2 gris/blanc, 3 chaud (orange, rose, violet)
+  const fam=new Uint8Array(n),sat=F(),val=F();
+  for(let i=0;i<n;i++){const r=sR[i],g=sG[i],b=sB[i],mx=Math.max(r,g,b),mn=Math.min(r,g,b),v=mx,s=mx>0?(mx-mn)/mx:0;sat[i]=s;val[i]=v;let h=0;const d=mx-mn;
+    if(d>1e-6){h=mx===r?((g-b)/d+6)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h*=60}
+    let f=0;
+    if(s<.14&&v>.4)f=2;
+    else if(h>=170&&h<=268&&s>=.09&&v>.12)f=1;
+    else if((h<=52||h>=268)&&s>=.28&&v>=.28)f=3;
+    else if(h>52&&h<72&&s>=.2&&v>=.6)f=3;
+    fam[i]=f}
+  // bruit de fond : médiane de la texture en haut de l'image
+  const top=Math.max(2,Math.round(H*.12)),smp=[];for(let y=0;y<top;y++)for(let x=0;x<W;x+=2)if(fam[y*W+x])smp.push(tex[y*W+x]);
+  smp.sort((a,b)=>a-b);const tm=smp.length?smp[smp.length>>1]:.02;
+  const tTex=Math.min(.05,Math.max(.022,2.2*tm+.012)),tStep=Math.min(.06,Math.max(.03,.03+2*tm));
+  const mask=new Uint8Array(n),stack=new Int32Array(n);let sp=0;
+  const ok=(i)=>fam[i]>0&&tex[i]<tTex;
+  const dist=(a,b)=>{const dr=sR[a]-sR[b],dg=sG[a]-sG[b],db=sB[a]-sB[b];return Math.sqrt(dr*dr+dg*dg+db*db)};
+  for(let x=0;x<W;x++){if(ok(x)){mask[x]=1;stack[sp++]=x}}
+  const grow=(test)=>{while(sp>0){const p=stack[--sp],x=p%W,y=(p-x)/W;
+    if(x>0){const q=p-1;if(!mask[q]&&test(p,q)){mask[q]=1;stack[sp++]=q}}
+    if(x<W-1){const q=p+1;if(!mask[q]&&test(p,q)){mask[q]=1;stack[sp++]=q}}
+    if(y>0){const q=p-W;if(!mask[q]&&test(p,q)){mask[q]=1;stack[sp++]=q}}
+    if(y<H-1){const q=p+W;if(!mask[q]&&test(p,q)){mask[q]=1;stack[sp++]=q}}}};
+  grow((p,q)=>ok(q)&&dist(p,q)<tStep);
+  let core=0;for(let i=0;i<n;i++)core+=mask[i];
+  const info={tTex,tStep,core:core/n};
+  if(core/n<.015)return{mask:null,cov:core/n,info};
+  // ligne basse du ciel par colonne (maximum sur ±4 % de la largeur)
+  const low=new Int32Array(W).fill(-1);for(let x=0;x<W;x++)for(let y=H-1;y>=0;y--)if(mask[y*W+x]){low[x]=y;break}
+  const RB=Math.max(2,Math.round(W*.04)),band=new Int32Array(W).fill(-1);
+  {const dq=[];for(let x=0;x<W;x++){let m=-1;for(let k=Math.max(0,x-RB);k<=Math.min(W-1,x+RB);k++)if(low[k]>m)m=low[k];band[x]=m}}
+  // nuages : clairs et peu saturés, au-dessus de la ligne basse (marge de 4 px)
+  const cloudy=(i)=>sat[i]<.3&&val[i]>.6;
+  for(let i=0;i<n;i++)if(mask[i])stack[sp++]=i;
+  grow((p,q)=>{const x=q%W,y=(q-x)/W;return cloudy(q)&&y<=band[x]+4});
+  // poches de ciel (entre feuillages, branches) : pixels proches de la couleur moyenne du ciel sur la même ligne
+  {const mr=new Float32Array(H),mg=new Float32Array(H),mb=new Float32Array(H),mc=new Int32Array(H);
+    for(let y=0;y<H;y++){let c=0,r=0,g=0,b=0;for(let x=0;x<W;x++){const i=y*W+x;if(mask[i]){c++;r+=sR[i];g+=sG[i];b+=sB[i]}}mc[y]=c;if(c){mr[y]=r/c;mg[y]=g/c;mb[y]=b/c}}
+    const need=Math.max(3,Math.round(W*.01));
+    const cand=(i,y)=>{if(mask[i]||mc[y]<need||fam[i]===0||tex[i]>=tTex)return false;const dr=sR[i]-mr[y],dg=sG[i]-mg[y],db=sB[i]-mb[y];return dr*dr+dg*dg+db*db<.0049};
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!cand(i,y))continue;
+      // composante connexe de candidats, ajoutée telle quelle
+      let tp=0;const list=[];stack[tp++]=i;mask[i]=2;
+      while(tp>0){const p=stack[--tp];list.push(p);const px=p%W,py=(p-px)/W;
+        if(px>0&&cand(p-1,py)){mask[p-1]=2;stack[tp++]=p-1}if(px<W-1&&cand(p+1,py)){mask[p+1]=2;stack[tp++]=p+1}
+        if(py>0&&cand(p-W,py-1)){mask[p-W]=2;stack[tp++]=p-W}if(py<H-1&&cand(p+W,py+1)){mask[p+W]=2;stack[tp++]=p+W}}}
+    for(let i=0;i<n;i++)if(mask[i]===2)mask[i]=1}
+  // récupération du bord : 3 pas de dilatation par similarité de couleur
+  for(let it=0;it<3;it++){const add=[];for(let y=0;y<H;y++)for(let x=0;x<W;x++){const p=y*W+x;if(mask[p])continue;
+      let nb=-1;if(x>0&&mask[p-1])nb=p-1;else if(x<W-1&&mask[p+1])nb=p+1;else if(y>0&&mask[p-W])nb=p-W;else if(y<H-1&&mask[p+W])nb=p+W;
+      if(nb>=0&&fam[p]>0&&dist(nb,p)<tStep*1.5)add.push(p)}
+    for(const p of add)mask[p]=1}
+  // trous entourés de ciel (soleil, oiseaux, avion)
+  {const maxHole=Math.round(n*.005),seen=new Uint8Array(n),st=new Int32Array(n);
+    for(let s0=0;s0<n;s0++){if(mask[s0]||seen[s0])continue;let c=0,touch=false,tp=0;st[tp++]=s0;seen[s0]=1;const list=[];
+      while(tp>0){const p=st[--tp];c++;if(c<=maxHole)list.push(p);const x=p%W,y=(p-x)/W;if(x===0||y===0||x===W-1||y===H-1)touch=true;
+        if(x>0&&!mask[p-1]&&!seen[p-1]){seen[p-1]=1;st[tp++]=p-1}if(x<W-1&&!mask[p+1]&&!seen[p+1]){seen[p+1]=1;st[tp++]=p+1}
+        if(y>0&&!mask[p-W]&&!seen[p-W]){seen[p-W]=1;st[tp++]=p-W}if(y<H-1&&!mask[p+W]&&!seen[p+W]){seen[p+W]=1;st[tp++]=p+W}}
+      if(!touch&&c<=maxHole)for(const p of list)mask[p]=1}}
+  // horizon : dernière ligne couverte à >= 35 % du maximum ; on coupe nettement en dessous (reflets, poches)
+  {const cov=new Float32Array(H);let mxC=0;for(let y=0;y<H;y++){let c=0;for(let x=0;x<W;x++)c+=mask[y*W+x];cov[y]=c/W;if(cov[y]>mxC)mxC=cov[y]}
+    let yH=0;for(let y=0;y<H;y++)if(cov[y]>=.35*mxC)yH=y;info.horizon=yH/H;
+    const cut=Math.min(H,yH+Math.round(H*.05)+1);for(let y=cut;y<H;y++)mask.fill(0,y*W,y*W+W);
+  }
+  let c2=0;for(let i=0;i<n;i++)c2+=mask[i];info.cov=c2/n;
+  if(c2/n<.015)return{mask:null,cov:c2/n,info};
+  return{mask,cov:c2/n,info}};
+
+// dilatation/érosion séparables (carré de rayon r) sur Float32
+SKY.morph=(src,w,h,r,isMax)=>{const out=new Float32Array(w*h),tmp=new Float32Array(w*h);
+  for(let y=0;y<h;y++){const o=y*w;for(let x=0;x<w;x++){let m=src[o+x];const a=Math.max(0,x-r),b=Math.min(w-1,x+r);for(let k=a;k<=b;k++){const v=src[o+k];if(isMax?v>m:v<m)m=v}tmp[o+x]=m}}
+  for(let x=0;x<w;x++){for(let y=0;y<h;y++){let m=tmp[y*w+x];const a=Math.max(0,y-r),b=Math.min(h-1,y+r);for(let k=a;k<=b;k++){const v=tmp[k*w+x];if(isMax?v>m:v<m)m=v}out[y*w+x]=m}}
+  return out};
+
+SKY.mask=async(onP)=>{const d=S.doc;if(!d)return null;
+  const long=Math.max(d.w,d.h),s1=Math.min(1,800/long),W=Math.max(8,Math.round(d.w*s1)),H=Math.max(8,Math.round(d.h*s1));
+  const flat=flatSync();
+  const c1=mk(W,H),g1=rx(c1);g1.imageSmoothingQuality='high';g1.drawImage(flat,0,0,W,H);
+  onP&&onP(.05);await tick();
+  const t0=performance.now();
+  const res=SKY.analyze(g1.getImageData(0,0,W,H).data,W,H);SKY.last={...res.info,cov:res.cov,msAnalyze:Math.round(performance.now()-t0)};
+  if(!res.mask)return null;
+  onP&&onP(.35);await tick();
+  // masque grossier -> canvas alpha, puis remontée à ~1600 px
+  const ps=Math.min(1,1600/long),RW=Math.max(1,Math.round(d.w*ps)),RH=Math.max(1,Math.round(d.h*ps));
+  const mc=mk(W,H),mg=rx(mc),im=mg.createImageData(W,H),md=im.data;for(let i=0;i<W*H;i++){md[i*4]=md[i*4+1]=md[i*4+2]=255;md[i*4+3]=res.mask[i]?255:0}mg.putImageData(im,0,0);
+  const up=mk(RW,RH),ug=rx(up);ug.imageSmoothingQuality='high';ug.drawImage(mc,0,0,RW,RH);
+  const gc=mk(RW,RH),gg=rx(gc);gg.imageSmoothingQuality='high';gg.drawImage(flat,0,0,RW,RH);
+  const n=RW*RH,gd=gg.getImageData(0,0,RW,RH).data,ud=ug.getImageData(0,0,RW,RH);
+  const Lh=new Float32Array(n);for(let i=0;i<n;i++)Lh[i]=(.299*gd[i*4]+.587*gd[i*4+1]+.114*gd[i*4+2])/255;
+  // structures fines et sombres (branches, fils, antennes) : chapeau haut-de-forme noir de la luminance
+  const rb=Math.max(3,Math.round(Math.max(RW,RH)/260));
+  const closed=SKY.morph(SKY.morph(Lh,RW,RH,rb,true),RW,RH,rb,false);
+  const u=ud.data;for(let i=0;i<n;i++){const th=closed[i]-Lh[i];let k=(th-.06)/.1;k=k<0?0:k>1?1:k;k=k*k*(3-2*k);u[i*4+3]=Math.round(u[i*4+3]*(1-k))}
+  ug.putImageData(ud,0,0);
+  onP&&onP(.55);await tick();
+  const out=await refineMask(up,{radius:clamp(Math.round(long*ps/220),3,24),eps:.0007,contrast:25,shift:0},ps,p=>onP&&onP(.55+.4*p));
+  SKY.last.msTotal=Math.round(performance.now()-t0);
+  return out};
+
+SKY.select=async()=>{const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}
+  busy(true,'Recherche du ciel…',0);let m=null;
+  try{await tick();m=await SKY.mask(p=>busy(true,'Recherche du ciel…',p))}
+  catch(e){console.error(e);busy(false);toast('Sélection du ciel impossible : '+(e.message||e),5000);return}
+  busy(false);if(S.doc!==d)return;
+  if(!m||!maskBBox(m)){toast('Aucun ciel trouvé dans cette photo',4000);return}
+  combineSel(m,'new','Sélectionner le ciel');toast('Ciel sélectionné. Contour progressif ou Affiner le contour pour ajuster.',4500)};
+AI.selectSky=SKY.select;AI.skyMask=SKY.mask;
+
+(()=>{const mi=MENU2.select.items;MENU2.select.items=()=>{const a=mi();let i=a.findIndex(x=>x&&x.label&&/Détourer le sujet/.test(x.label));if(i<0)i=a.findIndex(x=>x&&x.label&&/Sélectionner le sujet/.test(x.label));
+  a.splice(i<0?a.length:i+1,0,MI('Sélectionner le ciel',{icon:'subject',fn:()=>SKY.select(),dis:docDis()}));return a}})();
+
+}
+
+/* ===== feat: feat/stack.js ===== */
+{
+/* Empilement de mise au point (focus stacking) : alignement similitude (décalage + échelle + rotation) pyramidal,
+   fusion par pyramide laplacienne pondérée par la netteté locale (type Mertens), calques alignés + masques optionnels. */
+(()=>{
+const STK_MIN=2,STK_MAX=30;
+/* ---------- plans flottants : réduction / agrandissement / flou ---------- */
+function red(a,w,h){const w2=(w+1)>>1,h2=(h+1)>>1,t=new Float32Array(w2*h),o=new Float32Array(w2*h2);
+  for(let y=0;y<h;y++){const r=y*w,q=y*w2;for(let i=0;i<w2;i++){const x=2*i,x0=x>0?x-1:0,x2=x+1<w?x+1:w-1,x3=x+2<w?x+2:w-1;t[q+i]=(a[r+x0]+3*a[r+x]+3*a[r+x2]+a[r+x3])*.125}}
+  for(let j=0;j<h2;j++){const y=2*j,y0=y>0?y-1:0,y2=y+1<h?y+1:h-1,y3=y+2<h?y+2:h-1,r0=y0*w2,r1=y*w2,r2=y2*w2,r3=y3*w2,q=j*w2;for(let i=0;i<w2;i++)o[q+i]=(t[r0+i]+3*t[r1+i]+3*t[r2+i]+t[r3+i])*.125}
+  return o}
+function expd(a,w,h,W,H){const o=new Float32Array(W*H),xi=new Int32Array(W),xf=new Float32Array(W);
+  for(let x=0;x<W;x++){let s=(x+.5)*w/W-.5;if(s<0)s=0;if(s>w-1)s=w-1;const i=Math.floor(s);xi[x]=i;xf[x]=s-i}
+  for(let y=0;y<H;y++){let s=(y+.5)*h/H-.5;if(s<0)s=0;if(s>h-1)s=h-1;const j=Math.floor(s),fy=s-j,j1=j+1<h?j+1:j,r0=j*w,r1=j1*w,ob=y*W;
+    for(let x=0;x<W;x++){const i=xi[x],i1=i+1<w?i+1:i,fx=xf[x],t=a[r0+i]+(a[r0+i1]-a[r0+i])*fx,b=a[r1+i]+(a[r1+i1]-a[r1+i])*fx;o[ob+x]=t+(b-t)*fy}}
+  return o}
+function box(a,w,h,r){if(r<1)return a;const t=new Float32Array(a.length),o=new Float32Array(a.length),k=1/(2*r+1);
+  for(let y=0;y<h;y++){const b=y*w;let s=0;for(let x=-r;x<=r;x++)s+=a[b+(x<0?0:x>=w?w-1:x)];for(let x=0;x<w;x++){t[b+x]=s*k;s+=a[b+(x+r+1>=w?w-1:x+r+1)]-a[b+(x-r<0?0:x-r)]}}
+  for(let x=0;x<w;x++){let s=0;for(let y=-r;y<=r;y++)s+=t[(y<0?0:y>=h?h-1:y)*w+x];for(let y=0;y<h;y++){o[y*w+x]=s*k;s+=t[(y+r+1>=h?h-1:y+r+1)*w+x]-t[(y-r<0?0:y-r)*w+x]}}
+  return o}
+function blur3(a,w,h){const t=new Float32Array(a.length),o=new Float32Array(a.length);
+  for(let y=0;y<h;y++){const b=y*w;for(let x=0;x<w;x++){const l=a[b+(x>0?x-1:0)],r=a[b+(x<w-1?x+1:x)];t[b+x]=(l+2*a[b+x]+r)*.25}}
+  for(let y=0;y<h;y++){const u=(y>0?y-1:0)*w,d=(y<h-1?y+1:y)*w,b=y*w;for(let x=0;x<w;x++)o[b+x]=(t[u+x]+2*t[b+x]+t[d+x])*.25}
+  return o}
+/* ---------- alignement : Lucas-Kanade similitude (échelle, rotation, décalage) sur pyramide ---------- */
+function grayPyr(cv){const w=cv.width,h=cv.height,a=new Float32Array(w*h);
+  {const d=rx(cv).getImageData(0,0,w,h).data;for(let i=0,n=w*h;i<n;i++)a[i]=.299*d[i*4]+.587*d[i*4+1]+.114*d[i*4+2]}
+  let m=0;for(let i=0;i<a.length;i++)m+=a[i];m/=a.length;let v=0;for(let i=0;i<a.length;i++){const e=a[i]-m;v+=e*e}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]=(a[i]-m)/sd;
+  const L=[];let cur=a,cw=w,ch=h;
+  for(;;){const bl=blur3(cur,cw,ch);L.push({a:bl,w:cw,h:ch});if(Math.min(cw,ch)<96)break;cur=red(blur3(bl,cw,ch),cw,ch);cw=(cw+1)>>1;ch=(ch+1)>>1}
+  return L}
+function solve4(H,g){const n=4,A=[];for(let i=0;i<n;i++){A.push([H[i*4],H[i*4+1],H[i*4+2],H[i*4+3],g[i]])}
+  for(let i=0;i<n;i++){let p=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[p][i]))p=r;if(Math.abs(A[p][i])<1e-12)return null;[A[i],A[p]]=[A[p],A[i]];
+    for(let r=i+1;r<n;r++){const f=A[r][i]/A[i][i];for(let c=i;c<=n;c++)A[r][c]-=f*A[i][c]}}
+  const x=[0,0,0,0];for(let i=n-1;i>=0;i--){let s=A[i][n];for(let c=i+1;c<n;c++)s-=A[i][c]*x[c];x[i]=s/A[i][i]}return x}
+/* p = {a,b,tx,ty} : x_B = c + [[1+a,-b],[b,1+a]](x_A-c) + t   (coordonnées du niveau) */
+function lkLevel(A,B,p,iters,fixAB){const w=A.w,h=A.h,aa=A.a,bb=B.a,cxx=(w-1)/2,cyy=(h-1)/2,stride=Math.max(1,Math.floor(Math.sqrt(w*h/160000)));let sc=1e9,ok=true;
+  for(let it=0;it<iters;it++){const H=new Float64Array(16),g=new Float64Array(4);let n=0,sa=0;
+    for(let y=2;y<h-2;y+=stride){const v=y-cyy;for(let x=2;x<w-2;x+=stride){const u=x-cxx,xs=cxx+(1+p.a)*u-p.b*v+p.tx,ys=cyy+p.b*u+(1+p.a)*v+p.ty;
+      if(xs<1||ys<1||xs>=w-2||ys>=h-2)continue;const ix=xs|0,iy=ys|0,fx=xs-ix,fy=ys-iy,o=iy*w+ix,v00=bb[o],v10=bb[o+1],v01=bb[o+w],v11=bb[o+w+1];
+      const val=v00*(1-fx)*(1-fy)+v10*fx*(1-fy)+v01*(1-fx)*fy+v11*fx*fy,gx=(1-fy)*(v10-v00)+fy*(v11-v01),gy=(1-fx)*(v01-v00)+fx*(v11-v10);
+      const io=y*w+x,ax=aa[io+1]-aa[io-1],ay=aa[io+w]-aa[io-w],ga=.5*Math.sqrt(ax*ax+ay*ay),gb=Math.sqrt(gx*gx+gy*gy),rr=((ga<gb?ga:gb)+.01)/((ga<gb?gb:ga)+.01),r=val-aa[io],wt=rr*rr/(1+(r*r)/(sc*sc)),j0=gx*u+gy*v,j1=-gx*v+gy*u,j2=gx,j3=gy;n++;sa+=Math.abs(r);
+      H[0]+=wt*j0*j0;H[1]+=wt*j0*j1;H[2]+=wt*j0*j2;H[3]+=wt*j0*j3;H[5]+=wt*j1*j1;H[6]+=wt*j1*j2;H[7]+=wt*j1*j3;H[10]+=wt*j2*j2;H[11]+=wt*j2*j3;H[15]+=wt*j3*j3;
+      g[0]-=wt*j0*r;g[1]-=wt*j1*r;g[2]-=wt*j2*r;g[3]-=wt*j3*r}}
+    if(n<80){ok=false;break}
+    H[4]=H[1];H[8]=H[2];H[9]=H[6];H[12]=H[3];H[13]=H[7];H[14]=H[11];for(let i=0;i<4;i++)H[i*5]*=1.0005;
+    let d;if(fixAB){const a=H[10],b=H[11],c=H[15],det=a*c-b*b;if(det<1e-12){ok=false;break}d=[0,0,(g[2]*c-g[3]*b)/det,(g[3]*a-g[2]*b)/det]}else d=solve4(H,g);if(!d){ok=false;break}
+    p.a+=d[0];p.b+=d[1];p.tx+=d[2];p.ty+=d[3];sc=Math.max(.05,1.5*sa/n);
+    if(Math.abs(p.a)>.05||Math.abs(p.b)>.04||Math.abs(p.tx)>w*.5||Math.abs(p.ty)>h*.5){ok=false;break}
+    if(Math.hypot(d[2],d[3])<.005&&Math.abs(d[0])<2e-6&&Math.abs(d[1])<2e-6)break}
+  return ok}
+function cost(A,B,p){const w=A.w,h=A.h,aa=A.a,bb=B.a,cxx=(w-1)/2,cyy=(h-1)/2,stride=Math.max(1,Math.floor(Math.sqrt(w*h/120000)));let s=0,n=0;
+  for(let y=2;y<h-2;y+=stride){const v=y-cyy;for(let x=2;x<w-2;x+=stride){const u=x-cxx,xs=cxx+(1+p.a)*u-p.b*v+p.tx,ys=cyy+p.b*u+(1+p.a)*v+p.ty;if(xs<1||ys<1||xs>=w-2||ys>=h-2)continue;
+    const ix=xs|0,iy=ys|0,fx=xs-ix,fy=ys-iy,o=iy*w+ix,val=bb[o]*(1-fx)*(1-fy)+bb[o+1]*fx*(1-fy)+bb[o+w]*(1-fx)*fy+bb[o+w+1]*fx*fy;s+=Math.abs(val-aa[y*w+x]);n++}}
+  return n>50?s/n:1e9}
+/* estime la transformation (coordonnées de A -> coordonnées de B), A et B pyramides de gris */
+function estimate(PA,PB){const nl=Math.min(PA.length,PB.length),top=nl-1;let p={a:0,b:0,tx:0,ty:0};
+  /* recherche entière du décalage au niveau le plus grossier */
+  {const A=PA[top],B=PB[top],w=A.w,h=A.h,R=Math.max(3,Math.round(Math.min(w,h)*.08));let best=1e18,bx=0,by=0;
+    for(let sy=-R;sy<=R;sy++)for(let sx=-R;sx<=R;sx++){let s=0,n=0;const x0=Math.max(0,-sx),x1=Math.min(w,w-sx),y0=Math.max(0,-sy),y1=Math.min(h,h-sy);if(x1-x0<w*.4||y1-y0<h*.4)continue;
+      for(let y=y0;y<y1;y++){const ra=y*w,rb=(y+sy)*w+sx;for(let x=x0;x<x1;x++){const e=A.a[ra+x]-B.a[rb+x];s+=e*e;n++}}
+      s/=n;if(s<best){best=s;bx=sx;by=sy}}
+    /* B(x+s)≈A(x) : x_B = x_A + s */ p.tx=bx;p.ty=by}
+  /* niveaux grossiers : décalage seul ; ensuite échelle et rotation libres. Chaque étape n'est gardée que si elle réduit l'erreur */
+  let okAll=true,hist=[];
+  for(let l=top;l>=0;l--){const coarse=Math.min(PA[l].w,PA[l].h)<160&&l>0,it=l===top?14:l>top-3?8:l>0?6:8,q={...p},before=cost(PA[l],PB[l],p);
+    const okl=lkLevel(PA[l],PB[l],q,it,coarse);if(okl&&cost(PA[l],PB[l],q)<=before*1.02)p=q;else if(l>=top-1)okAll=false;
+    if(l>0){p.tx*=2;p.ty*=2}}
+  /* garde-fou : au niveau d'environ 400 px, l'estimation doit faire mieux que l'identité */
+  const lc=Math.max(0,PA.findIndex(x=>Math.min(x.w,x.h)<400)-1)||0;const sh=Math.pow(2,lc);const pc={a:p.a,b:p.b,tx:p.tx/sh,ty:p.ty/sh};
+  if(cost(PA[lc],PB[lc],pc)>cost(PA[lc],PB[lc],{a:0,b:0,tx:0,ty:0})*1.0){okAll=false}
+  return{p,ok:okAll}}
+const m3=(P,M)=>[P[0]*M[0]+P[1]*M[3],P[0]*M[1]+P[1]*M[4],P[0]*M[2]+P[1]*M[5]+P[2],P[3]*M[0]+P[4]*M[3],P[3]*M[1]+P[4]*M[4],P[3]*M[2]+P[4]*M[5]+P[5]];
+/* m: [m00,m01,m02,m10,m11,m12] : x' = m00 x + m01 y + m02 ... */
+function inv3(m){const d=m[0]*m[4]-m[1]*m[3];const a=m[4]/d,b=-m[1]/d,c=-m[3]/d,e=m[0]/d;return[a,b,-(a*m[2]+b*m[5]),c,e,-(c*m[2]+e*m[5])]}
+function pToM(p,w,h){const cxx=(w-1)/2,cyy=(h-1)/2,A=1+p.a,B=p.b;return[A,-B,cxx-A*cxx+B*cyy+p.tx,B,A,cyy-B*cxx-A*cyy+p.ty]}
+const apply=(m,x,y)=>[m[0]*x+m[1]*y+m[2],m[3]*x+m[4]*y+m[5]];
+/* ---------- pyramides couleur et énergie de netteté ---------- */
+function levelsFor(w,h){return Math.max(2,Math.min(9,Math.floor(Math.log2(Math.min(w,h)))-3))}
+function pyrLap(P,w,h,n){/* P: [R,G,B] Float32 ; renvoie les niveaux laplaciens + résidu (en place) */
+  const G=[{p:P,w,h}];for(let l=1;l<n;l++){const q=G[l-1];G.push({p:q.p.map(c=>red(c,q.w,q.h)),w:(q.w+1)>>1,h:(q.h+1)>>1})}
+  for(let l=0;l<n-1;l++){const g=G[l],u=G[l+1];g.p=g.p.map((c,i)=>{const e=expd(u.p[i],u.w,u.h,g.w,g.h);for(let k=0;k<c.length;k++)c[k]-=e[k];return c})}
+  return G}
+function sharpEnergy(L,liss,sc){const m=Math.min(3,L.length-1);let acc=null;
+  for(let l=m-1;l>=0;l--){const q=L[l],n=q.w*q.h,lum=new Float32Array(n),R=q.p[0],G=q.p[1],B=q.p[2];for(let k=0;k<n;k++)lum[k]=Math.abs(.299*R[k]+.587*G[k]+.114*B[k]);
+    const r=Math.max(1,Math.round((2+liss*.08*sc)/(1<<l))),e=box(lum,q.w,q.h,r),wl=l===0?.5:1;
+    if(acc){const u=expd(acc,L[l+1].w,L[l+1].h,q.w,q.h);for(let k=0;k<n;k++)e[k]=e[k]*wl+u[k]}else if(wl!==1)for(let k=0;k<n;k++)e[k]*=wl;
+    acc=e}
+  return acc}
+const EPS=.01,PB=6;
+function weightMap(E,valid,liss){const n=E.length,o=new Float32Array(n),p=Math.round(PB-2*liss/100);
+  for(let k=0;k<n;k++){if(valid&&!valid[k]){o[k]=0;continue}const x=E[k]*10+EPS,x2=x*x,x4=x2*x2;o[k]=p>=8?x4*x4:p>=6?x4*x2:p===5?x4*x:x4}
+  return o}
+/* ---------- chargement d'une image dans un plan flottant ---------- */
+function planesOf(cv){const w=cv.width,h=cv.height,n=w*h,R=new Float32Array(n),G=new Float32Array(n),B=new Float32Array(n);
+  {const d=rx(cv).getImageData(0,0,w,h).data;for(let i=0;i<n;i++){R[i]=d[i*4]/255;G[i]=d[i*4+1]/255;B[i]=d[i*4+2]/255}}
+  return[R,G,B]}
+const yieldUI=()=>new Promise(r=>setTimeout(r,0));
+/* ---------- coeur : frames = {n, get(i)->Promise<canvas>} ---------- */
+async function stackRun(frames,opts){opts=opts||{};const n=frames.n,liss=opts.liss==null?30:opts.liss,t0=performance.now(),prog=opts.progress||(()=>{});
+  if(n<STK_MIN||n>STK_MAX)throw new Error('choisissez entre '+STK_MIN+' et '+STK_MAX+' photos');
+  const ref=Math.floor((n-1)/2),refC=await frames.get(ref),W=refC.width,H=refC.height,info={ref,W,H,n,lkFail:0};
+  const fit=(c)=>{if(c.width===W&&c.height===H)return c;const t=mk(W,H),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(c,0,0,W,H);return t};
+  /* 1. alignement de proche en proche à partir de la photo centrale */
+  const M=new Array(n);M[ref]=[1,0,0,0,1,0];prog(0,'Alignement des photos…');await yieldUI();
+  const pyrRef=grayPyr(refC);let t1=performance.now();
+  for(const dir of [1,-1]){let prevP=pyrRef,prevM=M[ref];
+    for(let k=ref+dir;k>=0&&k<n;k+=dir){const c=fit(await frames.get(k)),pk=grayPyr(c),e=estimate(prevP,pk);
+      if(!e.ok){info.lkFail++;}
+      const P=e.ok?pToM(e.p,W,H):[1,0,0,0,1,0];M[k]=m3(P,prevM);prevP=pk;prevM=M[k];
+      prog(.18*((Math.abs(k-ref))/Math.max(1,n-1)),'Alignement des photos…');await yieldUI()}}
+  info.alignMs=performance.now()-t1;info.M=M;
+  /* 2. fusion en flux : une photo à la fois */
+  const lv=levelsFor(W,H),sc=Math.max(1,Math.min(W,H)/1000),acc=[],masks=opts.layers?[]:null,aligned=opts.layers?[]:null;let den0=null;
+  const cov=mk(W,H);rx(cov);
+  for(let k=0;k<n;k++){const raw=fit(await frames.get(k));let c=raw,valid=null;
+    const id=Math.abs(M[k][0]-1)<1e-9&&Math.abs(M[k][4]-1)<1e-9&&Math.abs(M[k][2])<1e-6&&Math.abs(M[k][5])<1e-6&&Math.abs(M[k][1])<1e-9;
+    if(!id){const iv=inv3(M[k]),t=mk(W,H),g=rx(t);g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.drawImage(raw,0,0);g.setTransform(iv[0],iv[3],iv[1],iv[4],iv[2],iv[5]);g.drawImage(raw,0,0);c=t;
+      const cg=rx(cov);cg.setTransform(1,0,0,1,0,0);cg.clearRect(0,0,W,H);cg.setTransform(iv[0],iv[3],iv[1],iv[4],iv[2],iv[5]);cg.fillStyle='#fff';cg.fillRect(0,0,W,H);
+      const al=new Float32Array(W*H);{const d=rx(cov).getImageData(0,0,W,H).data;for(let i=0,m=W*H;i<m;i++)al[i]=d[i*4+3]>=250?1:0}
+      const bl=box(al,W,H,2);valid=new Uint8Array(W*H);let any=false;for(let i=0;i<valid.length;i++){const v=bl[i]>.999?1:0;valid[i]=v;if(!v)any=true}if(!any)valid=null}
+    prog(.2+.7*(k+.1)/n,'Fusion des photos…');await yieldUI();
+    const P=planesOf(c),Gp=pyrLap(P,W,H,lv),E=sharpEnergy(Gp,liss,sc),wm=weightMap(E,valid,liss);
+    /* accumulation : somme pondérée de chaque niveau laplacien par la pyramide gaussienne des poids */
+    let wl=wm,ww=W,hh=H;
+    for(let l=0;l<Gp.length;l++){const q=Gp[l],m=q.w*q.h;let A=acc[l];if(!A)A=acc[l]={w:q.w,h:q.h,n:[new Float32Array(m),new Float32Array(m),new Float32Array(m)],d:new Float32Array(m)};
+      const n0=A.n[0],n1=A.n[1],n2=A.n[2],d=A.d,p0=q.p[0],p1=q.p[1],p2=q.p[2];
+      for(let i=0;i<m;i++){const v=wl[i];d[i]+=v;n0[i]+=v*p0[i];n1[i]+=v*p1[i];n2[i]+=v*p2[i]}
+      if(l===0)den0=d;
+      if(l<Gp.length-1){wl=red(wl,ww,hh);ww=(ww+1)>>1;hh=(hh+1)>>1}}
+    if(masks){/* masque cumulatif : l'empilement des calques en mode normal reproduit la moyenne pondérée */
+      const mk8=new Uint8Array(W*H);for(let i=0;i<mk8.length;i++){const d=den0[i];mk8[i]=d>1e-30?Math.min(255,Math.round(255*wm[i]/d)):255}
+      masks.push(mk8);aligned.push(c)}
+    prog(.2+.7*(k+1)/n,'Fusion des photos…');await yieldUI()}
+  /* 3. reconstruction */
+  prog(.92,'Reconstruction…');await yieldUI();
+  let cur=null;
+  for(let l=acc.length-1;l>=0;l--){const A=acc[l],m=A.d.length,r=[0,1,2].map(ci=>{const o=new Float32Array(m),nn=A.n[ci],d=A.d;for(let i=0;i<m;i++)o[i]=d[i]>1e-30?nn[i]/d[i]:0;return o});
+    if(cur)for(let ci=0;ci<3;ci++){const e=expd(cur[ci],acc[l+1].w,acc[l+1].h,A.w,A.h),o=r[ci];for(let i=0;i<m;i++)o[i]+=e[i]}
+    cur=r;acc[l+1]&&(acc[l+1]=null)}
+  const out=mk(W,H),og=cx(out);
+  for(let y0=0;y0<H;y0+=256){const bh=Math.min(256,H-y0),im=og.createImageData(W,bh),d=im.data,o=y0*W;
+    for(let i=0,m=W*bh;i<m;i++){const r=cur[0][o+i],g=cur[1][o+i],b=cur[2][o+i];d[i*4]=r<0?0:r>1?255:r*255+.5;d[i*4+1]=g<0?0:g>1?255:g*255+.5;d[i*4+2]=b<0?0:b>1?255:b*255+.5;d[i*4+3]=255}
+    og.putImageData(im,0,y0)}
+  info.ms=performance.now()-t0;
+  return{canvas:out,masks,aligned,info}}
+/* ---------- sources : fichiers ou calques ---------- */
+const pickMany_=()=>new Promise(res=>{const i=document.createElement('input');i.type='file';i.multiple=true;i.accept='image/*,.heic,.heif,.tif,.tiff,'+RAW_ACCEPT;i.onchange=()=>res([...i.files]);i.oncancel=()=>res([]);i.click()});
+async function decodeTo(f,W,H){let bm=null;if(!RAW_EXT.test(f.name||'')&&!/\.(heic|heif|avif|tiff?)$/i.test(f.name||'')){try{bm=await createImageBitmap(f)}catch(e){}}
+  let src=bm;if(!bm){src=await styleFromFile(f)}
+  const sw=src.width,sh=src.height;if(!W){const cap=stackCap(),s=Math.min(1,Math.sqrt(cap/(sw*sh)));W=Math.round(sw*s);H=Math.round(sh*s)}
+  const c=mk(W,H),g=rx(c);g.imageSmoothingQuality='high';g.drawImage(src,0,0,W,H);bm&&bm.close&&bm.close();return c}
+/* plafond de pixels de travail selon la mémoire (traitement par photo entière) */
+function stackCap(){const mem=navigator.deviceMemory||8;return Math.min(MAX_PX,mem>=8?24e6:mem>=4?12e6:6e6)}
+function fileFrames(files){let dims=null;const cache=new Map();let keep=true;
+  return{n:files.length,async get(i){if(cache.has(i))return cache.get(i);let c;
+    if(!dims){const t=await decodeTo(files[i]);dims=[t.width,t.height];c=t}else c=await decodeTo(files[i],dims[0],dims[1]);
+    if(keep&&files.length*dims[0]*dims[1]<=110e6)cache.set(i,c);return c}}}
+function layerFrames(Ls){const cap=stackCap();return{n:Ls.length,async get(i){const c=Ls[i].canvas,s=Math.min(1,Math.sqrt(cap/(c.width*c.height))),t=mk(Math.round(c.width*s),Math.round(c.height*s)),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(c,0,0,t.width,t.height);return t}}}
+function maskCanvas(m8,W,H){const c=mk(W,H),g=cx(c);for(let y0=0;y0<H;y0+=256){const bh=Math.min(256,H-y0),im=g.createImageData(W,bh),d=im.data,o=y0*W;for(let i=0,n=W*bh;i<n;i++){d[i*4]=d[i*4+1]=d[i*4+2]=255;d[i*4+3]=m8[o+i]}g.putImageData(im,0,y0)}return c}
+/* ---------- action complète : calcule puis ouvre le résultat dans un nouveau document ---------- */
+async function stackCommand(frames,opts){opts=opts||{};busy(true,'Empilement de mise au point…',0);await tick();
+  try{const prog=(p,m)=>busy(true,m,p);const r=await stackRun(frames,{liss:opts.liss,layers:opts.layers,progress:prog});
+    const W=r.info.W,H=r.info.H;let names=opts.names||[];
+    if(r.masks&&r.info.n*W*H>260e6){r.masks=null;r.aligned=null;toast('Trop de pixels pour garder les calques : seul le résultat est créé',5000)}
+    busy(true,'Création du document…',.97);await tick();
+    setDoc(r.canvas,'empilement.jpg',{});
+    if(r.masks&&S.doc){const d=S.doc,Ls=[];for(let k=0;k<r.masks.length;k++){const L=newPixel(names[k]||('Prise '+(k+1)),r.aligned[k]);L.mask=maskCanvas(r.masks[k],W,H);r.masks[k]=null;Ls.push(L)}
+      d.layers.splice(1,0,...Ls);d.active=1+Ls.length-1;S.history=[];S.hi=-1;markComp();pushHistory('Empilement de mise au point');syncAll()}
+    busy(false);let mx=0;for(const m of r.info.M){const q=m.slice();mx=Math.max(mx,Math.hypot(q[2],q[5]))}
+    toast('Empilement terminé : '+r.info.n+' photos alignées (décalage max '+mx.toFixed(1)+' px)'+(r.masks?'. Les masques des calques se retouchent au pinceau.':'.')+(r.info.lkFail?' '+r.info.lkFail+' photo(s) non alignées automatiquement.':''),7000);
+    window.PrismStack.last=r.info;return r}
+  catch(e){busy(false);console.error(e);toast('Empilement impossible : '+(e.message||e),5000)}}
+function stackDialog(){const d=S.doc,Ls=d?d.layers.filter(L=>L.kind==='pixel'&&L.canvas&&!L.editMask):[],canL=Ls.length>=2&&Ls.length<=STK_MAX;
+  dialog({title:'Empilement de mise au point',light:true,body:`<p class="muted" style="margin:0 0 10px">Fusionne plusieurs prises faites à des mises au point différentes pour obtenir une photo nette partout. Les prises sont alignées automatiquement (décalage, échelle, légère rotation).</p>
+  <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="stkSrc" value="files" checked> Choisir de ${STK_MIN} à ${STK_MAX} photos</label>
+  <label style="display:flex;gap:6px;align-items:center;${canL?'':'opacity:.5'}"><input type="radio" name="stkSrc" value="layers" ${canL?'':'disabled'}> Utiliser les calques du document${canL?' ('+Ls.length+')':''}</label></div>
+  ${rangeRow('stkL','Lissage',0,100,1,30,'')}
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="stkK" checked> Garder les prises alignées en calques avec masques</label>`,
+  onOpen:el=>{const r=$('#stkL',el),o=$('#stkL-o',el);r.addEventListener('input',()=>{o.textContent=r.value})},
+  buttons:[{label:'Annuler'},{label:'Empiler',primary:true,onClick:el=>{const src=(el.querySelector('input[name=stkSrc]:checked')||{}).value,liss=+$('#stkL',el).value,keep=$('#stkK',el).checked;
+    if(src==='layers'&&canL){stackCommand(layerFrames(Ls),{liss,layers:keep,names:Ls.map(L=>L.name)});return}
+    pickMany_().then(fs=>{if(fs.length<STK_MIN){if(fs.length)toast('Choisissez au moins deux photos');return}if(fs.length>STK_MAX){toast('Trente photos au maximum');return}
+      fs.sort((a,b)=>(a.name||'').localeCompare(b.name||'',undefined,{numeric:true}));stackCommand(fileFrames(fs),{liss,layers:keep,names:fs.map(f=>(f.name||'').replace(/\.[^.]+$/,''))})})}}]})}
+/* ---------- menu Fichier > Photos multiples + palette Ctrl+K ---------- */
+const _mf=MENU2.file.items;
+MENU2.file.items=()=>{const a=_mf();const g=a.find(x=>x&&x.label==='Photos multiples'&&typeof x.sub==='function');const it=MI('Empilement de mise au point…',{fn:stackDialog});
+  if(g){const s0=g.sub;if(!g.__stk){g.__stk=1;g.sub=()=>{const b=s0();return b.some(x=>x&&x.label===it.label)?b:[...b,it]}}}
+  else if(!a.some(x=>x&&x.label===it.label)){const k=a.findIndex(x=>x&&x.label==='Panorama…');if(k>=0)a.splice(k+1,0,it);else a.push(SEP,it)}
+  return a};
+window.PrismStack={run:stackRun,command:stackCommand,dialog:stackDialog,fileFrames,layerFrames,estimate,grayPyr,pToM,inv3,apply,cap:stackCap};
+})();
+
+}
 </script>
 
 

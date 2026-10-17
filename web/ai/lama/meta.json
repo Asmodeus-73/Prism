@@ -1,0 +1,1 @@
+{"model": "big-lama", "chunks": 5, "sizes": [13671351, 13671351, 13671351, 13671351, 13671348], "total": 68356752, "fmt": "onnx-int8w-dynamic-hw"}
