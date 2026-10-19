@@ -6342,17 +6342,32 @@ function boxBlur(a,w,h,r){const t=new Float32Array(a.length),o=new Float32Array(
   return o}
 
 async function fuseExposures(files){busy(true,'Fusion des expositions…',0);await tick();
-  try{const imgs=[];for(const f of files)imgs.push(await loadScaled(f,3200));const W=imgs[0].width,H=imgs[0].height;let moved=0;
+  try{const imgs=[];const cap=(navigator.deviceMemory||8)>=8&&!IS_IOS?5000:3200;for(const f of files)imgs.push(await loadScaled(f,cap));const W=imgs[0].width,H=imgs[0].height;let moved=0;
     for(let k=1;k<imgs.length;k++){const sh=alignShift(imgs[0],imgs[k]);if(Math.abs(sh.x)>=.5||Math.abs(sh.y)>=.5){const t2=mk(W,H);const g=cx(t2);g.imageSmoothingQuality='high';g.drawImage(sameSize(imgs[0],imgs[k]),sh.x,sh.y);imgs[k]=t2;moved++}else imgs[k]=sameSize(imgs[0],imgs[k]);busy(true,'Alignement des photos…',k/imgs.length/2);await tick()}
-    const datas=imgs.map(c=>cx(c).getImageData(0,0,W,H).data);
-    const n=W*H,ws=[];let k=0;
-    for(const d of datas){const w=new Float32Array(n),gray=new Float32Array(n);
+    const datas=imgs.map(c=>cx(c).getImageData(0,0,W,H).data),n=W*H,N=datas.length;
+    /* Mertens exposure fusion: per-pixel weights (contrast × saturation × well-exposedness), blended through Laplacian pyramids so that no halo appears */
+    const ws=[];for(let k=0;k<N;k++){const d=datas[k],w=new Float32Array(n),gray=new Float32Array(n);
       for(let i=0;i<n;i++){const r=d[i*4]/255,g=d[i*4+1]/255,b=d[i*4+2]/255;gray[i]=.299*r+.587*g+.114*b;const mean=(r+g+b)/3,sat=Math.sqrt(((r-mean)**2+(g-mean)**2+(b-mean)**2)/3);
-        const ex=Math.exp(-((r-.5)**2+(g-.5)**2+(b-.5)**2)/(2*.2*.2));w[i]=d[i*4+3]===0?1e-9:(sat+.02)*ex+1e-6}
-      for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,lap=Math.abs(4*gray[i]-gray[i-1]-gray[i+1]-gray[i-W]-gray[i+W]);w[i]*=(lap+.01)}
-      ws.push(boxBlur(w,W,H,Math.max(3,Math.round(Math.min(W,H)/80))));busy(true,'Fusion des expositions…',.5+(++k)/(datas.length*2));await tick()}
+        w[i]=d[i*4+3]===0?0:(sat+.03)*Math.exp(-((r-.5)**2+(g-.5)**2+(b-.5)**2)/(2*.2*.2))}
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,l=gray[x>0?i-1:i],r=gray[x<W-1?i+1:i],u=gray[y>0?i-W:i],dn=gray[y<H-1?i+W:i];w[i]=w[i]*(Math.abs(4*gray[i]-l-r-u-dn)+.02)+1e-12}
+      ws.push(w);busy(true,'Fusion des expositions…',.5+(k+1)/N*.15);await tick()}
+    for(let i=0;i<n;i++){let s=0;for(let k=0;k<N;k++)s+=ws[k][i];for(let k=0;k<N;k++)ws[k][i]/=s}
+    const blur5=(a,w,h)=>{const t=new Float32Array(w*h),o=new Float32Array(w*h),K=[1/16,4/16,6/16,4/16,1/16];
+      for(let y=0;y<h;y++){const r=y*w;for(let x=0;x<w;x++){let s=0;for(let k=-2;k<=2;k++){let xx=x+k;xx=xx<0?-xx:xx>=w?2*w-2-xx:xx;s+=a[r+Math.max(0,Math.min(w-1,xx))]*K[k+2]}t[r+x]=s}}
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0;for(let k=-2;k<=2;k++){let yy=y+k;yy=yy<0?-yy:yy>=h?2*h-2-yy:yy;s+=t[Math.max(0,Math.min(h-1,yy))*w+x]*K[k+2]}o[y*w+x]=s}return o};
+    const down=(a,w,h)=>{const b=blur5(a,w,h),w2=(w+1)>>1,h2=(h+1)>>1,o=new Float32Array(w2*h2);for(let y=0;y<h2;y++)for(let x=0;x<w2;x++)o[y*w2+x]=b[(2*y)*w+2*x];return o};
+    const up=(a,w2,h2,w,h)=>{const o=new Float32Array(w*h);for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2)o[y*w+x]=a[(y>>1)*w2+(x>>1)]*4;return blur5(o,w,h)};
+    const dims=[[W,H]];while(dims.length<12){const [w,h]=dims[dims.length-1];if(Math.min(w,h)<16)break;dims.push([(w+1)>>1,(h+1)>>1])}const LV=dims.length;
+    const res=[0,1,2].map(()=>dims.map(([w,h])=>new Float32Array(w*h)));
+    for(let k=0;k<N;k++){let wp=ws[k];const wpyr=[wp];for(let l=1;l<LV;l++){wp=down(wp,dims[l-1][0],dims[l-1][1]);wpyr.push(wp)}ws[k]=null;
+      for(let c=0;c<3;c++){let g=new Float32Array(n);const d=datas[k];for(let i=0;i<n;i++)g[i]=d[i*4+c]/255;
+        for(let l=0;l<LV;l++){const [w,h]=dims[l],R=res[c][l],Wl=wpyr[l];if(l===LV-1){for(let i=0;i<w*h;i++)R[i]+=Wl[i]*g[i];break}
+          const g2=down(g,w,h),u=up(g2,dims[l+1][0],dims[l+1][1],w,h);for(let i=0;i<w*h;i++)R[i]+=Wl[i]*(g[i]-u[i]);g=g2}}
+      busy(true,'Fusion des expositions…',.65+(k+1)/N*.3);await tick()}
     const out=mk(W,H),og=cx(out),oi=og.createImageData(W,H),od=oi.data;
-    for(let i=0;i<n;i++){let s=0;for(let j=0;j<ws.length;j++)s+=ws[j][i];let r=0,g=0,b=0;for(let j=0;j<ws.length;j++){const a=ws[j][i]/s;r+=datas[j][i*4]*a;g+=datas[j][i*4+1]*a;b+=datas[j][i*4+2]*a}od[i*4]=r;od[i*4+1]=g;od[i*4+2]=b;od[i*4+3]=255}
+    for(let c=0;c<3;c++){let a=res[c][LV-1];for(let l=LV-2;l>=0;l--){const [w,h]=dims[l],u=up(a,dims[l+1][0],dims[l+1][1],w,h),R=res[c][l];for(let i=0;i<w*h;i++)u[i]+=R[i];a=u}
+      for(let i=0;i<n;i++)od[i*4+c]=Math.max(0,Math.min(255,a[i]*255+.5))}
+    for(let i=0;i<n;i++)od[i*4+3]=255;
     og.putImageData(oi,0,0);busy(false);setDoc(out,'fusion-expositions.jpg',{});toast('Expositions fusionnées'+(moved?' (alignement corrigé sur '+moved+' photo'+(moved>1?'s':'')+')':'')+'. Un petit décalage est corrigé, pas une rotation.',6000)
   }catch(e){busy(false);console.error(e);toast('Fusion impossible : '+(e.message||e),5000)}}
 async function fusionDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fuseExposures(fs)}
