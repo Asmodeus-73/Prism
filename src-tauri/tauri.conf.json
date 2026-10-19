@@ -39,7 +39,11 @@
       },
       "dangerousDisableAssetCspModification": [
         "style-src"
-      ]
+      ],
+      "headers": {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp"
+      }
     }
   },
   "bundle": {
@@ -71,7 +75,10 @@
         ]
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "onnxruntime/*": "onnxruntime/"
+    }
   },
   "plugins": {
     "updater": {

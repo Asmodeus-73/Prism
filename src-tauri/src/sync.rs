@@ -262,7 +262,9 @@ pub fn protocol<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: tauri::http::
         });
         let res = Response::builder()
             .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin)
-            .header(header::VARY, "Origin");
+            .header(header::VARY, "Origin")
+            // the page is cross-origin isolated (COEP): stored files must say they may be embedded
+            .header("Cross-Origin-Resource-Policy", "cross-origin");
         let res = match found {
             Some(bytes) => res
                 .header(header::CONTENT_TYPE, content_type(&id))

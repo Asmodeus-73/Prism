@@ -15,8 +15,13 @@ self.onmessage=async e=>{const m=e.data;
   catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
 DN.abs=u=>new URL(u,location.href).href;
 DN.load=()=>DN.sess?Promise.resolve(DN.sess):(DN.loadP||(DN.loadP=DN._load().finally(()=>{DN.loadP=null})));
+/* application de bureau : le moteur IA natif (carte graphique DirectML / Core ML) passe avant le moteur web */
+DN._native=async()=>{const N=window.PrismNAI;if(!N||!(await N.ok()))return null;try{
+    const s=await N.fromChunks([...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),v=>busy(true,'Chargement du modèle de débruitage…',v*0.9));
+    DN.nat=s;DN.sess=s;DN.threads=navigator.hardwareConcurrency||1;DN.lastEp='native-'+s.__ep;return s}catch(e){console.warn('IA native, débruitage :',e);return null}};
 DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);
+  {const s=await DN._native();if(s){DN.loadRes=null;res(s);return}}
   let w;try{w=new Worker(URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'})))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
   const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   w.onmessage=e=>{const m=e.data;
@@ -27,7 +32,7 @@ DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
 DN.pend=new Map();DN.rid=0;
 DN._onmsg=e=>{const m=e.data,p=DN.pend.get(m.id);if(!p)return;DN.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
-DN.tile=(f,dims)=>new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
+DN.tile=(f,dims)=>DN.nat?DN.nat.run({[DN.nat.inputNames[0]]:{data:f,dims,type:'float32'}}).then(o=>o[DN.nat.outputNames[0]].data):new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
 /* annulation immédiate : on arrête le worker (le modèle sera rechargé au prochain usage) */
 DN.kill=()=>{if(DN.loadRes){DN.loadRes(null);DN.loadRes=null}if(DN.w){DN.w.terminate();DN.w=null;DN.sess=null}DN.pend.forEach(p=>p.rej(new Error('annulé')));DN.pend.clear()};
 /* indice miroir (bords de l'image) */
@@ -98,3 +103,4 @@ DN.ask=(d,L,img,den)=>{const W=img.width,H=img.height,orig=L.canvas;let k=1,tmr=
 {const _fi=MENU2.filter.items;
  MENU2.filter.items=function(){const a=_fi.apply(this,arguments),it=MI('Débruitage IA…',{icon:'filter',dis:S.doc?false:NODOC,fn:DN.start});
   return a.map(x=>x&&x.label==='Netteté et bruit'&&typeof x.sub==='function'?{...x,sub:()=>[...x.sub(),it]}:x)}}
+window.PrismDN=DN;

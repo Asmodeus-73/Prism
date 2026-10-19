@@ -40,6 +40,40 @@ jobs:
 
       - run: npm ci
 
+      # Native AI engine (ONNX Runtime) shipped inside the app: DirectML on Windows, Core ML on Mac.
+      # Windows takes the DirectML build from NuGet; if it cannot be fetched, the processor build from
+      # the ONNX Runtime release still works (the app then computes on the processor).
+      - name: Moteur IA natif
+        shell: bash
+        env:
+          ORT: '1.23.2'
+          DML: '1.15.4'
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/onnxruntime tmp-ort && cd tmp-ort
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            got=""
+            for v in "$ORT" 1.23.1 1.23.0; do
+              if curl -fsSL -o ort.zip "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime.DirectML/$v"; then got=$v; break; fi
+            done
+            if [ -n "$got" ] && curl -fsSL -o dml.zip "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/$DML"; then
+              unzip -q -o ort.zip -d ort && unzip -q -o dml.zip -d dml
+              cp ort/runtimes/win-x64/native/onnxruntime.dll ../src-tauri/onnxruntime/
+              cp dml/bin/x64-win/DirectML.dll ../src-tauri/onnxruntime/
+              echo "ONNX Runtime DirectML $got"
+            else
+              curl -fsSL -o ort.zip "https://github.com/microsoft/onnxruntime/releases/download/v$ORT/onnxruntime-win-x64-$ORT.zip"
+              unzip -q -o ort.zip -d ort
+              cp ort/onnxruntime-win-x64-$ORT/lib/onnxruntime.dll ../src-tauri/onnxruntime/
+              echo "::warning::DirectML introuvable, moteur IA natif sur processeur seulement"
+            fi
+          else
+            curl -fsSL -o ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v$ORT/onnxruntime-osx-universal2-$ORT.tgz"
+            tar xzf ort.tgz
+            cp -L onnxruntime-osx-universal2-$ORT/lib/libonnxruntime.dylib ../src-tauri/onnxruntime/
+          fi
+          cd .. && rm -rf tmp-ort && ls -l src-tauri/onnxruntime
+
       # The apps and latest.json go to this repository's Releases page, where the
       # web version's download link and the installed apps' updater look.
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0

@@ -1,3 +1,4 @@
+mod ai;
 mod sync;
 mod update;
 
@@ -51,6 +52,7 @@ pub fn run() {
         .manage(LastDir::default())
         .manage(sync::SyncState::default())
         .manage(update::Pending::default())
+        .manage(ai::AiState::default())
         .setup(|app| {
             sync::load(app.handle());
             Ok(())
@@ -69,7 +71,11 @@ pub fn run() {
             sync::asset_delete,
             sync::asset_usage,
             update::update_check,
-            update::update_install
+            update::update_install,
+            ai::ai_status,
+            ai::ai_load,
+            ai::ai_unload,
+            ai::ai_run
         ])
         .run(tauri::generate_context!())
         .expect("error while running Prism");

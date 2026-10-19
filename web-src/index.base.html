@@ -927,6 +927,10 @@ function fullMask(){const m=mk(S.doc.w,S.doc.h),g=cx(m);g.fillStyle='#fff';g.fil
 /* ================= stack rendering ================= */
 function markComp(){S.docVer++;S.contentDirty=true;requestRender();scheduleThumbs()}
 function markContent(){S.contentDirty=true;requestRender()}
+// panning: when a full redraw is slow, the last frame slides with the pointer and the photo is redrawn at a steady pace (and once the pointer stops)
+function panTo(nx,ny){const dx=nx-S.panX,dy=ny-S.panY;S.panX=nx;S.panY=ny;const now=performance.now();
+  if(S.workPos&&(S.contentMs||0)>24&&now-(S.panRedraw||0)<160){S.workPos.x+=Math.round(dx*S.pr);S.workPos.y+=Math.round(dy*S.pr);requestRender();clearTimeout(S.panT);S.panT=setTimeout(markContent,90);return}
+  S.panRedraw=now;markContent()}
 function layerSrc(L){if(L.preview)return L.preview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='pixel')return st.liveCanvas();return L.canvas}
 function maskSrc(L){if(L.maskPreview)return L.maskPreview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='mask')return st.liveCanvas();return L.mask}
 const scratch={};function scr(name,w,h){let c=scratch[name];if(!c||c.width!==w||c.height!==h){c=scratch[name]=mk(w,h)}return c}
@@ -974,7 +978,8 @@ function render(){rq=false;resizeView();const c=vctx,v=view;c.setTransform(1,0,0
   c.save();c.setTransform(...viewMatrix(0,0));c.beginPath();c.rect(0,0,d.w,d.h);c.setTransform(1,0,0,1,0,0);c.clip();c.fillStyle=checker;c.fillRect(0,0,v.width,v.height);c.restore();
   if(S.workPos){c.drawImage(work,S.workPos.x,S.workPos.y);if(S.compare==='split'&&!S.holdBefore){const sx=Math.round(S.splitX*v.width);c.save();c.beginPath();c.rect(0,0,sx,v.height);c.clip();c.drawImage(workB,S.workPos.x,S.workPos.y);c.restore()}}
   drawOverlays(c,pr);updateStatus();positionSplit()}
-function renderContent(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width,H=view.height,sc=S.zoom*pr;
+function renderContent(){const _t0=performance.now();try{renderContent0()}finally{S.contentMs=performance.now()-_t0}}
+function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width,H=view.height,sc=S.zoom*pr;
   const M=new DOMMatrix(viewMatrix(0,0));const pts=[[0,0],[d.w,0],[0,d.h],[d.w,d.h]].map(([x,y])=>{const p=M.transformPoint(new DOMPoint(x,y));return[p.x,p.y]});
   const bx0=Math.max(0,Math.floor(Math.min(...pts.map(p=>p[0])))),by0=Math.max(0,Math.floor(Math.min(...pts.map(p=>p[1])))),bx1=Math.min(W,Math.ceil(Math.max(...pts.map(p=>p[0])))),by1=Math.min(H,Math.ceil(Math.max(...pts.map(p=>p[1]))));
   if(bx1<=bx0||by1<=by0){S.workPos=null;return}const bw=bx1-bx0,bh=by1-by0;if(work.width!==bw||work.height!==bh){work.width=bw;work.height=bh}
@@ -1065,8 +1070,12 @@ function beginStroke(p,e){const d=S.doc,t=S.tool,A=AL();if(!A)return;const o=S.o
   if(t==='clone'){st.src=S.opts.clone.all?cloneC(flatSync()):L.canvas;st.dabC=mk(Math.ceil(o.size)+2,Math.ceil(o.size)+2);st.mask=stampFor(o.size,o.hardness,'#000')}
   else if(t==='heal'||t==='remove'){st.target='heal';st.live=false;st.stamp=stampFor(o.size,t==='remove'?0.9:o.hardness,'#ffffff');st.opacity=1}
   else st.stamp=stampFor(o.size,o.hardness,(t==='eraser'||target==='mask')?'#ffffff':S.color);
-  st.liveCanvas=()=>{if(!st.tmp)st.tmp=mk(d.w,d.h);const g=cx(st.tmp);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(0,0,d.w,d.h);const base=target==='mask'?L.mask:L.canvas;g.drawImage(base,0,0);
-    g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(maskedStroke(st),0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';return st.tmp};
+  // the layer as it will be once the stroke is applied; after the first frame only the area the new dabs touched is recomposed
+  st.liveCanvas=()=>{const base=target==='mask'?L.mask:L.canvas,full=!st.tmp;if(full)st.tmp=mk(d.w,d.h);const g=cx(st.tmp),R=full?{x0:0,y0:0,x1:d.w,y1:d.h}:st.dirty;st.dirty=null;if(!R)return st.tmp;
+    const x=Math.max(0,Math.floor(R.x0)),y=Math.max(0,Math.floor(R.y0)),w=Math.min(d.w,Math.ceil(R.x1))-x,h=Math.min(d.h,Math.ceil(R.y1))-y;if(w<=0||h<=0)return st.tmp;
+    g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(x,y,w,h);g.drawImage(base,x,y,w,h,x,y,w,h);
+    let src=st.canvas,sx=x,sy=y;if(d.sel&&st.target!=='heal'){const t=scr('lstroke',w,h),tg=cx(t);tg.globalCompositeOperation='source-over';tg.clearRect(0,0,w,h);tg.drawImage(st.canvas,x,y,w,h,0,0,w,h);tg.globalCompositeOperation='destination-in';tg.drawImage(d.sel,x,y,w,h,0,0,w,h);tg.globalCompositeOperation='source-over';src=t;sx=0;sy=0}
+    g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(src,sx,sy,w,h,x,y,w,h);g.globalAlpha=1;g.globalCompositeOperation='source-over';return st.tmp};
   S.stroke=st;if(e&&e.pointerType==='pen')st.pressure=e.pressure||1;dab(st,p);if(st.target==='heal')requestRender();else markComp()}
 function maskedStroke(st){const d=S.doc;if(!d.sel||st.target==='heal')return st.canvas;if(!st.m)st.m=mk(d.w,d.h);const g=cx(st.m);g.globalCompositeOperation='source-over';g.clearRect(0,0,d.w,d.h);g.drawImage(st.canvas,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);g.globalCompositeOperation='source-over';return st.m}
 function moveStroke(p,e){const st=S.stroke;if(!st)return;if(e&&e.pointerType==='pen')st.pressure=e.pressure||st.pressure;const o=S.opts[st.tool],sp=Math.max(1,o.size*(st.tool==='dodge'?0.2:(o.spacing||12)/100));const dx=p.x-st.last.x,dy=p.y-st.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;const n=Math.floor(dist/sp);
@@ -1184,7 +1193,7 @@ function onDown(e,p){const t=S.tool,alt=e.altKey;
   if(t==='clone'||(t==='heal'&&S.opts.heal.mode==='source')){if(alt||S.pickSource){S.cloneSrc={x:p.x,y:p.y};S.cloneOff=null;S.pickSource=false;renderPill();toast('Source définie');return}}
   if(['brush','eraser','clone','heal','dodge','remove'].includes(t)){beginStroke({x:p.x,y:p.y},e);S.drag={type:'stroke'}}}
 function onMove(e,p){const dr=S.drag;if(!dr)return;
-  if(dr.type==='pan'){S.fitted=false;S.panX=dr.px+p.cx-dr.sx;S.panY=dr.py+p.cy-dr.sy;markContent();return}
+  if(dr.type==='pan'){S.fitted=false;const nx=dr.px+p.cx-dr.sx,ny=dr.py+p.cy-dr.sy;panTo(nx,ny);return}
   if(dr.type==='pick'){pickColor(p);return}
   if(dr.type==='move'){dr.L.dx=Math.round(p.x-dr.sx);dr.L.dy=Math.round(p.y-dr.sy);markComp();return}
   if(dr.type==='marquee'){let x1=p.x,y1=p.y;const rt=S.opts.marquee.ratio;if(rt!=='free'){const[rw,rh]=rt.split(':').map(Number),w=Math.abs(x1-dr.x0),h=Math.abs(y1-dr.y0),s=Math.max(w/rw,h/rh);x1=dr.x0+Math.sign(x1-dr.x0||1)*s*rw;y1=dr.y0+Math.sign(y1-dr.y0||1)*s*rh}dr.x1=x1;dr.y1=y1;return}
@@ -1515,15 +1524,39 @@ const ORTX={_g:null,gpuP:()=>ORTX._g||(ORTX._g=(async()=>{try{if(PREF.get('aiGPU
 ORTX.bundle=async()=>asset((await ORTX.gpuP())?'ai/ort.webgpu.min.js':'ai/ort.wasm.min.js');
 // the WebGPU build of the runtime is 24 MB: stored in two pieces (hosting limit) and handed to ONNX Runtime as wasmBinary
 ORTX.binURLs=()=>[0,1].map(i=>new URL(asset(`ai/ortgpu/${i}.wasm`),location.href).href);
-ORTX.binary=async()=>{if(!(await ORTX.gpuP()))return null;if(!ORTX._bin)ORTX._bin=Promise.all(ORTX.binURLs().map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()}))).then(a=>{const n=a.reduce((t,b)=>t+b.byteLength,0),o=new Uint8Array(n);let k=0;for(const b of a){o.set(new Uint8Array(b),k);k+=b.byteLength}return o.buffer}).catch(e=>{ORTX._bin=null;throw e});return ORTX._bin};
+ORTX.binary=async()=>{if(await NAI.ok())return null;return ORTX.binaryForce()};
+ORTX.binaryForce=async()=>{if(!(await ORTX.gpuP()))return null;if(!ORTX._bin)ORTX._bin=Promise.all(ORTX.binURLs().map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()}))).then(a=>{const n=a.reduce((t,b)=>t+b.byteLength,0),o=new Uint8Array(n);let k=0;for(const b of a){o.set(new Uint8Array(b),k);k+=b.byteLength}return o.buffer}).catch(e=>{ORTX._bin=null;throw e});return ORTX._bin};
 ORTX.eps=async()=>(await ORTX.gpuP())?['webgpu','wasm']:['wasm'];
-ORTX.create=async(ort,buf,o)=>{const {cpuOnly,...opt}=o||{},eps=cpuOnly?['wasm']:await ORTX.eps(),cpu=()=>ort.InferenceSession.create(buf,{...opt,executionProviders:['wasm']});
+ORTX.create=async(ort,buf,o)=>{if(!(o&&o.cpuOnly)&&await NAI.ok()){try{return await NAI.session(buf)}catch(e){console.warn('IA native indisponible pour ce modèle, moteur du navigateur',e)}if(!ort.env.wasm.wasmBinary){const b=await ORTX.binaryForce();if(b)ort.env.wasm.wasmBinary=b}}
+  const {cpuOnly,...opt}=o||{},eps=cpuOnly?['wasm']:await ORTX.eps(),cpu=()=>ort.InferenceSession.create(buf,{...opt,executionProviders:['wasm']});
   if(eps[0]==='wasm'){const s=await cpu();s.__ep='wasm';return s}
   let s;try{s=await ort.InferenceSession.create(buf,{...opt,executionProviders:eps})}catch(e){console.warn('WebGPU indisponible pour ce modèle, retour au processeur',e);s=await cpu();s.__ep='wasm';return s}
   // some operators only fail when they run: the first failure moves this model to the processor for good
   const W={__ep:'webgpu',inputNames:s.inputNames,outputNames:s.outputNames,run:async(feeds,o)=>{if(W.__ep==='webgpu'){try{return await s.run(feeds,o)}catch(e){console.warn('WebGPU : échec à l’exécution, retour au processeur',e);W.__ep='wasm';try{s.release&&s.release()}catch(_){}s=await cpu()}}return s.run(feeds,o)}};
   return W};
 window.PrismORT=ORTX;
+/* native AI (desktop app): ONNX Runtime inside the app, on the graphics card (DirectML / Core ML) or every processor core.
+   Same shape as an ONNX Runtime web session: inputNames, outputNames, run(feeds) -> {name: {data, dims, type}}. */
+const NAI={st:null,seq:0};
+NAI.ok=async()=>{if(NAI.st)return NAI.st.ok;const D=window.PRISM_DESKTOP;if(!D||!D.invoke||PREF.get('aiNative',true)===false){NAI.st={ok:false};return false}
+  try{NAI.st=await D.invoke('ai_status')}catch(e){NAI.st={ok:false,error:String(e)}}if(!NAI.st.ok&&NAI.st.error)console.info('IA native :',NAI.st.error);return !!NAI.st.ok};
+NAI.load=async(buf,key,cpu)=>window.PRISM_DESKTOP.invoke('ai_load',buf instanceof Uint8Array?buf:new Uint8Array(buf),{headers:{'x-key':key,'x-cpu':cpu?'1':'0'}});
+NAI.TYPES={float32:Float32Array,uint8:Uint8Array,int32:Int32Array,int64:BigInt64Array};
+NAI.session=async(buf)=>{const key='m'+(++NAI.seq)+'-'+(buf.byteLength||buf.length);let info=await NAI.load(buf,key,false);
+  const W={native:true,__ep:info.ep,inputNames:info.inputs,outputNames:info.outputs,
+    run:async(feeds)=>{const names=Object.keys(feeds),specs=[],parts=[];let n=0;
+      for(const k of names){const t=feeds[k],d=t.data;specs.push({name:k,dtype:t.type,dims:t.dims.map(Number)});const u=new Uint8Array(d.buffer,d.byteOffset,d.byteLength);parts.push(u);n+=u.length}
+      const body=new Uint8Array(n);let o=0;for(const u of parts){body.set(u,o);o+=u.length}
+      const call=()=>window.PRISM_DESKTOP.invoke('ai_run',body,{headers:{'x-key':key,'x-inputs':JSON.stringify(specs)}});
+      let ab;try{ab=await call()}catch(e){if(W.__ep==='CPU')throw e;// the card failed on this model: the processor takes over for good
+        console.warn('IA native : carte graphique en échec, processeur',e);info=await NAI.load(buf,key,true);W.__ep=info.ep;ab=await call()}
+      const b=ab instanceof ArrayBuffer?ab:new Uint8Array(ab).buffer,dv=new DataView(b),hl=dv.getUint32(0,true),head=JSON.parse(new TextDecoder().decode(new Uint8Array(b,4,hl)));let at=4+hl;const out={};
+      for(const h of head){const T=NAI.TYPES[h.dtype]||Float32Array;out[h.name]={data:new T(b.slice(at,at+h.bytes)),dims:h.dims,type:h.dtype};at+=h.bytes}return out},
+    release:()=>window.PRISM_DESKTOP.invoke('ai_unload',{key}).catch(()=>{})};
+  console.info('IA native :',info.ep);return W};
+NAI.fromChunks=async(urls,onP)=>{let got=0;const parts=await Promise.all(urls.map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);const b=new Uint8Array(await r.arrayBuffer());got++;onP&&onP(got/urls.length);return b}));
+  const n=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(n);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}return NAI.session(buf)};
+window.PrismNAI=NAI;
 AI.ensureSeg=()=>AI._seg?Promise.resolve(AI._seg):(AI._segP||(AI._segP=AI._ensureSeg().finally(()=>{AI._segP=null})));
 /* chunked model files: ai/<dir>/meta.json lists the chunk sizes; the chunks are fetched in parallel and joined */
 AI.fetchModel=async(dir,label,onP)=>{const r0=await fetch(asset(dir+'meta.json'));if(!r0.ok)throw new Error('modèle '+r0.status);const meta=await r0.json(),sizes=meta.chunks,total=meta.total;
@@ -2290,7 +2323,8 @@ const renderStack8=renderStack;
 PREC.ms=0;PREC.t=null;PREC.refining=false;
 renderStack=function(tc,W,H,T,o){const d=S.doc;if(o.before||!d||!(precOK()||(o.want16&&docHasHi(d)))||W*H>36e6)return renderStack8(tc,W,H,T,o);
   const view=tc.canvas===work||tc.canvas===workB;
-  if(view&&PREC.ms>45&&!PREC.refining){renderStack8(tc,W,H,T,o);clearTimeout(PREC.t);PREC.t=setTimeout(()=>{if(!S.doc)return;PREC.refining=true;try{S.contentDirty=true;render()}finally{PREC.refining=false}},220);return}
+  if(view&&(PREC.ms>45||S.stroke||S.drag||S.sliding)&&!PREC.refining){renderStack8(tc,W,H,T,o);clearTimeout(PREC.t);
+    const refine=()=>{if(!S.doc)return;if(S.stroke||S.drag||S.sliding){PREC.t=setTimeout(refine,220);return}PREC.refining=true;try{S.contentDirty=true;render()}finally{PREC.refining=false}};PREC.t=setTimeout(refine,260);return}
   const t0=performance.now();try{renderStackF(tc,W,H,T,o)}catch(e){console.warn('précision 16 bits désactivée',e);PREC.fail=true;return renderStack8(tc,W,H,T,o)}if(view)PREC.ms=performance.now()-t0};
 function renderStackF(tc,W,H,T,o){const d=S.doc,upto=o.upto==null?d.layers.length:o.upto;let F=null,i0=0,empty=true;
   tc.setTransform(1,0,0,1,0,0);tc.globalAlpha=1;tc.globalCompositeOperation='source-over';tc.clearRect(0,0,W,H);

@@ -26,6 +26,9 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   /* sans les infos du modèle, le chargement restait bloqué pour toujours */
   if(!LM.meta&&!(await LM.avail())){res(null);return}
   busy(true,'Chargement du moteur IA…',0.02);LM.busyCancel(true);
+  /* application de bureau : moteur IA natif (carte graphique) d'abord */
+  {const N=window.PrismNAI;if(N&&await N.ok()){try{const s=await N.fromChunks([...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),v=>{busy(true,'Chargement du modèle de suppression…',v*0.9);LM.busyCancel(true)});
+      if(LM.loadRes!==res){s.release();return}LM.nat=s;LM.w=s;LM.ep='native-'+s.__ep;LM.threads=navigator.hardwareConcurrency||1;LM.loadRes=null;res(s);return}catch(e){console.warn('IA native, suppression :',e)}}}
   let w;try{w=new Worker(URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'})))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   const fail=msg=>{console.warn('lama',msg);try{w.terminate()}catch(e){}LM.loadRes=null;res(null)};
@@ -36,7 +39,7 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   w.onerror=e=>fail(e.message||'worker');
   w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
 LM._onmsg=e=>{const m=e.data,p=LM.pend.get(m.id);if(!p)return;LM.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
-LM.infer=(img,mask,h,w)=>new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
+LM.infer=(img,mask,h,w)=>LM.nat?LM.nat.run({img:{data:img,dims:[1,3,h,w],type:'float32'},mask:{data:mask,dims:[1,1,h,w],type:'float32'}}).then(o=>new Float32Array(o[LM.nat.outputNames[0]].data)):new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
 /* annulation : pendant le chargement on arrête le worker ; pendant le calcul on abandonne le résultat (le modèle reste en mémoire pour la prochaine fois) */
 LM.cancel=()=>{LM.abort=true;if(LM.loadRes){const r=LM.loadRes;LM.loadRes=null;try{LM.loadW&&LM.loadW.terminate()}catch(e){}LM.loadW=null;r(null)}};
 LM.busyCancel=on=>{const b=document.querySelector('#busy>div');if(!b)return;let e=b.querySelector('.lm-cancel');if(on&&!e){e=document.createElement('button');e.className='btn sm lm-cancel';e.textContent='Annuler';e.style.marginTop='10px';e.onclick=()=>{e.disabled=true;e.textContent='Annulation…';LM.cancel()};b.appendChild(e)}else if(!on&&e)e.remove()};
