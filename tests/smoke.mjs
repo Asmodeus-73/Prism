@@ -60,6 +60,8 @@ await test('double exposition : outil et annulation',async()=>{const r=await ev(
     const f=new File([await new Promise(r=>c.toBlob(r,'image/png'))],'b.png',{type:'image/png'});const n=S.doc.layers.length;await DX.start(f);await new Promise(r=>setTimeout(r,200));
     const on=S.tool==='dexp'&&S.doc.layers.length===n+1;DX.finish(false);return on&&S.doc.layers.length===n?'ok':'outil non actif ou calque resté'});if(r!=='ok'&&r!=='absent')throw new Error(r)});
 
+await test('agrandissement IA (moteur ONNX) sur un petit extrait',async()=>{const r=await ev(async()=>{const U=__x4p.onnx;U.ok=async()=>true;const m=await U.load('fast');if(!m)return 'modèle non chargé';
+    const s=mk(48,40);cx(s).drawImage(flatSync(),500,400,48,40,0,0,48,40);const o=await U.canvas(s,2,m,null);return o.width===96&&o.height===80?'ok':o.width+'x'+o.height});if(r!=='ok')throw new Error(r)});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

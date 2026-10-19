@@ -17,7 +17,7 @@ const loadRG=async()=>{
   if(RG.m)return RG.m;
   if(!window.tf)await loadScript(asset('ai/tf.min.js'));const tf=window.tf;
   try{await tf.setBackend('webgl')}catch(e){}await tf.ready();
-  const [meta,buf]=await Promise.all([fetch(asset('ai/realesr/meta.json')).then(r=>r.json()),fetch(asset('ai/realesr/weights.wasm')).then(r=>r.arrayBuffer())]);
+  const [meta,buf]=await Promise.all([fetch(asset('ai/realesr/meta.json')).then(r=>{if(!r.ok)throw new Error('modèle '+r.status);return r.json()}),fetch(asset('ai/realesr/weights.wasm')).then(r=>{if(!r.ok)throw new Error('modèle '+r.status);return r.arrayBuffer()})]);
   const f=new Float32Array(buf);let off=0;const W={};
   for(const [k,sh] of meta){const n=sh.reduce((a,b)=>a*b,1);W[k]=[f.subarray(off,off+n),sh];off+=n}
   const conv=i=>{const [d,sh]=W[`body.${i}.weight`],[b]=W[`body.${i}.bias`],[O,I,kh,kw]=sh;

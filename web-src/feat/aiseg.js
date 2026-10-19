@@ -48,7 +48,10 @@ async function sceneMask(kind){const d=S.doc,sc=await scene();if(!sc||S.doc!==d)
 async function partsMask(kind){const d=S.doc;let box=null;const sc=await scene();if(S.doc!==d)return null;
   if(sc){const gr=groupGrid(sc,SEG.GROUPS.people);let x0=1e9,y0=1e9,x1=-1,y1=-1;for(let y=0;y<sc.gh;y++)for(let x=0;x<sc.gw;x++)if(gr[y*sc.gw+x]>0.5){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
     if(x1>=0){const sx=d.w/(sc.gw-1||1),sy=d.h/(sc.gh-1||1);box={x0:(x0-1)*sx,y0:(y0-1)*sy,x1:(x1+1)*sx,y1:(y1+1)*sy}}}
-  if(!box)return null;
+  if(!box){// the scene model saw no one: a portrait close-up often reads as a single subject
+    const m=await AI.subjectMask(d);if(!m||S.doc!==d)return null;const W=m.width,H=m.height,a=rx(m).getImageData(0,0,W,H).data;let x0=W,y0=H,x1=-1,y1=-1;
+    for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2)if(a[(y*W+x)*4+3]>128){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+    if(x1<0)return null;const fx=d.w/W,fy=d.h/H;box={x0:x0*fx,y0:y0*fy,x1:(x1+2)*fx,y1:(y1+2)*fy}}
   const sess=await session('ai/people1/','des personnes',8);if(!sess||S.doc!==d)return null;
   busy(true,'Analyse des personnes…',null);await tick();
   try{const R=256,flat=flatSync();
@@ -79,7 +82,7 @@ AI.categoryMask=async kind=>{let m=null;
   return m};
 AI.categories=()=>['subj','sky','people','bg','vegetation','water','mountains','buildings','ground','face','skin','hair','clothes'];
 AI.categoryLabel=k=>SEG.LABEL[k]||k;
-AI.scene=scene;
+AI.scene=scene;AI.ortSession=session;
 
 // the sky selection keeps its colour analysis for the fine detail and takes the scene model's word on what is sky
 AI.skyPrior=async(W,H)=>{const sc=await scene();if(!sc)return null;return gridTo(groupGrid(sc,SEG.GROUPS.sky),sc.gw,sc.gh,W,H)};
