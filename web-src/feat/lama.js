@@ -23,6 +23,8 @@ LM.avail=()=>{if(window.LAMA_DISABLE)return Promise.resolve(false);return LM.ava
     r=await fetch(u,{cache:'no-store'});if(!r.ok)return false;const m=JSON.parse(await r.text());if(!(m&&m.chunks>0))return false;LM.meta=m;return true}catch(e){return false}})())};
 LM.load=()=>LM.w?Promise.resolve(LM.w):(LM.loadP||(LM.loadP=LM._load().finally(()=>{LM.loadP=null})));
 LM._load=()=>new Promise(async res=>{LM.loadRes=res;
+  /* sans les infos du modèle, le chargement restait bloqué pour toujours */
+  if(!LM.meta&&!(await LM.avail())){res(null);return}
   busy(true,'Chargement du moteur IA…',0.02);LM.busyCancel(true);
   let w;try{w=new Worker(URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'})))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;

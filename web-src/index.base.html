@@ -409,7 +409,7 @@ details.sec.mod>summary .dot{display:block}
 .dlg h3{margin:0;padding:18px 20px 4px;font:600 16px/1.3 var(--ui);letter-spacing:-.01em}
 .dlg .body{padding:10px 20px;display:grid;gap:12px}
 .dlg .body .row{grid-template-columns:110px minmax(0,1fr) 52px}
-.dlg .foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px 18px}
+.dlg .foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:12px 20px 18px}
 .dlg .field{display:grid;gap:5px;font-size:12.5px;color:var(--fg-2);font-weight:500}
 .dlg .inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dlg input[type=text],.dlg input[type=number],.dlg textarea{width:100%}
@@ -1505,6 +1505,8 @@ function toggleMask(){S.showMask=!S.showMask;renderTarget();requestRender()}
 
 /* ================= AI (runs locally in the browser) ================= */
 const AI={state:{seg:'idle',up:'idle'},subjectCache:null,_ort:null,_seg:null,_tf:null,_up:{}};
+/* tf.js assigns this global; without it, it falls back to Function(), which the desktop app's CSP blocks */
+if(!('regeneratorRuntime' in window))window.regeneratorRuntime=void 0;
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('script '+src));document.head.appendChild(s)})}
 AI.setState=(k,v,p)=>{AI.state[k]=v;AI.state[k+'P']=p;renderAIState()};
 /* ONNX Runtime: graphics card (WebGPU) when the device has one, else the processor (WASM, several threads when the page is isolated) */
@@ -4880,7 +4882,7 @@ closeDoc=function(){const i=curIdx(),nx=tabs[i+1]||tabs[i-1];
   if(tabs.length>1&&i>=0&&nx){closeTab(tabs[i]);return}
   _cd()};
 /* traitements par lot : documents temporaires hors onglets */
-['runBatch','importToLibrary'].forEach(n=>{try{const f=eval(n);if(typeof f!=='function')return;const w=async function(...a){mute++;try{return await f.apply(this,a)}finally{mute--;draw()}};eval(n+'=w')}catch(e){console.warn('tabs:',n,e)}});
+['runBatch','importToLibrary'].forEach(n=>{const f=window[n];if(typeof f!=='function'){console.warn('tabs:',n);return}window[n]=async function(...a){mute++;try{return await f.apply(this,a)}finally{mute--;draw()}}});
 
 /* barre d'onglets */
 const bar=document.createElement('div');bar.id='tabbar';bar.setAttribute('role','tablist');bar.setAttribute('aria-label','Photos ouvertes');
