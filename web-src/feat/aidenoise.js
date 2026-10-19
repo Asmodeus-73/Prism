@@ -22,7 +22,7 @@ DN._native=async()=>{const N=window.PrismNAI;if(!N||!(await N.ok()))return null;
 DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);
   {const s=await DN._native();if(s){DN.loadRes=null;res(s);return}}
-  let w;try{w=new Worker(URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'})))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
+  let w;try{w=new Worker(DN.wurl||(DN.wurl=URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'}))))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
   const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   w.onmessage=e=>{const m=e.data;
     if(m.t==='prog'){DN.busyCancel(true);busy(true,m.prep?'Préparation du modèle…':'Téléchargement du modèle de débruitage (43 Mo, une seule fois)…',m.v);DN.busyCancel(true)}

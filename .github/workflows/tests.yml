@@ -63,7 +63,9 @@ jobs:
       - name: Moteur IA natif
         run: |
           mkdir -p src-tauri/onnxruntime
-          curl -fsSL https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz | tar xz
+          curl -fsSL -o ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz
+          echo "1fa4dcaef22f6f7d5cd81b28c2800414350c10116f5fdd46a2160082551c5f9b  ort.tgz" | sha256sum -c
+          tar xzf ort.tgz
           cp -L onnxruntime-linux-x64-1.23.2/lib/libonnxruntime.so src-tauri/onnxruntime/
 
       - name: Le code de l'application compile

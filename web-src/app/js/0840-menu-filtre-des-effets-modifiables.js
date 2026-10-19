@@ -208,7 +208,7 @@ async function fuseExposures(files){busy(true,'Fusion des expositions…',0);awa
       busy(true,'Fusion des expositions…',.65+(k+1)/N*.3);await tick()}
     const out=mk(W,H),og=cx(out),oi=og.createImageData(W,H),od=oi.data;
     for(let c=0;c<3;c++){let a=res[c][LV-1];for(let l=LV-2;l>=0;l--){const [w,h]=dims[l],u=up(a,dims[l+1][0],dims[l+1][1],w,h),R=res[c][l];for(let i=0;i<w*h;i++)u[i]+=R[i];a=u}
-      for(let i=0;i<n;i++)od[i*4+c]=Math.max(0,Math.min(255,a[i]*255+.5))}
+      for(let i=0;i<n;i++)od[i*4+c]=Math.max(0,Math.min(255,a[i]*255))}
     for(let i=0;i<n;i++)od[i*4+3]=255;
     og.putImageData(oi,0,0);busy(false);setDoc(out,'fusion-expositions.jpg',{});toast('Expositions fusionnées'+(moved?' (alignement corrigé sur '+moved+' photo'+(moved>1?'s':'')+')':'')+'. Un petit décalage est corrigé, pas une rotation.',6000)
   }catch(e){busy(false);console.error(e);toast('Fusion impossible : '+(e.message||e),5000)}}

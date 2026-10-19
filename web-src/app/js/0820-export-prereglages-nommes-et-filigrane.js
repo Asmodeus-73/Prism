@@ -336,10 +336,10 @@ async function iccExport(o){busy(true,'Conversion de couleurs…',null);await ti
     const cs=String.fromCharCode(...o.bytes.subarray(16,20));if(cs==='CMYK')return await iccExportCMYK(o,m,hp);if(cs!=='RGB ')throw new Error('profil '+cs.trim()+' : seuls les profils RVB et CMJN sont pris en charge');
     const T=CMS.ns.TYPE_RGBA_8,io=CS==='display-p3'?CMS.p3:CMS.srgb,fl=o.bpc?0x2000:0;
     const xf=m.cmsCreateTransform(io,T,hp,T,o.intent,fl);if(!xf)throw new Error('transformation impossible avec ce profil');
-    let c=await renderDoc(1);if(o.fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}
-    const g=cx(c),id=g.getImageData(0,0,c.width,c.height),n=c.width*c.height,CH=1<<20;
+    let c,g,id;try{c=await renderDoc(1);if(o.fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}
+    g=cx(c);id=g.getImageData(0,0,c.width,c.height);const n=c.width*c.height,CH=1<<20;
     for(let s=0;s<n;s+=CH){const k=Math.min(CH,n-s),part=id.data.subarray(s*4,(s+k)*4),out=m.cmsDoTransform(xf,part,k);for(let i=3;i<out.length;i+=4)out[i]=part[i];id.data.set(out,s*4);await tick()}
-    m.cmsDeleteTransform(xf);g.putImageData(id,0,0);
+    }finally{m.cmsDeleteTransform(xf)}g.putImageData(id,0,0);
     let blob=await new Promise(r=>c.toBlob(r,'image/'+o.fmt,o.q));
     let ex=null;try{ex=S.doc.exif?exifForExport(S.doc.exif,c.width,c.height):null}catch(e){}if(o.fmt==='jpeg')blob=await window.PrismFx.jpegMetaICC(blob,ex,o.bytes);
     else{const u=new Uint8Array(await blob.arrayBuffer()),v=new DataView(u.buffer),ih=8+12+v.getUint32(8),nm=new TextEncoder().encode((o.name||'profil').slice(0,40)),z=await zlib(o.bytes),ch=new Uint8Array(nm.length+2+z.length);ch.set(nm);ch.set(z,nm.length+2);
@@ -350,11 +350,11 @@ async function iccExport(o){busy(true,'Conversion de couleurs…',null);await ti
   }catch(e){busy(false);console.error(e);toast('Export impossible : '+(e.message||e),5000)}}
 /* CMYK (CMJN) for print: the photo is flattened on white, converted with the printer's profile and written as a CMYK TIFF carrying that profile */
 async function iccExportCMYK(o,m,hp){const io=CS==='display-p3'?CMS.p3:CMS.srgb,xf=m.cmsCreateTransform(io,CMS.ns.TYPE_RGB_8,hp,CMS.ns.TYPE_CMYK_8,o.intent,o.bpc?0x2000:0);if(!xf)throw new Error('transformation impossible avec ce profil');
-  const c0=await renderDoc(1),W=c0.width,H=c0.height,c=mk(W,H),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(c0,0,0);
-  const a=g.getImageData(0,0,W,H).data,n=W*H,cmyk=new Uint8Array(n*4),CH=1<<20,rgb=new Uint8Array(Math.min(CH,n)*3);
+  let cmyk,W,H;try{const c0=await renderDoc(1);W=c0.width;H=c0.height;const c=mk(W,H),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(c0,0,0);
+  const a=g.getImageData(0,0,W,H).data,n=W*H,CH=1<<20,rgb=new Uint8Array(Math.min(CH,n)*3);cmyk=new Uint8Array(n*4);
   for(let s=0;s<n;s+=CH){const k=Math.min(CH,n-s);for(let i=0;i<k;i++){const j=(s+i)*4;rgb[i*3]=a[j];rgb[i*3+1]=a[j+1];rgb[i*3+2]=a[j+2]}
     const out=m.cmsDoTransform(xf,rgb.subarray(0,k*3),k);cmyk.set(out.subarray(0,k*4),s*4);busy(true,'Conversion en CMJN…',s/n);await tick()}
-  m.cmsDeleteTransform(xf);const blob=await encodeTIFFCMYK(cmyk,W,H,o.bytes);busy(false);
+  }finally{m.cmsDeleteTransform(xf)}const blob=await encodeTIFFCMYK(cmyk,W,H,o.bytes);busy(false);
   await saveFile(blob,(S.doc.name||'image').replace(/\.[a-z0-9]+$/i,'')+'-'+(o.name||'cmjn').replace(/[^\w-]+/g,'_')+'.tif')}
 async function encodeTIFFCMYK(pix,w,h,icc){const comp=await zlib(pix),tags=[],T=(id,type,count,val)=>tags.push({id,type,count,val});
   const nT=12,ifd=8,ifdLen=2+nT*12+4,bpsOff=ifd+ifdLen,iccOff=bpsOff+8,dataOff=iccOff+icc.length+(icc.length&1);

@@ -51,7 +51,8 @@ fn lib_path<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     if let Ok(dir) = app.path().resource_dir() {
         places.push(dir.join("onnxruntime").join(lib_name()));
     }
-    // development: src-tauri/onnxruntime/
+    // development only: src-tauri/onnxruntime/ (a release never looks outside its own resources)
+    #[cfg(debug_assertions)]
     places.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("onnxruntime").join(lib_name()));
     places.into_iter().find(|p| p.is_file())
 }

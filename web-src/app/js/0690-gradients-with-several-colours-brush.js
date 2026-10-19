@@ -75,20 +75,20 @@ const _sf=stampFor;stampFor=function(size,hard,color){const t=S.tool;if(t!=='bru
  g.restore();if(hard<.95&&!String(tip).startsWith('c:')&&'filter'in g&&tip!=='chalk'&&tip!=='splat'){const t2=mk(s,s),g2=cx(t2);g2.filter=`blur(${Math.round((1-hard)*s*.12)}px)`;g2.drawImage(c,0,0);g.clearRect(0,0,s,s);g.drawImage(t2,0,0)}
  g.globalCompositeOperation='source-in';g.fillStyle=col;g.fillRect(0,0,s,s);return c};
 /* Photoshop brushes (.abr, versions 1, 2, 6 and later): the sampled tips, as grey levels (255 = paint). Computed round tips are skipped. */
-function parseABR(u8){const v=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),out=[];let p=0;const u16=()=>{const x=v.getUint16(p);p+=2;return x},u32=()=>{const x=v.getUint32(p);p+=4;return x},i32=()=>{const x=v.getInt32(p);p+=4;return x};
+function parseABR(u8){const v=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),out=[];let p=0,px=0;const room=(w,h)=>out.length<12&&(px+=w*h)<=64e6;const u16=()=>{const x=v.getUint16(p);p+=2;return x},u32=()=>{const x=v.getUint32(p);p+=4;return x},i32=()=>{const x=v.getInt32(p);p+=4;return x};
   const sample=(w,h,depth,comp)=>{const bpp=depth>>3,n=w*h*bpp,raw=new Uint8Array(n);
-    if(!comp){raw.set(u8.subarray(p,p+n));p+=n}
-    else{const rows=[];for(let y=0;y<h;y++)rows.push(u16());let o=0;for(const len of rows){const end=p+len;while(p<end&&o<n){const c=(u8[p++]<<24)>>24;if(c>=0){for(let k=0;k<=c&&o<n;k++)raw[o++]=u8[p++]}else if(c!==-128){const b=u8[p++];for(let k=0;k<1-c&&o<n;k++)raw[o++]=b}}p=end}}
+    if(!comp){if(p+n>u8.length)throw new Error('pointe tronquée');raw.set(u8.subarray(p,p+n));p+=n}
+    else{if(p+2*h>u8.length)throw new Error('pointe tronquée');const rows=[];for(let y=0;y<h;y++)rows.push(u16());let o=0;for(const len of rows){const end=p+len;while(p<end&&o<n){const c=(u8[p++]<<24)>>24;if(c>=0){for(let k=0;k<=c&&o<n;k++)raw[o++]=u8[p++]}else if(c!==-128){const b=u8[p++];for(let k=0;k<1-c&&o<n;k++)raw[o++]=b}}p=end}}
     if(bpp===1)return raw;const g=new Uint8Array(w*h);for(let i=0;i<w*h;i++)g[i]=raw[i*2];return g};
   const ver=u16();
   if(ver===1||ver===2){const count=u16();for(let i=0;i<count;i++){const type=u16(),size=u32(),next=p+size;
       if(type===2){p+=4;p+=2;let name='';if(ver===2){const L=u32();for(let k=0;k<L;k++){const c=u16();if(c)name+=String.fromCharCode(c)}}p+=1+8;const t=i32(),l=i32(),b=i32(),r=i32(),depth=u16(),comp=u8[p++];
-        const w=r-l,h=b-t;if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16))out.push({name,w,h,data:sample(w,h,depth,comp)})}
+        const w=r-l,h=b-t;if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)&&room(w,h))out.push({name,w,h,data:sample(w,h,depth,comp)})}
       p=next}return out}
   if(ver<6||ver>10)throw new Error('version '+ver);const sub=u16();
   while(p+12<=u8.length){if(String.fromCharCode(u8[p],u8[p+1],u8[p+2],u8[p+3])!=='8BIM')break;const key=String.fromCharCode(u8[p+4],u8[p+5],u8[p+6],u8[p+7]);p+=8;const len=u32(),end=p+len;
     if(key==='samp'){while(p+4<end){let size=u32();while(size%4)size++;const next=p+size;p+=sub===1?47:301;const t=i32(),l=i32(),b=i32(),r=i32(),depth=u16(),comp=u8[p++],w=r-l,h=b-t;
-        if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)){try{out.push({name:'',w,h,data:sample(w,h,depth,comp)})}catch(e){}}p=next}}
+        if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)&&room(w,h)){try{out.push({name:'',w,h,data:sample(w,h,depth,comp)})}catch(e){}}p=next}}
     p=end+(len&1?1:0)}
   return out}
 window.PrismABR=parseABR;
@@ -96,7 +96,7 @@ window.PrismABR=parseABR;
 async function abrTipFile(t,i,base){const c=mk(t.w,t.h),g=cx(c),im=g.createImageData(t.w,t.h);for(let k=0;k<t.w*t.h;k++)im.data[k*4+3]=t.data[k];g.putImageData(im,0,0);
   const b=await new Promise(r=>c.toBlob(r,'image/png'));return new File([b],(t.name||base+' '+(i+1))+'.png',{type:'image/png'})}
 function importTip(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const N=128,c=mk(N,N),g=cx(c);const sc=Math.min(N/im.width,N/im.height);g.drawImage(im,(N-im.width*sc)/2,(N-im.height*sc)/2,im.width*sc,im.height*sc);const a=rx(c).getImageData(0,0,N,N),d=a.data;let hasAlpha=false;for(let i=3;i<d.length;i+=4)if(d[i]<250){hasAlpha=true;break}
-  for(let i=0;i<d.length;i+=4){const al=hasAlpha?d[i+3]:255-(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);d[i]=d[i+1]=d[i+2]=0;d[i+3]=al}g.putImageData(a,0,0);res(c.toDataURL('image/png'))};im.onerror=()=>res(null);im.src=URL.createObjectURL(file)})}
+  for(let i=0;i<d.length;i+=4){const al=hasAlpha?d[i+3]:255-(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);d[i]=d[i+1]=d[i+2]=0;d[i+3]=al}g.putImageData(a,0,0);done(c.toDataURL('image/png'))};const u=URL.createObjectURL(file),done=r=>{URL.revokeObjectURL(u);res(r)};im.onerror=()=>done(null);im.src=u})}
 function traitDialog(){const t=S.tool==='eraser'?'eraser':S.tool==='clone'?'clone':'brush',o=S.opts[t];
  const tipOpts=Object.keys(TIPS).map(k=>`<option value="${k}" ${o.tip===k?'selected':''}>${TIPS[k]}</option>`).join('')+CUSTOM.map((c,i)=>`<option value="c:${i}" ${o.tip==='c:'+i?'selected':''}>${esc(c.name)}</option>`).join('');
  dialog({title:t==='eraser'?'Gomme : réglages du trait':t==='clone'?'Tampon : réglages du trait':'Pinceau : réglages du trait',body:`${t==='clone'?'':`<label class="field">Forme de la pointe<select id="trTip">${tipOpts}</select></label><div class="row"><button class="btn sm" id="trImp">Importer une pointe (image ou .abr)…</button><span class="muted" style="font-size:12px">Les zones sombres ou opaques de l’image deviennent la forme du pinceau.</span></div>`}

@@ -29,7 +29,7 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   /* application de bureau : moteur IA natif (carte graphique) d'abord */
   {const N=window.PrismNAI;if(N&&await N.ok()){try{const s=await N.fromChunks([...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),v=>{busy(true,'Chargement du modèle de suppression…',v*0.9);LM.busyCancel(true)});
       if(LM.loadRes!==res){s.release();return}LM.nat=s;LM.w=s;LM.ep='native-'+s.__ep;LM.threads=navigator.hardwareConcurrency||1;LM.loadRes=null;res(s);return}catch(e){console.warn('IA native, suppression :',e)}}}
-  let w;try{w=new Worker(URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'})))}catch(e){console.warn('lama',e);res(null);return}
+  let w;try{w=new Worker(LM.wurl||(LM.wurl=URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'}))))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   const fail=msg=>{console.warn('lama',msg);try{w.terminate()}catch(e){}LM.loadRes=null;res(null)};
   w.onmessage=e=>{const m=e.data;
@@ -80,7 +80,7 @@ LM.fill=async(L,maskC,bx)=>{const d=S.doc,W=L.canvas.width,H=L.canvas.height,P=L
   if(!o||LM.abort)return null;
   const dt=performance.now()-t0;LM.tpp=LM.tpp==null?dt/n:LM.tpp*.5+dt/n*.5;LM.last={ms:Math.round(dt),w:rw,h:rh,f:P.f};
   const res=mk(rw,rh),rg=cx(res),ri=rg.createImageData(rw,rh);
-  for(let i=0;i<n;i++){const k=i*4;if(hole[i]===1){ri.data[k]=Math.max(0,Math.min(255,o[i]*255+.5));ri.data[k+1]=Math.max(0,Math.min(255,o[i+n]*255+.5));ri.data[k+2]=Math.max(0,Math.min(255,o[i+2*n]*255+.5));ri.data[k+3]=255}}
+  for(let i=0;i<n;i++){const k=i*4;if(hole[i]===1){ri.data[k]=Math.max(0,Math.min(255,o[i]*255));ri.data[k+1]=Math.max(0,Math.min(255,o[i+n]*255));ri.data[k+2]=Math.max(0,Math.min(255,o[i+2*n]*255));ri.data[k+3]=255}}
   rg.putImageData(ri,0,0);return{res,plan:P}};
 /* brique commune : applique le résultat à L (même historique et même gestion de sélection que l'ancienne gomme) */
 LM.removeObject=async function(L,maskC,bx,clip,prev){const d=S.doc,doc0=d,h0=S.history[S.hi];

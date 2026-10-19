@@ -121,7 +121,7 @@ UPX.tile=async(m,c)=>{const w=c.width,h=c.height,a=cx(c).getImageData(0,0,w,h).d
   for(let i=0;i<n;i++){f[i]=a[i*4]/255;f[i+n]=a[i*4+1]/255;f[i+2*n]=a[i*4+2]/255}
   const s=m.sess,ort=window.ort,x=ort?new ort.Tensor('float32',f,[1,3,h,w]):{data:f,dims:[1,3,h,w],type:'float32'};
   const y=(await s.run({[s.inputNames[0]]:x}))[s.outputNames[0]].data,W=w*4,H=h*4,N=W*H,im=new ImageData(W,H),o=im.data;
-  for(let i=0;i<N;i++){o[i*4]=y[i]*255+0.5;o[i*4+1]=y[i+N]*255+0.5;o[i*4+2]=y[i+2*N]*255+0.5;o[i*4+3]=255}return im};
+  for(let i=0;i<N;i++){o[i*4]=y[i]*255;o[i*4+1]=y[i+N]*255;o[i*4+2]=y[i+2*N]*255;o[i*4+3]=255}return im};
 /* time per source pixel, from one tile (warms the engine up too) */
 UPX.rate=async m=>{if(m.rate)return m.rate;const c=mk(m.T,m.T);cx(c).fillStyle='#888';cx(c).fillRect(0,0,m.T,m.T);await UPX.tile(m,c);const t0=performance.now();await UPX.tile(m,c);return m.rate=(performance.now()-t0)/(m.T*m.T)};
 UPX.canvas=async(src,scale,m,onP)=>{const W=src.width,H=src.height,N=4,T=m.T,P=m.P,out=mk(W*scale,H*scale),og=cx(out);og.imageSmoothingEnabled=true;og.imageSmoothingQuality='high';

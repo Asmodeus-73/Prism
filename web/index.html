@@ -4283,20 +4283,20 @@ const _sf=stampFor;stampFor=function(size,hard,color){const t=S.tool;if(t!=='bru
  g.restore();if(hard<.95&&!String(tip).startsWith('c:')&&'filter'in g&&tip!=='chalk'&&tip!=='splat'){const t2=mk(s,s),g2=cx(t2);g2.filter=`blur(${Math.round((1-hard)*s*.12)}px)`;g2.drawImage(c,0,0);g.clearRect(0,0,s,s);g.drawImage(t2,0,0)}
  g.globalCompositeOperation='source-in';g.fillStyle=col;g.fillRect(0,0,s,s);return c};
 /* Photoshop brushes (.abr, versions 1, 2, 6 and later): the sampled tips, as grey levels (255 = paint). Computed round tips are skipped. */
-function parseABR(u8){const v=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),out=[];let p=0;const u16=()=>{const x=v.getUint16(p);p+=2;return x},u32=()=>{const x=v.getUint32(p);p+=4;return x},i32=()=>{const x=v.getInt32(p);p+=4;return x};
+function parseABR(u8){const v=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),out=[];let p=0,px=0;const room=(w,h)=>out.length<12&&(px+=w*h)<=64e6;const u16=()=>{const x=v.getUint16(p);p+=2;return x},u32=()=>{const x=v.getUint32(p);p+=4;return x},i32=()=>{const x=v.getInt32(p);p+=4;return x};
   const sample=(w,h,depth,comp)=>{const bpp=depth>>3,n=w*h*bpp,raw=new Uint8Array(n);
-    if(!comp){raw.set(u8.subarray(p,p+n));p+=n}
-    else{const rows=[];for(let y=0;y<h;y++)rows.push(u16());let o=0;for(const len of rows){const end=p+len;while(p<end&&o<n){const c=(u8[p++]<<24)>>24;if(c>=0){for(let k=0;k<=c&&o<n;k++)raw[o++]=u8[p++]}else if(c!==-128){const b=u8[p++];for(let k=0;k<1-c&&o<n;k++)raw[o++]=b}}p=end}}
+    if(!comp){if(p+n>u8.length)throw new Error('pointe tronquée');raw.set(u8.subarray(p,p+n));p+=n}
+    else{if(p+2*h>u8.length)throw new Error('pointe tronquée');const rows=[];for(let y=0;y<h;y++)rows.push(u16());let o=0;for(const len of rows){const end=p+len;while(p<end&&o<n){const c=(u8[p++]<<24)>>24;if(c>=0){for(let k=0;k<=c&&o<n;k++)raw[o++]=u8[p++]}else if(c!==-128){const b=u8[p++];for(let k=0;k<1-c&&o<n;k++)raw[o++]=b}}p=end}}
     if(bpp===1)return raw;const g=new Uint8Array(w*h);for(let i=0;i<w*h;i++)g[i]=raw[i*2];return g};
   const ver=u16();
   if(ver===1||ver===2){const count=u16();for(let i=0;i<count;i++){const type=u16(),size=u32(),next=p+size;
       if(type===2){p+=4;p+=2;let name='';if(ver===2){const L=u32();for(let k=0;k<L;k++){const c=u16();if(c)name+=String.fromCharCode(c)}}p+=1+8;const t=i32(),l=i32(),b=i32(),r=i32(),depth=u16(),comp=u8[p++];
-        const w=r-l,h=b-t;if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16))out.push({name,w,h,data:sample(w,h,depth,comp)})}
+        const w=r-l,h=b-t;if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)&&room(w,h))out.push({name,w,h,data:sample(w,h,depth,comp)})}
       p=next}return out}
   if(ver<6||ver>10)throw new Error('version '+ver);const sub=u16();
   while(p+12<=u8.length){if(String.fromCharCode(u8[p],u8[p+1],u8[p+2],u8[p+3])!=='8BIM')break;const key=String.fromCharCode(u8[p+4],u8[p+5],u8[p+6],u8[p+7]);p+=8;const len=u32(),end=p+len;
     if(key==='samp'){while(p+4<end){let size=u32();while(size%4)size++;const next=p+size;p+=sub===1?47:301;const t=i32(),l=i32(),b=i32(),r=i32(),depth=u16(),comp=u8[p++],w=r-l,h=b-t;
-        if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)){try{out.push({name:'',w,h,data:sample(w,h,depth,comp)})}catch(e){}}p=next}}
+        if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)&&room(w,h)){try{out.push({name:'',w,h,data:sample(w,h,depth,comp)})}catch(e){}}p=next}}
     p=end+(len&1?1:0)}
   return out}
 window.PrismABR=parseABR;
@@ -4304,7 +4304,7 @@ window.PrismABR=parseABR;
 async function abrTipFile(t,i,base){const c=mk(t.w,t.h),g=cx(c),im=g.createImageData(t.w,t.h);for(let k=0;k<t.w*t.h;k++)im.data[k*4+3]=t.data[k];g.putImageData(im,0,0);
   const b=await new Promise(r=>c.toBlob(r,'image/png'));return new File([b],(t.name||base+' '+(i+1))+'.png',{type:'image/png'})}
 function importTip(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const N=128,c=mk(N,N),g=cx(c);const sc=Math.min(N/im.width,N/im.height);g.drawImage(im,(N-im.width*sc)/2,(N-im.height*sc)/2,im.width*sc,im.height*sc);const a=rx(c).getImageData(0,0,N,N),d=a.data;let hasAlpha=false;for(let i=3;i<d.length;i+=4)if(d[i]<250){hasAlpha=true;break}
-  for(let i=0;i<d.length;i+=4){const al=hasAlpha?d[i+3]:255-(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);d[i]=d[i+1]=d[i+2]=0;d[i+3]=al}g.putImageData(a,0,0);res(c.toDataURL('image/png'))};im.onerror=()=>res(null);im.src=URL.createObjectURL(file)})}
+  for(let i=0;i<d.length;i+=4){const al=hasAlpha?d[i+3]:255-(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);d[i]=d[i+1]=d[i+2]=0;d[i+3]=al}g.putImageData(a,0,0);done(c.toDataURL('image/png'))};const u=URL.createObjectURL(file),done=r=>{URL.revokeObjectURL(u);res(r)};im.onerror=()=>done(null);im.src=u})}
 function traitDialog(){const t=S.tool==='eraser'?'eraser':S.tool==='clone'?'clone':'brush',o=S.opts[t];
  const tipOpts=Object.keys(TIPS).map(k=>`<option value="${k}" ${o.tip===k?'selected':''}>${TIPS[k]}</option>`).join('')+CUSTOM.map((c,i)=>`<option value="c:${i}" ${o.tip==='c:'+i?'selected':''}>${esc(c.name)}</option>`).join('');
  dialog({title:t==='eraser'?'Gomme : réglages du trait':t==='clone'?'Tampon : réglages du trait':'Pinceau : réglages du trait',body:`${t==='clone'?'':`<label class="field">Forme de la pointe<select id="trTip">${tipOpts}</select></label><div class="row"><button class="btn sm" id="trImp">Importer une pointe (image ou .abr)…</button><span class="muted" style="font-size:12px">Les zones sombres ou opaques de l’image deviennent la forme du pinceau.</span></div>`}
@@ -5442,10 +5442,10 @@ async function iccExport(o){busy(true,'Conversion de couleurs…',null);await ti
     const cs=String.fromCharCode(...o.bytes.subarray(16,20));if(cs==='CMYK')return await iccExportCMYK(o,m,hp);if(cs!=='RGB ')throw new Error('profil '+cs.trim()+' : seuls les profils RVB et CMJN sont pris en charge');
     const T=CMS.ns.TYPE_RGBA_8,io=CS==='display-p3'?CMS.p3:CMS.srgb,fl=o.bpc?0x2000:0;
     const xf=m.cmsCreateTransform(io,T,hp,T,o.intent,fl);if(!xf)throw new Error('transformation impossible avec ce profil');
-    let c=await renderDoc(1);if(o.fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}
-    const g=cx(c),id=g.getImageData(0,0,c.width,c.height),n=c.width*c.height,CH=1<<20;
+    let c,g,id;try{c=await renderDoc(1);if(o.fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}
+    g=cx(c);id=g.getImageData(0,0,c.width,c.height);const n=c.width*c.height,CH=1<<20;
     for(let s=0;s<n;s+=CH){const k=Math.min(CH,n-s),part=id.data.subarray(s*4,(s+k)*4),out=m.cmsDoTransform(xf,part,k);for(let i=3;i<out.length;i+=4)out[i]=part[i];id.data.set(out,s*4);await tick()}
-    m.cmsDeleteTransform(xf);g.putImageData(id,0,0);
+    }finally{m.cmsDeleteTransform(xf)}g.putImageData(id,0,0);
     let blob=await new Promise(r=>c.toBlob(r,'image/'+o.fmt,o.q));
     let ex=null;try{ex=S.doc.exif?exifForExport(S.doc.exif,c.width,c.height):null}catch(e){}if(o.fmt==='jpeg')blob=await window.PrismFx.jpegMetaICC(blob,ex,o.bytes);
     else{const u=new Uint8Array(await blob.arrayBuffer()),v=new DataView(u.buffer),ih=8+12+v.getUint32(8),nm=new TextEncoder().encode((o.name||'profil').slice(0,40)),z=await zlib(o.bytes),ch=new Uint8Array(nm.length+2+z.length);ch.set(nm);ch.set(z,nm.length+2);
@@ -5456,11 +5456,11 @@ async function iccExport(o){busy(true,'Conversion de couleurs…',null);await ti
   }catch(e){busy(false);console.error(e);toast('Export impossible : '+(e.message||e),5000)}}
 /* CMYK (CMJN) for print: the photo is flattened on white, converted with the printer's profile and written as a CMYK TIFF carrying that profile */
 async function iccExportCMYK(o,m,hp){const io=CS==='display-p3'?CMS.p3:CMS.srgb,xf=m.cmsCreateTransform(io,CMS.ns.TYPE_RGB_8,hp,CMS.ns.TYPE_CMYK_8,o.intent,o.bpc?0x2000:0);if(!xf)throw new Error('transformation impossible avec ce profil');
-  const c0=await renderDoc(1),W=c0.width,H=c0.height,c=mk(W,H),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(c0,0,0);
-  const a=g.getImageData(0,0,W,H).data,n=W*H,cmyk=new Uint8Array(n*4),CH=1<<20,rgb=new Uint8Array(Math.min(CH,n)*3);
+  let cmyk,W,H;try{const c0=await renderDoc(1);W=c0.width;H=c0.height;const c=mk(W,H),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(c0,0,0);
+  const a=g.getImageData(0,0,W,H).data,n=W*H,CH=1<<20,rgb=new Uint8Array(Math.min(CH,n)*3);cmyk=new Uint8Array(n*4);
   for(let s=0;s<n;s+=CH){const k=Math.min(CH,n-s);for(let i=0;i<k;i++){const j=(s+i)*4;rgb[i*3]=a[j];rgb[i*3+1]=a[j+1];rgb[i*3+2]=a[j+2]}
     const out=m.cmsDoTransform(xf,rgb.subarray(0,k*3),k);cmyk.set(out.subarray(0,k*4),s*4);busy(true,'Conversion en CMJN…',s/n);await tick()}
-  m.cmsDeleteTransform(xf);const blob=await encodeTIFFCMYK(cmyk,W,H,o.bytes);busy(false);
+  }finally{m.cmsDeleteTransform(xf)}const blob=await encodeTIFFCMYK(cmyk,W,H,o.bytes);busy(false);
   await saveFile(blob,(S.doc.name||'image').replace(/\.[a-z0-9]+$/i,'')+'-'+(o.name||'cmjn').replace(/[^\w-]+/g,'_')+'.tif')}
 async function encodeTIFFCMYK(pix,w,h,icc){const comp=await zlib(pix),tags=[],T=(id,type,count,val)=>tags.push({id,type,count,val});
   const nT=12,ifd=8,ifdLen=2+nT*12+4,bpsOff=ifd+ifdLen,iccOff=bpsOff+8,dataOff=iccOff+icc.length+(icc.length&1);
@@ -6373,7 +6373,7 @@ async function fuseExposures(files){busy(true,'Fusion des expositions…',0);awa
       busy(true,'Fusion des expositions…',.65+(k+1)/N*.3);await tick()}
     const out=mk(W,H),og=cx(out),oi=og.createImageData(W,H),od=oi.data;
     for(let c=0;c<3;c++){let a=res[c][LV-1];for(let l=LV-2;l>=0;l--){const [w,h]=dims[l],u=up(a,dims[l+1][0],dims[l+1][1],w,h),R=res[c][l];for(let i=0;i<w*h;i++)u[i]+=R[i];a=u}
-      for(let i=0;i<n;i++)od[i*4+c]=Math.max(0,Math.min(255,a[i]*255+.5))}
+      for(let i=0;i<n;i++)od[i*4+c]=Math.max(0,Math.min(255,a[i]*255))}
     for(let i=0;i<n;i++)od[i*4+3]=255;
     og.putImageData(oi,0,0);busy(false);setDoc(out,'fusion-expositions.jpg',{});toast('Expositions fusionnées'+(moved?' (alignement corrigé sur '+moved+' photo'+(moved>1?'s':'')+')':'')+'. Un petit décalage est corrigé, pas une rotation.',6000)
   }catch(e){busy(false);console.error(e);toast('Fusion impossible : '+(e.message||e),5000)}}
@@ -9096,7 +9096,7 @@ DN._native=async()=>{const N=window.PrismNAI;if(!N||!(await N.ok()))return null;
 DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);
   {const s=await DN._native();if(s){DN.loadRes=null;res(s);return}}
-  let w;try{w=new Worker(URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'})))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
+  let w;try{w=new Worker(DN.wurl||(DN.wurl=URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'}))))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
   const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   w.onmessage=e=>{const m=e.data;
     if(m.t==='prog'){DN.busyCancel(true);busy(true,m.prep?'Préparation du modèle…':'Téléchargement du modèle de débruitage (43 Mo, une seule fois)…',m.v);DN.busyCancel(true)}
@@ -9607,7 +9607,7 @@ UPX.tile=async(m,c)=>{const w=c.width,h=c.height,a=cx(c).getImageData(0,0,w,h).d
   for(let i=0;i<n;i++){f[i]=a[i*4]/255;f[i+n]=a[i*4+1]/255;f[i+2*n]=a[i*4+2]/255}
   const s=m.sess,ort=window.ort,x=ort?new ort.Tensor('float32',f,[1,3,h,w]):{data:f,dims:[1,3,h,w],type:'float32'};
   const y=(await s.run({[s.inputNames[0]]:x}))[s.outputNames[0]].data,W=w*4,H=h*4,N=W*H,im=new ImageData(W,H),o=im.data;
-  for(let i=0;i<N;i++){o[i*4]=y[i]*255+0.5;o[i*4+1]=y[i+N]*255+0.5;o[i*4+2]=y[i+2*N]*255+0.5;o[i*4+3]=255}return im};
+  for(let i=0;i<N;i++){o[i*4]=y[i]*255;o[i*4+1]=y[i+N]*255;o[i*4+2]=y[i+2*N]*255;o[i*4+3]=255}return im};
 /* time per source pixel, from one tile (warms the engine up too) */
 UPX.rate=async m=>{if(m.rate)return m.rate;const c=mk(m.T,m.T);cx(c).fillStyle='#888';cx(c).fillRect(0,0,m.T,m.T);await UPX.tile(m,c);const t0=performance.now();await UPX.tile(m,c);return m.rate=(performance.now()-t0)/(m.T*m.T)};
 UPX.canvas=async(src,scale,m,onP)=>{const W=src.width,H=src.height,N=4,T=m.T,P=m.P,out=mk(W*scale,H*scale),og=cx(out);og.imageSmoothingEnabled=true;og.imageSmoothingQuality='high';
@@ -9663,7 +9663,7 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   /* application de bureau : moteur IA natif (carte graphique) d'abord */
   {const N=window.PrismNAI;if(N&&await N.ok()){try{const s=await N.fromChunks([...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),v=>{busy(true,'Chargement du modèle de suppression…',v*0.9);LM.busyCancel(true)});
       if(LM.loadRes!==res){s.release();return}LM.nat=s;LM.w=s;LM.ep='native-'+s.__ep;LM.threads=navigator.hardwareConcurrency||1;LM.loadRes=null;res(s);return}catch(e){console.warn('IA native, suppression :',e)}}}
-  let w;try{w=new Worker(URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'})))}catch(e){console.warn('lama',e);res(null);return}
+  let w;try{w=new Worker(LM.wurl||(LM.wurl=URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'}))))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   const fail=msg=>{console.warn('lama',msg);try{w.terminate()}catch(e){}LM.loadRes=null;res(null)};
   w.onmessage=e=>{const m=e.data;
@@ -9714,7 +9714,7 @@ LM.fill=async(L,maskC,bx)=>{const d=S.doc,W=L.canvas.width,H=L.canvas.height,P=L
   if(!o||LM.abort)return null;
   const dt=performance.now()-t0;LM.tpp=LM.tpp==null?dt/n:LM.tpp*.5+dt/n*.5;LM.last={ms:Math.round(dt),w:rw,h:rh,f:P.f};
   const res=mk(rw,rh),rg=cx(res),ri=rg.createImageData(rw,rh);
-  for(let i=0;i<n;i++){const k=i*4;if(hole[i]===1){ri.data[k]=Math.max(0,Math.min(255,o[i]*255+.5));ri.data[k+1]=Math.max(0,Math.min(255,o[i+n]*255+.5));ri.data[k+2]=Math.max(0,Math.min(255,o[i+2*n]*255+.5));ri.data[k+3]=255}}
+  for(let i=0;i<n;i++){const k=i*4;if(hole[i]===1){ri.data[k]=Math.max(0,Math.min(255,o[i]*255));ri.data[k+1]=Math.max(0,Math.min(255,o[i+n]*255));ri.data[k+2]=Math.max(0,Math.min(255,o[i+2*n]*255));ri.data[k+3]=255}}
   rg.putImageData(ri,0,0);return{res,plan:P}};
 /* brique commune : applique le résultat à L (même historique et même gestion de sélection que l'ancienne gomme) */
 LM.removeObject=async function(L,maskC,bx,clip,prev){const d=S.doc,doc0=d,h0=S.history[S.hi];
