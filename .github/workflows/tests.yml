@@ -1,0 +1,64 @@
+name: Vérifier Prism
+
+# On every push and pull request: the web page is up to date with its sources,
+# the editor passes its tests in Chromium, and the desktop code compiles.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: La page web correspond à ses sources
+        run: node web-src/build.mjs --check
+
+      - name: Chaque fichier source se lit seul
+        run: for f in web-src/app/js/*.js web-src/feat/*.js; do node --check "$f" || exit 1; done
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Tests de l'éditeur
+        run: node tests/smoke.mjs
+
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+
+      - name: Bibliothèques système
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - run: npm ci && node scripts/prepare.mjs
+
+      - name: Le code de l'application compile
+        working-directory: src-tauri
+        run: cargo clippy --locked -- -D warnings

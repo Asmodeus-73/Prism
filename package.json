@@ -7,9 +7,12 @@
     "prepare-web": "node scripts/prepare.mjs",
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "tauri build",
+    "build-web": "node web-src/build.mjs",
+    "test": "node web-src/build.mjs --check && node tests/smoke.mjs"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.2"
+    "@tauri-apps/cli": "2.12.2",
+    "playwright": "1.56.1"
   }
 }

@@ -1,0 +1,46 @@
+/* ---------- menus ---------- */
+.menu{position:fixed;z-index:100;min-width:240px;max-width:min(360px,calc(100vw - 16px));max-height:calc(100dvh - 16px);overflow-y:auto;background:var(--menu);border:1px solid var(--line-2);border-radius:var(--r);padding:4px;box-shadow:var(--shadow);display:flex;flex-direction:column;animation:mIn .09s ease-out}
+@keyframes mIn{from{opacity:0;transform:translateY(-3px)}}
+.menu.inline{position:static;max-width:none;max-height:none;box-shadow:none;border:0;border-radius:0;padding:4px 8px 12px;background:none;animation:none;overflow:visible}
+.mi{display:flex;align-items:center;gap:10px;width:100%;min-height:30px;border:0;background:none;text-align:left;padding:4px 10px 4px 8px;border-radius:var(--r-s);color:var(--fg);font-size:13px;white-space:nowrap}
+.mi-i{width:18px;height:18px;display:grid;place-items:center;flex:none;color:var(--fg-2)}
+.mi-i svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.mi-noi{display:block;width:17px}
+.mi-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.mi kbd{font:11.5px var(--num);color:var(--fg-3);margin-left:20px}
+.mi kbd:empty{display:none}
+.mi-sub{width:14px;height:14px;fill:none;stroke:var(--fg-2);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-left:16px}
+.mi:hover,.mi:focus,.mi.sub-open{background:var(--accent);color:var(--accent-ink);outline:none}
+.mi:hover .mi-i,.mi:focus .mi-i,.mi.sub-open .mi-i,.mi:hover kbd,.mi:focus kbd,.mi:hover .mi-sub,.mi:focus .mi-sub,.mi.sub-open .mi-sub{color:inherit;stroke:currentColor}
+.mi.danger{color:var(--danger)}.mi.danger .mi-i{color:var(--danger)}
+.mi.danger:hover,.mi.danger:focus{background:var(--danger);color:#fff}.mi.danger:hover .mi-i,.mi.danger:focus .mi-i{color:#fff}
+.mi[aria-disabled="true"]{color:var(--fg-3);cursor:default}
+.mi[aria-disabled="true"] .mi-i{opacity:.6}
+.mi[aria-disabled="true"]:hover,.mi[aria-disabled="true"]:focus{background:var(--hover);color:var(--fg-3)}
+.mi[aria-disabled="true"]:hover .mi-i,.mi[aria-disabled="true"]:focus .mi-i,.mi[aria-disabled="true"]:hover kbd,.mi[aria-disabled="true"]:focus kbd{color:var(--fg-3)}
+.mi[aria-checked="true"] .mi-i{color:var(--accent-fg)}
+.mi[aria-checked="true"]:hover .mi-i,.mi[aria-checked="true"]:focus .mi-i{color:inherit}
+.msep{height:1px;background:var(--line);margin:4px 6px;flex:none}
+.mhead{font-size:11.5px;font-weight:600;color:var(--fg-2);padding:8px 10px 3px 36px}
+.msheet{position:fixed;inset:auto 0 0 0;z-index:110;max-height:min(80dvh,640px);overflow-y:auto;background:var(--menu);border-top:1px solid var(--line-2);border-radius:16px 16px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.4);padding-bottom:env(safe-area-inset-bottom);animation:shIn .16s ease-out}
+@keyframes shIn{from{transform:translateY(24px);opacity:0}}
+.ms-h{position:sticky;top:0;display:flex;align-items:center;gap:6px;padding:8px 8px 6px 16px;background:var(--menu);border-bottom:1px solid var(--line);z-index:1}
+.ms-h b{flex:1;font-size:15px;font-weight:600}
+.ms-h .ib[data-back]{margin-left:-8px}
+.msheet .mi{min-height:44px;font-size:14.5px;padding:6px 12px}
+.msheet .mi kbd{display:none}
+/* legacy menu pop (sheet fallbacks) */
+.pop{position:fixed;z-index:100;min-width:240px;background:var(--menu);border:1px solid var(--line-2);border-radius:var(--r);padding:4px;box-shadow:var(--shadow)}
+.pop button{display:flex;width:100%;justify-content:space-between;gap:20px;background:none;border:0;text-align:left;padding:6px 10px;border-radius:var(--r-s)}
+.pop button:hover{background:var(--accent);color:var(--accent-ink)}
+.pop button[disabled]{opacity:.45;background:none;cursor:default}
+.pop kbd{font:11.5px var(--num);color:var(--fg-3)}
+.pop hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
+.pop-h{font-size:11.5px;font-weight:600;color:var(--fg-2);padding:10px 10px 3px}
+.sheetmenu{max-height:calc(100dvh - 70px);overflow:auto}
+
+/* tooltip */
+.tip{position:fixed;z-index:150;display:flex;align-items:center;gap:8px;background:#0d0d10;color:#f2f2f4;font-size:12.5px;font-weight:500;padding:6px 9px;border-radius:var(--r-s);pointer-events:none;box-shadow:0 6px 18px rgba(0,0,0,.35);max-width:300px;flex-wrap:wrap;line-height:1.35}
+.tip kbd{font:600 11px var(--num);background:rgba(255,255,255,.14);border-radius:4px;padding:1px 6px}
+.tip small{flex-basis:100%;font-size:12px;font-weight:400;color:#c8c8d0}
+

@@ -1,0 +1,37 @@
+/* ================= Prism v8: docked workspace. Menu bar, tool options, tools | photo | panels, status bar ================= */
+:root{
+  --bg:#121214; --stage:#121214; --chrome:#1c1c1f; --chrome-2:#242428; --raise:#2e2e33; --hover:#2a2a2f; --menu:#26262a;
+  --line:#2c2c31; --line-2:#3a3a40; --field:#141416; --field-line:#45454c;
+  --fg:#ececef; --fg-2:#b4b4bc; --fg-3:#8f8f99;
+  --accent:#5b67f0; --accent-fg:#a9b1ff; --accent-ink:#fff; --accent-soft:rgba(91,103,240,.2); --accent-line:rgba(130,140,255,.6);
+  --ok:#5fcf86; --warn:#e8c25c; --bad:#ff7b6b; --danger:#ff7b6b;
+  --hist-bg:#0c0c0e; --hist-blend:lighter;
+  --shadow:0 12px 36px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.3);
+  --shadow-s:0 4px 14px rgba(0,0,0,.35);
+  --spectrum:linear-gradient(90deg,#ff5d6c,#ffb648 25%,#5fe39b 50%,#46b3ff 75%,#9a78ff);
+  --ui:"Geist",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --num:"Geist Mono",ui-monospace,Menlo,monospace;
+  --mark:"Geist",system-ui,sans-serif;
+  --r:8px; --r-s:6px; --r-l:12px;
+  --side:320px; --toolw:48px;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --bg:#e4e4e8; --stage:#d6d6db; --chrome:#fafafa; --chrome-2:#f0f0f2; --raise:#ffffff; --hover:#e9e9ed; --menu:#ffffff;
+  --line:#e0e0e4; --line-2:#cfcfd5; --field:#ffffff; --field-line:#b9b9c1;
+  --fg:#1a1a1e; --fg-2:#4a4a52; --fg-3:#6a6a73;
+  --accent:#4b55e0; --accent-fg:#3540c8; --accent-ink:#fff; --accent-soft:rgba(75,85,224,.11); --accent-line:rgba(75,85,224,.55);
+  --ok:#22803f; --warn:#94680a; --bad:#c3392a; --danger:#c3392a;
+  --hist-bg:#ececef; --hist-blend:multiply;
+  --shadow:0 12px 32px rgba(20,20,40,.16),0 0 0 1px rgba(20,20,40,.08); --shadow-s:0 2px 8px rgba(20,20,40,.1);
+  color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#e4e4e8; --stage:#d6d6db; --chrome:#fafafa; --chrome-2:#f0f0f2; --raise:#ffffff; --hover:#e9e9ed; --menu:#ffffff;
+  --line:#e0e0e4; --line-2:#cfcfd5; --field:#ffffff; --field-line:#b9b9c1;
+  --fg:#1a1a1e; --fg-2:#4a4a52; --fg-3:#6a6a73;
+  --accent:#4b55e0; --accent-fg:#3540c8; --accent-ink:#fff; --accent-soft:rgba(75,85,224,.11); --accent-line:rgba(75,85,224,.55);
+  --ok:#22803f; --warn:#94680a; --bad:#c3392a; --danger:#c3392a;
+  --hist-bg:#ececef; --hist-blend:multiply;
+  --shadow:0 12px 32px rgba(20,20,40,.16),0 0 0 1px rgba(20,20,40,.08); --shadow-s:0 2px 8px rgba(20,20,40,.1);
+  color-scheme:light}
+
