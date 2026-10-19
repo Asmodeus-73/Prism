@@ -227,15 +227,16 @@ fn run(model: &Model, specs: &[InSpec], body: &[u8]) -> Result<Vec<u8>, String> 
     let mut inputs: Vec<(String, DynValue)> = vec![];
     let mut at = 0usize;
     for s in specs {
-        let n: usize = s.dims.iter().map(|&d| d.max(0) as usize).product();
+        let n = s.dims.iter().try_fold(1usize, |a, &d| a.checked_mul(usize::try_from(d).ok()?)).ok_or("dimensions invalides")?;
         let size = match s.dtype.as_str() {
             "float32" | "int32" => 4,
             "uint8" => 1,
             "int64" => 8,
             other => return Err(format!("type d'entrée non pris en charge : {other}")),
         };
-        let chunk = body.get(at..at + n * size).ok_or("entrée trop courte")?;
-        at += n * size;
+        let len = n.checked_mul(size).ok_or("entrée trop grande")?;
+        let chunk = body.get(at..at.checked_add(len).ok_or("entrée trop grande")?).ok_or("entrée trop courte")?;
+        at += len;
         let dims = s.dims.clone();
         let v: DynValue = match s.dtype.as_str() {
             "float32" => Tensor::from_array((dims, le::<f32, 4>(chunk, f32::from_le_bytes))).map_err(|e| e.to_string())?.into_dyn(),
