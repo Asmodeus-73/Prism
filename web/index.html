@@ -1235,7 +1235,7 @@ async function textAt(p){const prev=$('#scrim');if(prev&&prev._cancel)prev._canc
   const draw=async()=>{const g=cx(L.canvas);g.clearRect(0,0,d.w,d.h);const f=`${o.italic?'italic ':''}${o.bold?'700':'400'} ${o.size}px "${o.font}"`;try{await document.fonts.load(f)}catch(e){}g.font=f;g.textBaseline='top';g.fillStyle=st.color;
     if(o.shadow){g.shadowColor='rgba(0,0,0,.45)';g.shadowBlur=o.size*0.12;g.shadowOffsetY=o.size*0.04}st.text.split('\n').forEach((ln,i)=>g.fillText(ln,p.x,p.y+i*o.size*1.15));g.shadowColor='transparent';L.name='Texte : '+(st.text.split('\n')[0].slice(0,18)||'…');markComp()};
   const fonts=['Geist','Newsreader','Playfair Display','Bebas Neue','Caveat','Geist Mono','Georgia','Arial'];
-  dialog({title:'Texte',light:true,body:`<label class="field">Texte<textarea id="tTxt" rows="3">${esc(st.text)}</textarea></label><div class="inline"><select id="tFont" aria-label="Police">${fonts.map(f=>`<option ${f===o.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${st.color}" aria-label="Couleur">
+  dialog({title:'Texte',light:true,body:`<label class="field">Texte<textarea id="tTxt" rows="3">${esc(st.text)}</textarea></label><div class="inline"><select id="tFont" aria-label="Police">${fonts.map(f=>`<option ${f===o.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${esc(st.color)}" aria-label="Couleur">
     <label class="inline"><input type="checkbox" id="tB" ${o.bold?'checked':''}>Gras</label><label class="inline"><input type="checkbox" id="tI" ${o.italic?'checked':''}>Italique</label><label class="inline"><input type="checkbox" id="tS" ${o.shadow?'checked':''}>Ombre</label></div>
     ${rangeRow('tSize','Taille',8,Math.max(200,Math.round(d.h/2)),1,o.size,' px')}<p class="muted">Ajustez ensuite la position avec l’outil Déplacement (V).</p>`,
     onOpen:el=>{const up=()=>{st.text=$('#tTxt',el).value;o.font=$('#tFont',el).value;st.color=$('#tCol',el).value;o.bold=$('#tB',el).checked;o.italic=$('#tI',el).checked;o.shadow=$('#tS',el).checked;o.size=+$('#tSize',el).value;$('#tSize-o',el).textContent=o.size+' px';draw()};el.addEventListener('input',up);el.addEventListener('change',up);draw();setTimeout(()=>{$('#tTxt',el).select();$('#tTxt',el).focus()},30)},
@@ -1350,7 +1350,7 @@ const IC={
   zoom:'<circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5l5 5M6 8.5h5M8.5 6v5"/>'};
 const TOOLS=[['move','Déplacement','V'],['marquee','Sélection rectangle / ellipse','M'],['lasso','Lasso','L'],['wand','Baguette magique','W'],0,['crop','Recadrage et redressement','C'],['eyedropper','Pipette','I'],0,
   ['heal','Correcteur','J'],['remove','Gomme magique (IA)','R'],['clone','Tampon de duplication','S'],['brush','Pinceau','B'],['eraser','Gomme','E'],['gradient','Dégradé','G'],['dodge','Densité, goutte d’eau, éponge','O'],['text','Texte','T'],0,['hand','Main','H'],['zoom','Zoom','Z']];
-function buildDock(){const t=$('#dock');t.innerHTML=TOOLS.map(x=>x?`<button class="ib" data-tool="${x[0]}" title="${x[1]} (${x[2]})" aria-label="${x[1]}"><svg viewBox="0 0 20 20">${IC[x[0]]}</svg></button>`:'<div class="sep"></div>').join('')+`<div class="sep"></div><div class="fg" title="Couleur"><input type="color" class="swatch" id="fg" value="${S.color}" aria-label="Couleur de premier plan"></div>`;
+function buildDock(){const t=$('#dock');t.innerHTML=TOOLS.map(x=>x?`<button class="ib" data-tool="${x[0]}" title="${x[1]} (${x[2]})" aria-label="${x[1]}"><svg viewBox="0 0 20 20">${IC[x[0]]}</svg></button>`:'<div class="sep"></div>').join('')+`<div class="sep"></div><div class="fg" title="Couleur"><input type="color" class="swatch" id="fg" value="${esc(S.color)}" aria-label="Couleur de premier plan"></div>`;
   t.addEventListener('click',e=>{const b=e.target.closest('[data-tool]');if(b)setTool(b.dataset.tool)});$('#fg').addEventListener('input',e=>{S.color=e.target.value;const oc=$('#optColor');if(oc)oc.value=S.color})}
 function setCursor(){const t=S.tool;view.style.cursor=t==='hand'?'grab':t==='zoom'?'zoom-in':['brush','eraser','clone','heal','dodge','remove'].includes(t)?'none':'crosshair'}
 function setTool(t){if(S.stroke)return;if(S.tool==='crop'&&t!=='crop'){S.crop=null;markContent()}S.tool=t;S.pickSource=false;$$('#dock [data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));if(t==='crop')initCrop();renderPill();
@@ -1364,11 +1364,11 @@ function renderPill(){const t=S.tool,o=S.opts,ob=$('#pill'),A=AL();const name=(T
   if(t==='lasso')h+=SEL+optRange('lasso.feather','Contour',0,100,1,' px');
   if(t==='wand')h+=SEL+optRange('wand.tol','Tolérance',0,128,1,'')+`<label><input type="checkbox" data-chk="wand.contiguous" ${o.wand.contiguous?'checked':''}>Contigus</label><label><input type="checkbox" data-chk="wand.all" ${o.wand.all?'checked':''}>Tous les calques</label><button class="btn sm" data-act="subject">Sujet (IA)</button>`;
   if(t==='crop'){const a=S.crop?S.crop.angle:0;h+=`<label>Format<select data-sel="crop.ratio">${cropRatios().map(([v,l])=>`<option value="${v}" ${o.crop.ratio===v?'selected':''}>${l}</option>`).join('')}</select></label><button class="btn sm" data-act="cropswap" title="Passer de paysage à portrait">⇄</button>${cropGridSel()}<label>Redresser<input type="range" id="cropAng" min="-45" max="45" step="0.1" value="${a}"><span class="val" id="cropAngV">${a.toFixed(1)}°</span></label><button class="btn sm" id="cropReset">Réinitialiser</button><button class="btn sm primary" id="cropApply">Appliquer</button>`}
-  if(t==='eyedropper')h+=`<span class="hint">Cliquez pour prélever une couleur.</span><input type="color" class="swatch" id="optColor" value="${S.color}" aria-label="Couleur">`;
+  if(t==='eyedropper')h+=`<span class="hint">Cliquez pour prélever une couleur.</span><input type="color" class="swatch" id="optColor" value="${esc(S.color)}" aria-label="Couleur">`;
   if(t==='heal')h+=seg('heal.mode',[['spot','Localisé'],['source','Avec source']])+optRange('heal.size','Taille',2,400,1,' px')+optRange('heal.hardness','Dureté',0,100,1,' %',100)+(o.heal.mode==='source'?srcBtn():`<span class="hint">Peignez sur une tache ou une poussière.</span>`);
   if(t==='remove')h+=optRange('remove.size','Taille',4,500,1,' px')+`<span class="hint">Peignez sur l’objet ou la personne à effacer, puis relâchez.</span>`;
   if(t==='clone')h+=optRange('clone.size','Taille',2,500,1,' px')+optRange('clone.hardness','Dureté',0,100,1,' %',100)+optRange('clone.opacity','Opacité',1,100,1,' %',100)+`<label><input type="checkbox" data-chk="clone.aligned" ${o.clone.aligned?'checked':''}>Aligné</label><label><input type="checkbox" data-chk="clone.all" ${o.clone.all?'checked':''}>Tous les calques</label>`+srcBtn();
-  if(t==='brush')h+=(onMask?`<span class="hint">Peint le masque : la zone peinte reçoit le réglage.</span>`:`<input type="color" class="swatch" id="optColor" value="${S.color}" aria-label="Couleur">`)+optRange('brush.size','Taille',1,600,1,' px')+optRange('brush.hardness','Dureté',0,100,1,' %',100)+optRange('brush.opacity','Opacité',1,100,1,' %',100)+(onMask?'':optRange('brush.flow','Flux',1,100,1,' %',100));
+  if(t==='brush')h+=(onMask?`<span class="hint">Peint le masque : la zone peinte reçoit le réglage.</span>`:`<input type="color" class="swatch" id="optColor" value="${esc(S.color)}" aria-label="Couleur">`)+optRange('brush.size','Taille',1,600,1,' px')+optRange('brush.hardness','Dureté',0,100,1,' %',100)+optRange('brush.opacity','Opacité',1,100,1,' %',100)+(onMask?'':optRange('brush.flow','Flux',1,100,1,' %',100));
   if(t==='eraser')h+=(onMask?`<span class="hint">Retire des zones du masque.</span>`:'')+optRange('eraser.size','Taille',1,600,1,' px')+optRange('eraser.hardness','Dureté',0,100,1,' %',100)+optRange('eraser.opacity','Opacité',1,100,1,' %',100);
   if(t==='gradient')h+=seg('gradient.shape',[['linear','Linéaire'],['radial','Radial'],['angular','Angulaire'],['reflect','Réfléchi']])+(onMask?`<span class="hint">${A.kind==='adjust'?'Tirez pour dessiner le masque du réglage.':'Tirez pour dessiner le masque du calque.'}</span>`:'');
   if(t==='dodge')h+=seg('dodge.mode',[['dodge','Éclaircir'],['burn','Assombrir'],['blur','Flouter'],['sharpen','Netteté'],['saturate','Saturer'],['desaturate','Désaturer']])+optRange('dodge.size','Taille',4,600,1,' px')+optRange('dodge.strength','Intensité',1,100,1,' %',100);
@@ -3507,11 +3507,11 @@ async function textEdit(L,isNew){const d=S.doc,o=S.opts.text,orig={txt:L.txt,can
   const upd=async el=>{ctl(el);L.txt=t;L.name=keepName(L,nameOfText(t),/^Texte( :|$)/);await loadFont(t);if(fin)return;livePreview(L)};
   const maxW=Math.max(200,d.w);
   dialog({title:isNew?'Nouveau texte':'Modifier le texte',light:true,body:`<label class="field">Texte<textarea id="tTxt" rows="3">${esc(t.text)}</textarea></label>
-    <div class="inline" style="gap:8px;flex-wrap:wrap"><select id="tFont" aria-label="Police">${FONTS.map(f=>`<option ${f===t.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${t.color}" aria-label="Couleur du texte">
+    <div class="inline" style="gap:8px;flex-wrap:wrap"><select id="tFont" aria-label="Police">${FONTS.map(f=>`<option ${f===t.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${esc(t.color)}" aria-label="Couleur du texte">
     <span class="seg-mini"><button type="button" id="tB" class="${t.bold?'on':''}" aria-label="Gras"><b>G</b></button><button type="button" id="tI" class="${t.italic?'on':''}" aria-label="Italique"><i>I</i></button></span>
     <span class="seg-mini" role="group" aria-label="Alignement">${[['left','Gauche'],['center','Centré'],['right','Droite']].map(([v,l])=>`<button type="button" data-al="${v}" class="${t.align===v?'on':''}">${l}</button>`).join('')}</span></div>
     ${rRow('tSize','Taille',8,Math.max(300,Math.round(d.h/2)),1,t.size,' px')}${rRow('tLh','Interligne',60,250,1,Math.round(t.lh*100),'')}${rRow('tTr','Espacement des lettres',-10,60,1,t.track,' px')}${rRow('tBox','Largeur du bloc (0 = libre)',0,maxW,10,t.boxW,' px')}
-    <div class="dlg-grid"><label>Contour : épaisseur${rRow('tSw','',0,40,1,t.sw,' px')}</label><label>Couleur du contour<input type="color" class="swatch" id="tSc" value="${t.sc}"></label></div>
+    <div class="dlg-grid"><label>Contour : épaisseur${rRow('tSw','',0,40,1,t.sw,' px')}</label><label>Couleur du contour<input type="color" class="swatch" id="tSc" value="${esc(t.sc)}"></label></div>
     <p class="muted">Ombre, lueur et contour extérieur : Calque > Styles de calque. Déplacez le texte avec l’outil Déplacement (V). Pour le modifier plus tard, cliquez dessus avec l’outil Texte (T).</p>`,
     onOpen:el=>{const go=()=>upd(el);el.addEventListener('input',go);el.addEventListener('change',go);
       ['tB','tI'].forEach(id=>$('#'+id,el).addEventListener('click',e=>{e.currentTarget.classList.toggle('on');go()}));
@@ -3557,8 +3557,8 @@ const _onUp13=onUp;onUp=function(e){const dr=S.drag;
   const tb=$('#dock [data-tool="text"]'),b=document.createElement('button');b.className=tb.className;b.dataset.tool='shape';b.title='Formes (U)';b.setAttribute('aria-label','Formes');b.innerHTML=`<svg viewBox="0 0 20 20">${IC.shape}</svg>`;tb.after(b);TOOL_HELP.shape='Dessine un rectangle, une ellipse, une ligne, une flèche, un polygone ou une étoile. Maj garde les proportions.'}
 const _renderPill13=renderPill;renderPill=function(){_renderPill13();if(S.tool!=='shape')return;const o=S.opts.shape,ob=$('#pill'),A=AL(),line=o.type==='line'||o.type==='arrow';
   ob.insertAdjacentHTML('beforeend',`<label>Forme<select id="shT">${SHAPES.map(([v,l])=>`<option value="${v}" ${o.type===v?'selected':''}>${l}</option>`).join('')}</select></label>
-   ${line?'':`<label><input type="checkbox" id="shUF" ${o.useFill?'checked':''}> Remplissage</label>`}<input type="color" class="swatch" id="shF" value="${o.fill}" aria-label="${line?'Couleur du trait':'Couleur de remplissage'}">
-   ${line?'':`<label><input type="checkbox" id="shUS" ${o.useStroke?'checked':''}> Contour</label><input type="color" class="swatch" id="shS" value="${o.stroke}" aria-label="Couleur du contour">`}
+   ${line?'':`<label><input type="checkbox" id="shUF" ${o.useFill?'checked':''}> Remplissage</label>`}<input type="color" class="swatch" id="shF" value="${esc(o.fill)}" aria-label="${line?'Couleur du trait':'Couleur de remplissage'}">
+   ${line?'':`<label><input type="checkbox" id="shUS" ${o.useStroke?'checked':''}> Contour</label><input type="color" class="swatch" id="shS" value="${esc(o.stroke)}" aria-label="Couleur du contour">`}
    <label>Épaisseur<input type="range" id="shW" min="1" max="80" value="${o.sw}"><span class="val">${o.sw}</span></label>
    ${o.type==='round'?`<label>Arrondi<input type="range" id="shR" min="0" max="300" value="${o.r}"><span class="val">${o.r}</span></label>`:''}${o.type==='poly'||o.type==='star'?`<label>Branches<input type="range" id="shN" min="3" max="12" value="${o.n}"><span class="val">${o.n}</span></label>`:''}
    ${MEDIT(A)&&A.shp?'<button class="btn sm" id="shEdit">Modifier la forme sélectionnée…</button>':'<span class="hint">Glissez sur la photo pour dessiner.</span>'}`);
@@ -3570,7 +3570,7 @@ function shapeEdit(L){if(!L||!L.shp)return;const d=S.doc,orig=L.shp;let s={...L.
   const rd=el=>{const g=id=>$('#'+id,el);s={...s,type:g('seT').value,x:+g('seX').value,y:+g('seY').value,w:+g('seW').value,h:+g('seH').value,fill:g('seUF').checked?g('seF').value:null,stroke:g('seUS').checked?g('seS').value:null,sw:+g('seSw').value,r:+g('seR').value,n:+g('seN').value};if(s.type==='line'||s.type==='arrow'){s.fill=null;s.stroke=g('seS').value}};
   dialog({title:'Modifier la forme',light:true,body:`<div class="dlg-grid"><label>Forme<select id="seT">${SHAPES.map(([v,l])=>`<option value="${v}" ${s.type===v?'selected':''}>${l}</option>`).join('')}</select></label><span></span>
    <label>X<input type="number" id="seX" value="${s.x}"></label><label>Y<input type="number" id="seY" value="${s.y}"></label><label>Largeur<input type="number" id="seW" value="${s.w}"></label><label>Hauteur<input type="number" id="seH" value="${s.h}"></label>
-   <label><span><input type="checkbox" id="seUF" ${s.fill?'checked':''}> Remplissage</span><input type="color" class="swatch" id="seF" value="${s.fill||S.opts.shape.fill}"></label><label><span><input type="checkbox" id="seUS" ${s.stroke?'checked':''}> Contour ou trait</span><input type="color" class="swatch" id="seS" value="${s.stroke||'#ffffff'}"></label>
+   <label><span><input type="checkbox" id="seUF" ${s.fill?'checked':''}> Remplissage</span><input type="color" class="swatch" id="seF" value="${esc(s.fill||S.opts.shape.fill)}"></label><label><span><input type="checkbox" id="seUS" ${s.stroke?'checked':''}> Contour ou trait</span><input type="color" class="swatch" id="seS" value="${esc(s.stroke||'#ffffff')}"></label>
    <label>Épaisseur<input type="number" id="seSw" min="0" value="${s.sw}"></label><label>Arrondi<input type="number" id="seR" min="0" value="${s.r}"></label><label>Branches<input type="number" id="seN" min="3" max="24" value="${s.n}"></label></div>`,
    onOpen:el=>{const go=()=>{rd(el);L.shp=s;L.name=keepName(L,shapeName(s),/^Forme( :|$)/);if(!fin)livePreview(L)};el.addEventListener('input',go);el.addEventListener('change',go)},
    buttons:[{label:'Annuler',onClick:()=>{fin=true;L.shp=orig;L.name=shapeName(orig);delete L.preview;PV.delete(L.id);markComp();syncAll()}},{label:'Appliquer',primary:true,onClick:()=>{fin=true;if(S.doc!==d||!d.layers.includes(L))return;rd(document);L.shp=s;L.name=keepName(L,shapeName(s),/^Forme( :|$)/);finalizeMeta(L);markComp();pushHistory('Modifier la forme');syncAll()}}]})}
@@ -3593,7 +3593,7 @@ const shpBox=s=>{if(s.type==='compound'||s.type==='arrow')return shpBoxTS(s);con
 const _layerSrc13=layerSrc;layerSrc=function(L){const s=_layerSrc13(L);if(L.kind==='pixel'&&fxOn(L.fx)&&s===L.canvas)return fxBake(L);return s};
 function fxDialog(L){if(!L||L.kind!=='pixel'){toast('Choisissez un calque de pixels, de texte ou de forme');return}const d=S.doc,orig=L.fx;let f=Object.assign(FXD(),clone(L.fx||{}));f.shadow=Object.assign(FXD().shadow,f.shadow);f.stroke=Object.assign(FXD().stroke,f.stroke);f.glow=Object.assign(FXD().glow,f.glow);
   const rd=el=>{const g=id=>$('#'+id,el);f={shadow:{on:g('fsO').checked,color:g('fsC').value,op:+g('fsA').value/100,blur:+g('fsB').value,dx:+g('fsX').value,dy:+g('fsY').value},stroke:{on:g('fkO').checked,color:g('fkC').value,w:+g('fkW').value},glow:{on:g('fgO').checked,color:g('fgC').value,op:+g('fgA').value/100,blur:+g('fgB').value}};[['fsA','%'],['fsB',' px'],['fsX',' px'],['fsY',' px'],['fkW',' px'],['fgA','%'],['fgB',' px']].forEach(([id,u])=>{const o=$('#'+id+'-o',el);if(o)o.textContent=g(id).value+u})};
-  const sec=(p,title,on,col,rows)=>`<fieldset style="border:1px solid var(--line,#8884);border-radius:10px;padding:8px 12px;margin:8px 0"><legend><label><input type="checkbox" id="${p}O" ${on?'checked':''}> ${title}</label></legend><div class="inline"><input type="color" class="swatch" id="${p}C" value="${col}" aria-label="Couleur"></div>${rows}</fieldset>`;
+  const sec=(p,title,on,col,rows)=>`<fieldset style="border:1px solid var(--line,#8884);border-radius:10px;padding:8px 12px;margin:8px 0"><legend><label><input type="checkbox" id="${p}O" ${on?'checked':''}> ${title}</label></legend><div class="inline"><input type="color" class="swatch" id="${p}C" value="${esc(col)}" aria-label="Couleur"></div>${rows}</fieldset>`;
   dialog({title:'Styles de calque',light:true,body:`<p class="muted">Effets modifiables à tout moment, appliqués au calque « ${esc(L.name)} ».</p>
    ${sec('fs','Ombre portée',f.shadow.on,f.shadow.color,rRow('fsA','Opacité',0,100,1,Math.round(f.shadow.op*100),'%')+rRow('fsB','Flou',0,120,1,f.shadow.blur,' px')+rRow('fsX','Décalage horizontal',-100,100,1,f.shadow.dx,' px')+rRow('fsY','Décalage vertical',-100,100,1,f.shadow.dy,' px'))}
    ${sec('fk','Contour extérieur',f.stroke.on,f.stroke.color,rRow('fkW','Épaisseur',1,40,1,f.stroke.w,' px'))}
@@ -4061,7 +4061,7 @@ async function preflight(el){const d=S.doc;if(!d||!el)return;const box=document.
   const w$=[],ok=[];const ph=hi/n*100,pl=lo/n*100;if(ph>1)w$.push(`${fmt1(ph)} % de la photo est brûlée (blanc pur, détails perdus)`);else ok.push('hautes lumières préservées');if(pl>3)w$.push(`${fmt1(pl)} % est noir bouché`);else ok.push('ombres préservées');
   if(Math.max(d.w,d.h)<1600)w$.push('petite image : elle sera floue à l’impression ou sur grand écran');
   if(d.space&&d.space!=='srgb')w$.push(`espace couleur ${d.space} : choisissez JPEG ou WebP seulement pour le web, certains navigateurs l’affichent mal`);
-  box.innerHTML=(w$.length?w$.map(x=>`<div style="color:var(--warn)">⚠ ${x}</div>`).join(''):'')+(ok.length?`<div>✓ ${ok.join(', ')}</div>`:'')+(ph>1||pl>3?`<div style="margin-top:6px"><button class="btn sm" id="exFix">Corriger automatiquement</button></div>`:'');
+  box.innerHTML=(w$.length?w$.map(x=>`<div style="color:var(--warn)">⚠ ${esc(x)}</div>`).join(''):'')+(ok.length?`<div>✓ ${ok.join(', ')}</div>`:'')+(ph>1||pl>3?`<div style="margin-top:6px"><button class="btn sm" id="exFix">Corriger automatiquement</button></div>`:'');
   const fx=box.querySelector('#exFix');if(fx)fx.onclick=()=>{const L=newAdjust('Récupération export');const dv=DEV0();if(ph>1){dv.highlights=-Math.min(60,20+ph*4);dv.whites=-Math.min(40,10+ph*3)}if(pl>3){dv.shadows=Math.min(50,15+pl*2);dv.blacks=Math.min(30,8+pl*2)}L.dev=dv;closeDialog();insertLayer(L,'Récupération export',true);toast('Calque « Récupération export » ajouté. Relancez l’export pour vérifier.')}}catch(e){console.warn('preflight',e);box.remove()}}
 const _ed=exportDialog;exportDialog=async function(){const r=await _ed.apply(this,arguments);try{preflight(document.querySelector('#scrim'))}catch(e){console.warn('pf0',e)}return r};
 })();
@@ -4188,7 +4188,7 @@ function gradEditor(){const prev=JSON.parse(JSON.stringify(GO.stops));let sel=0;
 PILL_ACT.gradEdit=gradEditor;
 const _pe2=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe2.apply(this,arguments)||'';
  if(t==='gradient'){const onMask=(()=>{const A=AL();return A&&(A.kind==='adjust'||(A.mask&&A.editMask))})();
-  if(!onMask)h+=`<label>Couleurs<select data-sel="gradient.preset" id="gdPill">${Object.keys(GN).map(k=>`<option value="${k}" ${GO.preset===k?'selected':''}>${GN[k]}</option>`).join('')}</select></label><button class="btn sm" data-act="gradEdit" title="Modifier les couleurs du dégradé">Modifier…</button><label>Arrière-plan<input type="color" class="swatch" id="optBg" value="${S.bg}" aria-label="Couleur d’arrière-plan"></label>`;
+  if(!onMask)h+=`<label>Couleurs<select data-sel="gradient.preset" id="gdPill">${Object.keys(GN).map(k=>`<option value="${k}" ${GO.preset===k?'selected':''}>${GN[k]}</option>`).join('')}</select></label><button class="btn sm" data-act="gradEdit" title="Modifier les couleurs du dégradé">Modifier…</button><label>Arrière-plan<input type="color" class="swatch" id="optBg" value="${esc(S.bg)}" aria-label="Couleur d’arrière-plan"></label>`;
   h+=`<label><input type="checkbox" data-chk="gradient.reverse" ${GO.reverse?'checked':''}>Inverser</label>`}
  return h};
 document.addEventListener('input',e=>{if(e.target&&e.target.id==='optBg'){S.bg=e.target.value;PREF.set('bgColor',S.bg)}});
@@ -4214,7 +4214,7 @@ const _sf=stampFor;stampFor=function(size,hard,color){const t=S.tool;if(t!=='bru
 function importTip(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const N=128,c=mk(N,N),g=cx(c);const sc=Math.min(N/im.width,N/im.height);g.drawImage(im,(N-im.width*sc)/2,(N-im.height*sc)/2,im.width*sc,im.height*sc);const a=rx(c).getImageData(0,0,N,N),d=a.data;let hasAlpha=false;for(let i=3;i<d.length;i+=4)if(d[i]<250){hasAlpha=true;break}
   for(let i=0;i<d.length;i+=4){const al=hasAlpha?d[i+3]:255-(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);d[i]=d[i+1]=d[i+2]=0;d[i+3]=al}g.putImageData(a,0,0);res(c.toDataURL('image/png'))};im.onerror=()=>res(null);im.src=URL.createObjectURL(file)})}
 function traitDialog(){const t=S.tool==='eraser'?'eraser':S.tool==='clone'?'clone':'brush',o=S.opts[t];
- const tipOpts=Object.keys(TIPS).map(k=>`<option value="${k}" ${o.tip===k?'selected':''}>${TIPS[k]}</option>`).join('')+CUSTOM.map((c,i)=>`<option value="c:${i}" ${o.tip==='c:'+i?'selected':''}>${c.name}</option>`).join('');
+ const tipOpts=Object.keys(TIPS).map(k=>`<option value="${k}" ${o.tip===k?'selected':''}>${TIPS[k]}</option>`).join('')+CUSTOM.map((c,i)=>`<option value="c:${i}" ${o.tip==='c:'+i?'selected':''}>${esc(c.name)}</option>`).join('');
  dialog({title:t==='eraser'?'Gomme : réglages du trait':t==='clone'?'Tampon : réglages du trait':'Pinceau : réglages du trait',body:`${t==='clone'?'':`<label class="field">Forme de la pointe<select id="trTip">${tipOpts}</select></label><div class="row"><button class="btn sm" id="trImp">Importer une pointe (image)…</button><span class="muted" style="font-size:12px">Les zones sombres ou opaques de l’image deviennent la forme du pinceau.</span></div>`}
  ${rangeRow('trSp','Espacement',1,200,1,o.spacing||12,' %')}${t==='clone'?'':rangeRow('trAng','Angle de la pointe',-180,180,1,o.angle||0,'°')+rangeRow('trRd','Aplatissement',8,100,1,o.round||100,' %')}${rangeRow('trSm','Lissage du trait',0,100,1,o.smooth||0,' %')}
  ${t==='clone'?'':`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="trPr" ${o.pressSize!==false?'checked':''}>Le stylet fait varier la taille (pression)</label>`}`,
@@ -4268,7 +4268,7 @@ function rangeMask(full){const d=S.doc,f=flatSync();let W=d.w,H=d.h,c=f;if(!full
 function rangeDialog(){const d=S.doc;if(!d){toast('Ouvrez une photo d’abord.');return}
  const upd=el=>{S.rangePrev=rangeMask(false);requestRender()};
  dialog({title:'Plage de couleurs',light:true,body:`<label class="field">Sélectionner<select id="rgK"><option value="color">Une couleur</option><option value="high">Les hautes lumières</option><option value="mid">Les tons moyens</option><option value="shadows">Les ombres</option></select></label>
- <div id="rgCol" class="row" style="display:flex;gap:8px;align-items:center"><input type="color" id="rgC" value="${RNG.color}" style="width:44px;height:28px"><button class="btn sm" id="rgPick">Prélever sur la photo</button></div>
+ <div id="rgCol" class="row" style="display:flex;gap:8px;align-items:center"><input type="color" id="rgC" value="${esc(RNG.color)}" style="width:44px;height:28px"><button class="btn sm" id="rgPick">Prélever sur la photo</button></div>
  ${rangeRow('rgT','Étendue',0,100,1,RNG.tol,' %')}${rangeRow('rgF','Flou des bords',0,100,1,RNG.fuzz,' %')}
  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rgI" ${RNG.inv?'checked':''}>Inverser</label><div class="muted" style="font-size:12px">Cliquez sur la photo pour prélever la couleur. La zone choisie apparaît en rouge ; « Appliquer » en fait une sélection.</div>`,
  onOpen:el=>{const K=$('#rgK',el);K.value=RNG.kind;const vis=()=>{$('#rgCol',el).style.display=K.value==='color'?'flex':'none'};vis();
@@ -4323,7 +4323,7 @@ const _dov=drawOverlays;drawOverlays=function(c,pr){_dov.apply(this,arguments);t
 const _pe=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe.apply(this,arguments)||'';
  if(t==='lasso')h=seg('lasso.mode',[['free','Libre'],['poly','Polygonal'],['magnetic','Magnétique']])+h+(o.lasso.mode!=='free'?`<span class="hint">Cliquez pour poser les points. Double-clic ou Entrée pour fermer, Retour arrière pour annuler le dernier point.</span>`:'');
  if(t==='wand')h+=`<span class="hint">Après le clic, glissez à gauche ou à droite pour régler la tolérance en direct.</span><button class="btn sm" data-act="range">Plage de couleurs…</button>`;
- if(t==='bucket')h=optRange('bucket.tol','Tolérance',0,128,1,'')+`<label><input type="checkbox" data-chk="bucket.contiguous" ${o.bucket.contiguous?'checked':''}>Contigus</label><label><input type="checkbox" data-chk="bucket.all" ${o.bucket.all?'checked':''}>Tous les calques</label>`+optRange('bucket.opacity','Opacité',1,100,1,' %',100)+`<input type="color" class="swatch" id="optColor" value="${S.color}" aria-label="Couleur de remplissage">`+h;
+ if(t==='bucket')h=optRange('bucket.tol','Tolérance',0,128,1,'')+`<label><input type="checkbox" data-chk="bucket.contiguous" ${o.bucket.contiguous?'checked':''}>Contigus</label><label><input type="checkbox" data-chk="bucket.all" ${o.bucket.all?'checked':''}>Tous les calques</label>`+optRange('bucket.opacity','Opacité',1,100,1,' %',100)+`<input type="color" class="swatch" id="optColor" value="${esc(S.color)}" aria-label="Couleur de remplissage">`+h;
  return h};
 PILL_ACT.range=rangeDialog;
 document.addEventListener('change',e=>{const k=e.target&&e.target.dataset&&e.target.dataset.chk;if(k&&k.startsWith('bucket.'))PREF.set('bucketOpts',OB.bucket)});
@@ -4818,7 +4818,7 @@ function combineDialog(){const d=S.doc;if(!d)return;
 const _se=shapeEdit;
 shapeEdit=function(L){
   if(L&&L.shp&&L.shp.type==='compound'){const orig=L.shp;let fin=false;
-    dialog({title:'Modifier la forme combinée',light:true,body:`<div class="dlg-grid"><label>Remplissage<input type="color" class="swatch" id="ccF" value="${orig.fill&&orig.fill[0]==='#'?orig.fill:'#ffffff'}"></label></div>`,
+    dialog({title:'Modifier la forme combinée',light:true,body:`<div class="dlg-grid"><label>Remplissage<input type="color" class="swatch" id="ccF" value="${esc(orig.fill&&orig.fill[0]==='#'?orig.fill:'#ffffff')}"></label></div>`,
       onOpen:el=>{$('#ccF',el).oninput=e=>{L.shp={...orig,fill:e.target.value};L.preview=pvCanvas(L);drawShapeTo(L.preview,L.shp);markComp()}},
       buttons:[{label:'Annuler',onClick:()=>{L.shp=orig;delete L.preview;PV.delete(L.id);markComp()}},{label:'Appliquer',primary:true,onClick:()=>{const v=$('#ccF').value;L.shp={...orig,fill:v};finalizeMeta(L);markComp();pushHistory('Modifier la forme');syncAll()}}]});return}
   return _se(L)};
@@ -4850,7 +4850,7 @@ Object.defineProperty(S,'doc',{configurable:true,enumerable:true,get(){return _d
   if(nt)unpark(nt);else tabs.push({doc:nd});
   draw()}});
 tabs.push(..._doc?[{doc:_doc}]:[]);
-function dirty(d){return !d.saved}
+
 async function activate(t){
   if(!t||t.doc===S.doc)return;
   if(S.drag)try{cancelDrag()}catch(e){}
@@ -4942,7 +4942,7 @@ applyMasked=function(L,result,label){
     _am(L,result,label);L.fout=L.canvas;return}
   if(L){delete L.fbase;delete L.filters;delete L.fout}
   return _am(L,result,label)};
-function paramsOf(F,p){return F.params.map(q=>({q,v:p[q[0]]}))}
+
 function editEffect(L,i,after){
   const d=S.doc,list=L.filters,f=list[i],F=FILTERS[f.id];if(!F)return;
   const prefix=chain(L.fbase,list,i),p={...f.p};let tmr=null,fin=false;
@@ -8941,7 +8941,7 @@ upscaleCanvas=async function(src,scale,model,onP){
 }
 
 
-window.PRISM_VERSION="0.4.0";
+window.PRISM_VERSION="0.4.1";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {
@@ -10130,7 +10130,6 @@ function mkImg(c,name){return{c,w:c.width,h:c.height,name,gc:{},gx:{}}}
 function cachedGray(im,kind,w,h){const k=kind+w;return im.gx[k]||(im.gx[k]=kind==='bp'?grayBP(im.c,w,h):grayF(im.c,w,h))}
 function grayF(c,w,h){const t=mk(w,h),g=cx(t);g.imageSmoothingQuality='high';g.drawImage(c,0,0,w,h);const d=rx(t).getImageData(0,0,w,h).data,a=new Float32Array(w*h);
   for(let i=0;i<a.length;i++)a[i]=d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114;t.width=t.height=1;return a}
-function grayNorm(c,w,h){const a=grayF(c,w,h);let m=0;for(let i=0;i<a.length;i++)m+=a[i];m/=a.length;let v=0;for(let i=0;i<a.length;i++){const e=a[i]-m;v+=e*e}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]=(a[i]-m)/sd;return a}
 /* gris passe-bande normalisé : insensible à l'exposition, au vignettage et aux dégradés lents */
 function grayBP(c,w,h){const a=grayF(c,w,h),bl=boxBlurF(a,w,h,Math.max(3,Math.round(w/24)));let v=0;for(let i=0;i<a.length;i++){a[i]-=bl[i];v+=a[i]*a[i]}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]/=sd;return a}
 function gray8At(im,sc){const w=Math.max(8,Math.round(im.w*sc)),k=w+'x'+sc;if(im.gc[k])return im.gc[k];

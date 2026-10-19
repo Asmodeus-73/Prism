@@ -13,5 +13,5 @@ m=max(re.findall(r'<script(?![^>]*src)[^>]*>([\s\S]*?)</script>',open('index.htm
 open('/tmp/_chk_%s.js'%__import__('os').getpid(),'w',encoding='utf-8').write(m)
 print('built',len(s)+len(add),'bytes, feats:',len(glob.glob('feat/*.js')))
 import subprocess,os
-r=subprocess.run(['node','--check','/tmp/_chk_%d.js'%os.getpid()]);print('SYNTAX_OK' if r.returncode==0 else 'SYNTAX_FAIL')
+r=subprocess.run(['node','--check','/tmp/_chk_%d.js'%os.getpid()]);os.remove('/tmp/_chk_%d.js'%os.getpid());print('SYNTAX_OK' if r.returncode==0 else 'SYNTAX_FAIL')
 PY

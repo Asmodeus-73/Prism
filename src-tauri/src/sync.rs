@@ -19,6 +19,9 @@ use tauri_plugin_dialog::DialogExt;
 
 const DATA_DIR: &str = "Prism-donnees";
 
+/// Where the app's own page is served from (macOS/Linux, then Windows).
+const APP_ORIGINS: [&str; 3] = ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"];
+
 #[derive(Default)]
 pub struct SyncState(Mutex<Option<PathBuf>>);
 
@@ -237,6 +240,14 @@ fn content_type(id: &str) -> &'static str {
 pub fn protocol<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: tauri::http::Request<Vec<u8>>, responder: UriSchemeResponder) {
     let root = ctx.app_handle().state::<SyncState>().root();
     let id = request.uri().path().trim_start_matches('/').to_string();
+    // Only Prism's own page may read the files (not a web page opened from a link).
+    let origin = request
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .filter(|o| APP_ORIGINS.contains(o))
+        .unwrap_or(APP_ORIGINS[0])
+        .to_string();
     std::thread::spawn(move || {
         let found = root.ok().and_then(|root| {
             let id = safe(&id).ok()?;
@@ -249,7 +260,9 @@ pub fn protocol<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: tauri::http::
             }
             None
         });
-        let res = Response::builder().header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+        let res = Response::builder()
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin)
+            .header(header::VARY, "Origin");
         let res = match found {
             Some(bytes) => res
                 .header(header::CONTENT_TYPE, content_type(&id))
