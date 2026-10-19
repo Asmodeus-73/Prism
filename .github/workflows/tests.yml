@@ -59,6 +59,13 @@ jobs:
 
       - run: npm ci && node scripts/prepare.mjs
 
+      # the app bundles the native AI engine from src-tauri/onnxruntime/ (see build.yml)
+      - name: Moteur IA natif
+        run: |
+          mkdir -p src-tauri/onnxruntime
+          curl -fsSL https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz | tar xz
+          cp -L onnxruntime-linux-x64-1.23.2/lib/libonnxruntime.so src-tauri/onnxruntime/
+
       - name: Le code de l'application compile
         working-directory: src-tauri
         run: cargo clippy --locked -- -D warnings

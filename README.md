@@ -24,6 +24,8 @@ git tag v0.2.0 && git push origin v0.2.0
 Elles apparaissent ensuite dans la page Releases du dépôt.
 
 En local : `npm ci` puis `npm run dev` (ou `npm run build`), avec Rust et les [prérequis Tauri](https://tauri.app/start/prerequisites/) installés.
+Le moteur IA natif (ONNX Runtime 1.23) se place dans `src-tauri/onnxruntime/` (`onnxruntime.dll` et `DirectML.dll` sur Windows, `libonnxruntime.dylib` sur Mac, `libonnxruntime.so` sur Linux) : `.github/workflows/build.yml` montre où le prendre.
+Tests : `npm test` (la page doit correspondre à ses sources de `web-src/`, voir `web-src/README.md`).
 
 ## Premier lancement
 
