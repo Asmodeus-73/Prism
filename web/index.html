@@ -348,6 +348,7 @@ details.sec.mod>summary .dot{display:block}
 .state{font:11.5px var(--num);color:var(--fg-2)}
 .state.ok{color:var(--ok)}.state.err{color:var(--bad)}
 .prog{height:4px;background:var(--line-2);border-radius:2px;overflow:hidden}.prog i{display:block;height:100%;background:var(--accent);width:0}
+.prog i{transition:width .25s ease-out}.prog.ind i{width:35%!important;transition:none;animation:progInd 1.2s ease-in-out infinite}@keyframes progInd{0%{transform:translateX(-100%)}100%{transform:translateX(290%)}}
 .examples{display:flex;gap:5px;flex-wrap:wrap}
 .examples button{border:1px dashed var(--line-2);background:none;border-radius:999px;padding:3px 10px;font-size:12px;color:var(--fg-2)}
 .examples button:hover{color:var(--fg);border-color:var(--accent-line)}
@@ -430,7 +431,7 @@ details.sec.mod>summary .dot{display:block}
 .about b{font-size:17px}
 .toast{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:var(--r);z-index:180;font-weight:500;max-width:calc(100% - 32px);width:max-content;text-align:center;box-shadow:var(--shadow)}
 .busy{position:fixed;inset:0;z-index:170;display:grid;place-items:center;background:rgba(0,0,0,.4)}
-.busy div{background:var(--chrome);padding:16px 18px;border-radius:var(--r-l);border:1px solid var(--line-2);min-width:280px;display:grid;gap:10px;font-weight:500;box-shadow:var(--shadow)}
+.busy>div{background:var(--chrome);padding:16px 18px;border-radius:var(--r-l);border:1px solid var(--line-2);min-width:280px;display:grid;gap:10px;font-weight:500;box-shadow:var(--shadow)}
 
 /* command palette */
 .cmdk-scrim{position:fixed;inset:0;z-index:120;background:rgba(5,5,10,.45);display:flex;justify-content:center;align-items:flex-start;padding:12vh 16px 16px}
@@ -742,7 +743,7 @@ const cx=c=>ctx2(c,{}),rx=c=>ctx2(c,{willReadFrequently:true});
 function cloneC(s){const c=mk(s.width,s.height);cx(c).drawImage(s,0,0);return c}
 function esc(s){return String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
 let toastT;function toast(msg,ms){let t=$('#toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t)}t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,ms||2800)}
-function busy(on,msg,p){let b=$('#busy');if(on){if(!b){b=document.createElement('div');b.id='busy';b.className='busy';b.innerHTML='<div><span></span><div class="prog"><i></i></div></div>';document.body.appendChild(b)}b.querySelector('span').textContent=msg||'Traitement…';const pr=b.querySelector('.prog');pr.hidden=p==null;if(p!=null)pr.firstChild.style.width=Math.round(p*100)+'%';b.hidden=false}else if(b)b.hidden=true}
+function busy(on,msg,p){let b=$('#busy');if(on){if(!b){b=document.createElement('div');b.id='busy';b.className='busy';b.innerHTML='<div><span></span><div class="prog"><i></i></div></div>';document.body.appendChild(b)}b.querySelector('span').textContent=msg||'Traitement…';const pr=b.querySelector('.prog');pr.hidden=false;pr.classList.toggle('ind',p==null);if(p!=null)pr.firstChild.style.width=Math.max(0,Math.min(100,p*100)).toFixed(1)+'%';b.hidden=false}else if(b)b.hidden=true}
 const tick=()=>new Promise(r=>setTimeout(r,16));
 let _FO;const filterOK=()=>_FO===undefined?(_FO=(()=>{try{const t=mk(9,1),c=cx(t);c.filter='blur(2px)';c.fillRect(4,0,1,1);return c.getImageData(2,0,1,1).data[3]>0}catch(e){return false}})()):_FO;
 const IS_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -982,16 +983,21 @@ function renderContent(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width
   if(!before&&A&&A.kind==='adjust'&&!S.stroke){o.cacheIdx=d.active;o.cacheKey=[S.docVer,T.join(),bw,bh,d.layers.slice(0,d.active).map(L=>L.kind==='adjust'?JSON.stringify(L.dev):'').join('|')].join('#')}
   renderStack(wctx,bw,bh,T,{...o,before});if(PROOF.on)proofApply(wctx,bw,bh);
   if(S.compare==='split'&&!before){if(workB.width!==bw||workB.height!==bh){workB.width=bw;workB.height=bh}renderStack(cx(workB),bw,bh,T,{...o,before:true,cacheIdx:null,cacheKey:null});if(PROOF.on)proofApply(rx(workB),bw,bh)}
-  S.workPos={x:bx0,y:by0};const now=performance.now();if(S.stroke||S.drag||S.sliding){clearTimeout(histogram.t);histogram.t=setTimeout(()=>{if(S.doc&&work.width>1)histogram(wctx.getImageData(0,0,work.width,work.height))},350)}else if(now-histT>120){histT=now;histogram(wctx.getImageData(0,0,bw,bh))}else{clearTimeout(histogram.t);histogram.t=setTimeout(()=>{if(S.doc&&work.width>1)histogram(wctx.getImageData(0,0,work.width,work.height))},160)}}
+  S.workPos={x:bx0,y:by0};const now=performance.now();S.workSize={w:bw,h:bh};histoSched(now)}
+/* histogram refresh: throttled (never debounced) so it follows a slider or a brush live, always read from the same region of the work canvas, through a small proxy so the read-back stays cheap */
+const histoP=mk(1,1);
+function histoRead(){const ws=S.workSize;if(!S.doc||!ws||work.width<2)return null;const k=Math.min(1,480/Math.max(ws.w,ws.h)),w=Math.max(1,Math.round(ws.w*k)),h=Math.max(1,Math.round(ws.h*k));if(histoP.width!==w||histoP.height!==h){histoP.width=w;histoP.height=h}const g=rx(histoP);g.clearRect(0,0,w,h);g.imageSmoothingQuality='low';g.drawImage(work,0,0,ws.w,ws.h,0,0,w,h);return g.getImageData(0,0,w,h)}
+function histoNow(){histT=performance.now();const im=histoRead();if(im)histogram(im)}
+function histoSched(now){const iv=(S.stroke||S.drag||S.sliding)?90:40;clearTimeout(histogram.t);if(now-histT>=iv)histoNow();else histogram.t=setTimeout(histoNow,iv-(now-histT))}
 
 /* histogram */
 const histoC=$('#histo'),hctx=cx(histoC);
 function histogram(img){const d=img.data,n=d.length/4,step=Math.max(1,Math.floor(n/200000)),R=new Uint32Array(256),G=new Uint32Array(256),B=new Uint32Array(256);let cnt=0,lo=0,hi=0;
   for(let i=0;i<n;i+=step){const j=i*4;if(d[j+3]<10)continue;const r=d[j],g=d[j+1],b=d[j+2];R[r]++;G[g]++;B[b]++;cnt++;if(r>=254&&g>=254&&b>=254)hi++;if(r<=1&&g<=1&&b<=1)lo++}S.lastHist={R,G,B};
   const W=histoC.width,H=histoC.height,c=hctx,st=getComputedStyle(document.documentElement),mode=st.getPropertyValue('--hist-blend').trim()||'lighter';c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,W,H);
-  let mx=1;for(let i=2;i<254;i++)mx=Math.max(mx,R[i],G[i],B[i]);mx*=1.08;c.strokeStyle=st.getPropertyValue('--line-2');c.lineWidth=1;for(let k=1;k<4;k++){const x=Math.round(W*k/4)+.5;c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke()}
+  const sm=A=>{const o=new Float32Array(256);for(let i=0;i<256;i++){const a=A[Math.max(0,i-1)],b=A[i],c=A[Math.min(255,i+1)];o[i]=i===0||i===255?b:(a+2*b+c)/4}return o};const RS=sm(R),GS=sm(G),BS=sm(B);let mx=1;for(let i=2;i<254;i++)mx=Math.max(mx,RS[i],GS[i],BS[i]);mx*=1.08;c.strokeStyle=st.getPropertyValue('--line-2');c.lineWidth=1;for(let k=1;k<4;k++){const x=Math.round(W*k/4)+.5;c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke()}
   c.globalCompositeOperation=mode;const cols=mode==='multiply'?['rgba(232,96,90,.7)','rgba(96,190,110,.7)','rgba(90,130,232,.7)']:['rgba(214,74,66,.85)','rgba(70,170,92,.85)','rgba(70,110,226,.85)'];
-  [R,G,B].forEach((A,k)=>{c.fillStyle=cols[k];c.beginPath();c.moveTo(0,H);for(let i=0;i<256;i++)c.lineTo(i/255*W,H-Math.min(1,Math.sqrt(A[i]/mx))*H*0.95);c.lineTo(W,H);c.closePath();c.fill()});c.globalCompositeOperation='source-over';
+  [RS,GS,BS].forEach((A,k)=>{c.fillStyle=cols[k];c.beginPath();c.moveTo(0,H);for(let i=0;i<256;i++)c.lineTo(i/255*W,H-Math.min(1,Math.sqrt(A[i]/mx))*H*0.95);c.lineTo(W,H);c.closePath();c.fill()});c.globalCompositeOperation='source-over';
   $('#hmL').textContent=cnt?`Ombres écrêtées ${(lo/cnt*100).toFixed(1)} %`:'—';$('#hmR').textContent=cnt?`Hautes lumières ${(hi/cnt*100).toFixed(1)} %`:'';if(!curveDrag)drawCurve()}
 
 /* overlays: marching ants, mask tint, crop, brush cursor */
@@ -7720,7 +7726,7 @@ const histoVisible=()=>{const c=document.getElementById('histo');return !!c&&c.c
 function histoRefresh(){
   if(!S.doc||!histoVisible())return;
   if(S.contentDirty){requestRender();return}
-  try{if(typeof work!=='undefined'&&work.width>1&&S.workPos)histogram(wctx.getImageData(0,0,work.width,work.height));else{S.contentDirty=true;requestRender()}}
+  try{if(typeof work!=='undefined'&&work.width>1&&S.workPos&&S.workSize)histoNow();else{S.contentDirty=true;requestRender()}}
   catch(e){S.contentDirty=true;requestRender()}}
 W47.histoRefresh=histoRefresh;
 const histoKick=(()=>{let t=0;return(ms=120)=>{clearTimeout(t);t=setTimeout(()=>safe('histoKick',histoRefresh),ms)}})();
@@ -8919,6 +8925,8 @@ upscaleCanvas=async function(src,scale,model,onP){
   const a=resample(src,W*scale,H*scale);og.globalCompositeOperation='destination-in';og.drawImage(a,0,0);return out};
 }
 
+
+window.PRISM_VERSION="0.4.0";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {
@@ -10980,6 +10988,58 @@ MENU2.file.items=()=>{const a=_mf();const g=a.find(x=>x&&x.label==='Photos multi
   return a};
 window.PrismStack={run:stackRun,command:stackCommand,dialog:stackDialog,fileFrames,layerFrames,estimate,grayPyr,pToM,inv3,apply,cap:stackCap};
 })();
+
+}
+
+/* ===== feat: feat/zz_ui.js ===== */
+{
+/* ===== 0.4: version shown at the bottom, the library logo goes to the home screen, home screen with a photo still open ===== */
+
+// ---------- version, in the status bar and on the home screen ----------
+const VER={v:window.PRISM_VERSION||'',where:window.__TAURI__?'app':'web'};
+const verText=()=>VER.v?`Prism ${VER.v}${VER.where==='web'?' · web':''}`:'Prism';
+{const st=document.createElement('style');st.textContent=`
+.st-ver{font:500 11px/1 var(--mono,ui-monospace,monospace);color:var(--fg-3,var(--fg-2));opacity:.75;padding:0 10px;white-space:nowrap;user-select:text;flex:none}
+body.no-doc .empty{background:var(--stage)}
+.w-ver{margin-top:22px;font:500 11.5px/1 var(--mono,ui-monospace,monospace);color:var(--fg-3,var(--fg-2));opacity:.75;text-align:center;width:100%}
+.w-back{display:flex;align-items:center;gap:10px;width:100%;margin-top:22px;padding:12px 16px;border:1px solid var(--accent-line,var(--line));background:var(--chrome);border-radius:var(--r);color:inherit;font:inherit;cursor:pointer;text-align:left}
+.w-back:hover{background:var(--chrome-2)}.w-back b{font-weight:600}.w-back span{color:var(--fg-2);font-size:12px;margin-left:auto}
+.w-back svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}`;document.body.appendChild(st)}
+function placeVersion(){
+  const bar=document.querySelector('footer.statusbar');
+  if(bar&&!bar.querySelector('.st-ver')){const e=document.createElement('div');e.className='st-ver';e.id='stVer';bar.appendChild(e)}
+  const wl=document.querySelector('#empty .welcome');
+  if(wl&&!wl.querySelector('.w-ver')){const e=document.createElement('div');e.className='w-ver';wl.appendChild(e)}
+  document.querySelectorAll('.st-ver,.w-ver').forEach(e=>{e.textContent=verText();e.title=VER.where==='app'?'Version de l’application installée':'Version de Prism en ligne'})}
+placeVersion();
+if(VER.where==='app')try{window.__TAURI__.app.getVersion().then(v=>{if(v){VER.v=v;placeVersion()}}).catch(()=>{})}catch(e){}
+new MutationObserver(()=>{if(!document.querySelector('#empty .w-ver'))placeVersion()}).observe(document.getElementById('empty'),{childList:true,subtree:true});
+
+// ---------- home screen while a photo is open: a way back to it ----------
+const home=document.getElementById('empty');
+function homeBack(){
+  const wl=home.querySelector('.welcome');if(!wl)return;let b=wl.querySelector('.w-back');
+  if(!S.doc||home.hidden){if(b)b.remove();return}
+  if(!b){b=document.createElement('button');b.className='w-back';b.type='button';b.onclick=leaveHome;const t=wl.querySelector('.w-tiles');wl.insertBefore(b,t||null)}
+  b.innerHTML=`<svg viewBox="0 0 20 20"><path d="M12 5l-5 5 5 5"/></svg><b>Revenir à « ${esc(S.doc.name||'photo')} »</b><span>Échap</span>`}
+function leaveHome(){if(!S.doc)return;home.hidden=true;try{updateDocName()}catch(e){}requestRender()}
+window.showHome=function(){if(typeof LIB!=='undefined'&&LIB.open)closeLibrary();home.hidden=false;homeBack();try{updateDocName()}catch(e){}};
+new MutationObserver(homeBack).observe(home,{attributes:true,attributeFilter:['hidden']});
+// with a photo hidden behind the home screen, editing shortcuts must not reach it
+addEventListener('keydown',e=>{
+  if(home.hidden||!S.doc||(typeof LIB!=='undefined'&&LIB.open))return;
+  if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,[contenteditable],dialog,.dlg,.modal,#cmdk'))return;
+  if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();leaveHome();return}
+  const k=e.key.toLowerCase(),mod=e.metaKey||e.ctrlKey;
+  if(mod&&['o','n','k'].includes(k))return;
+  if(e.key.length===1||['Delete','Backspace','Enter'].includes(e.key)||mod){e.stopImmediatePropagation()}},true);
+
+// ---------- library logo: back to the home screen (the editor logo still opens the library) ----------
+if(typeof openLibrary==='function'){const _ol=openLibrary;openLibrary=async function(...a){const r=await _ol.apply(this,a);
+  const m=document.querySelector('#library .lb-top .lb-mark');
+  if(m&&!m.dataset.home){const n=m.cloneNode(true);n.dataset.home='1';const t='Revenir à l’accueil';n.title=t;n.setAttribute('aria-label',t);
+    const go=e=>{e.stopPropagation();e.preventDefault();window.showHome()};n.addEventListener('click',go);n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')go(e)});m.replaceWith(n)}
+  return r}}
 
 }
 </script>
