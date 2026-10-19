@@ -348,6 +348,7 @@ details.sec.mod>summary .dot{display:block}
 .state{font:11.5px var(--num);color:var(--fg-2)}
 .state.ok{color:var(--ok)}.state.err{color:var(--bad)}
 .prog{height:4px;background:var(--line-2);border-radius:2px;overflow:hidden}.prog i{display:block;height:100%;background:var(--accent);width:0}
+.prog i{transition:width .25s ease-out}.prog.ind i{width:35%!important;transition:none;animation:progInd 1.2s ease-in-out infinite}@keyframes progInd{0%{transform:translateX(-100%)}100%{transform:translateX(290%)}}
 .examples{display:flex;gap:5px;flex-wrap:wrap}
 .examples button{border:1px dashed var(--line-2);background:none;border-radius:999px;padding:3px 10px;font-size:12px;color:var(--fg-2)}
 .examples button:hover{color:var(--fg);border-color:var(--accent-line)}
@@ -430,7 +431,7 @@ details.sec.mod>summary .dot{display:block}
 .about b{font-size:17px}
 .toast{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:var(--r);z-index:180;font-weight:500;max-width:calc(100% - 32px);width:max-content;text-align:center;box-shadow:var(--shadow)}
 .busy{position:fixed;inset:0;z-index:170;display:grid;place-items:center;background:rgba(0,0,0,.4)}
-.busy div{background:var(--chrome);padding:16px 18px;border-radius:var(--r-l);border:1px solid var(--line-2);min-width:280px;display:grid;gap:10px;font-weight:500;box-shadow:var(--shadow)}
+.busy>div{background:var(--chrome);padding:16px 18px;border-radius:var(--r-l);border:1px solid var(--line-2);min-width:280px;display:grid;gap:10px;font-weight:500;box-shadow:var(--shadow)}
 
 /* command palette */
 .cmdk-scrim{position:fixed;inset:0;z-index:120;background:rgba(5,5,10,.45);display:flex;justify-content:center;align-items:flex-start;padding:12vh 16px 16px}
@@ -742,7 +743,7 @@ const cx=c=>ctx2(c,{}),rx=c=>ctx2(c,{willReadFrequently:true});
 function cloneC(s){const c=mk(s.width,s.height);cx(c).drawImage(s,0,0);return c}
 function esc(s){return String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
 let toastT;function toast(msg,ms){let t=$('#toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t)}t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,ms||2800)}
-function busy(on,msg,p){let b=$('#busy');if(on){if(!b){b=document.createElement('div');b.id='busy';b.className='busy';b.innerHTML='<div><span></span><div class="prog"><i></i></div></div>';document.body.appendChild(b)}b.querySelector('span').textContent=msg||'Traitement…';const pr=b.querySelector('.prog');pr.hidden=p==null;if(p!=null)pr.firstChild.style.width=Math.round(p*100)+'%';b.hidden=false}else if(b)b.hidden=true}
+function busy(on,msg,p){let b=$('#busy');if(on){if(!b){b=document.createElement('div');b.id='busy';b.className='busy';b.innerHTML='<div><span></span><div class="prog"><i></i></div></div>';document.body.appendChild(b)}b.querySelector('span').textContent=msg||'Traitement…';const pr=b.querySelector('.prog');pr.hidden=false;pr.classList.toggle('ind',p==null);if(p!=null)pr.firstChild.style.width=Math.max(0,Math.min(100,p*100)).toFixed(1)+'%';b.hidden=false}else if(b)b.hidden=true}
 const tick=()=>new Promise(r=>setTimeout(r,16));
 let _FO;const filterOK=()=>_FO===undefined?(_FO=(()=>{try{const t=mk(9,1),c=cx(t);c.filter='blur(2px)';c.fillRect(4,0,1,1);return c.getImageData(2,0,1,1).data[3]>0}catch(e){return false}})()):_FO;
 const IS_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -982,16 +983,21 @@ function renderContent(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width
   if(!before&&A&&A.kind==='adjust'&&!S.stroke){o.cacheIdx=d.active;o.cacheKey=[S.docVer,T.join(),bw,bh,d.layers.slice(0,d.active).map(L=>L.kind==='adjust'?JSON.stringify(L.dev):'').join('|')].join('#')}
   renderStack(wctx,bw,bh,T,{...o,before});if(PROOF.on)proofApply(wctx,bw,bh);
   if(S.compare==='split'&&!before){if(workB.width!==bw||workB.height!==bh){workB.width=bw;workB.height=bh}renderStack(cx(workB),bw,bh,T,{...o,before:true,cacheIdx:null,cacheKey:null});if(PROOF.on)proofApply(rx(workB),bw,bh)}
-  S.workPos={x:bx0,y:by0};const now=performance.now();if(S.stroke||S.drag||S.sliding){clearTimeout(histogram.t);histogram.t=setTimeout(()=>{if(S.doc&&work.width>1)histogram(wctx.getImageData(0,0,work.width,work.height))},350)}else if(now-histT>120){histT=now;histogram(wctx.getImageData(0,0,bw,bh))}else{clearTimeout(histogram.t);histogram.t=setTimeout(()=>{if(S.doc&&work.width>1)histogram(wctx.getImageData(0,0,work.width,work.height))},160)}}
+  S.workPos={x:bx0,y:by0};const now=performance.now();S.workSize={w:bw,h:bh};histoSched(now)}
+/* histogram refresh: throttled (never debounced) so it follows a slider or a brush live, always read from the same region of the work canvas, through a small proxy so the read-back stays cheap */
+const histoP=mk(1,1);
+function histoRead(){const ws=S.workSize;if(!S.doc||!ws||work.width<2)return null;const k=Math.min(1,480/Math.max(ws.w,ws.h)),w=Math.max(1,Math.round(ws.w*k)),h=Math.max(1,Math.round(ws.h*k));if(histoP.width!==w||histoP.height!==h){histoP.width=w;histoP.height=h}const g=rx(histoP);g.clearRect(0,0,w,h);g.imageSmoothingQuality='low';g.drawImage(work,0,0,ws.w,ws.h,0,0,w,h);return g.getImageData(0,0,w,h)}
+function histoNow(){histT=performance.now();const im=histoRead();if(im)histogram(im)}
+function histoSched(now){const iv=(S.stroke||S.drag||S.sliding)?90:40;clearTimeout(histogram.t);if(now-histT>=iv)histoNow();else histogram.t=setTimeout(histoNow,iv-(now-histT))}
 
 /* histogram */
 const histoC=$('#histo'),hctx=cx(histoC);
 function histogram(img){const d=img.data,n=d.length/4,step=Math.max(1,Math.floor(n/200000)),R=new Uint32Array(256),G=new Uint32Array(256),B=new Uint32Array(256);let cnt=0,lo=0,hi=0;
   for(let i=0;i<n;i+=step){const j=i*4;if(d[j+3]<10)continue;const r=d[j],g=d[j+1],b=d[j+2];R[r]++;G[g]++;B[b]++;cnt++;if(r>=254&&g>=254&&b>=254)hi++;if(r<=1&&g<=1&&b<=1)lo++}S.lastHist={R,G,B};
   const W=histoC.width,H=histoC.height,c=hctx,st=getComputedStyle(document.documentElement),mode=st.getPropertyValue('--hist-blend').trim()||'lighter';c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,W,H);
-  let mx=1;for(let i=2;i<254;i++)mx=Math.max(mx,R[i],G[i],B[i]);mx*=1.08;c.strokeStyle=st.getPropertyValue('--line-2');c.lineWidth=1;for(let k=1;k<4;k++){const x=Math.round(W*k/4)+.5;c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke()}
+  const sm=A=>{const o=new Float32Array(256);for(let i=0;i<256;i++){const a=A[Math.max(0,i-1)],b=A[i],c=A[Math.min(255,i+1)];o[i]=i===0||i===255?b:(a+2*b+c)/4}return o};const RS=sm(R),GS=sm(G),BS=sm(B);let mx=1;for(let i=2;i<254;i++)mx=Math.max(mx,RS[i],GS[i],BS[i]);mx*=1.08;c.strokeStyle=st.getPropertyValue('--line-2');c.lineWidth=1;for(let k=1;k<4;k++){const x=Math.round(W*k/4)+.5;c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke()}
   c.globalCompositeOperation=mode;const cols=mode==='multiply'?['rgba(232,96,90,.7)','rgba(96,190,110,.7)','rgba(90,130,232,.7)']:['rgba(214,74,66,.85)','rgba(70,170,92,.85)','rgba(70,110,226,.85)'];
-  [R,G,B].forEach((A,k)=>{c.fillStyle=cols[k];c.beginPath();c.moveTo(0,H);for(let i=0;i<256;i++)c.lineTo(i/255*W,H-Math.min(1,Math.sqrt(A[i]/mx))*H*0.95);c.lineTo(W,H);c.closePath();c.fill()});c.globalCompositeOperation='source-over';
+  [RS,GS,BS].forEach((A,k)=>{c.fillStyle=cols[k];c.beginPath();c.moveTo(0,H);for(let i=0;i<256;i++)c.lineTo(i/255*W,H-Math.min(1,Math.sqrt(A[i]/mx))*H*0.95);c.lineTo(W,H);c.closePath();c.fill()});c.globalCompositeOperation='source-over';
   $('#hmL').textContent=cnt?`Ombres écrêtées ${(lo/cnt*100).toFixed(1)} %`:'—';$('#hmR').textContent=cnt?`Hautes lumières ${(hi/cnt*100).toFixed(1)} %`:'';if(!curveDrag)drawCurve()}
 
 /* overlays: marching ants, mask tint, crop, brush cursor */
@@ -1501,12 +1507,27 @@ function toggleMask(){S.showMask=!S.showMask;renderTarget();requestRender()}
 const AI={state:{seg:'idle',up:'idle'},subjectCache:null,_ort:null,_seg:null,_tf:null,_up:{}};
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('script '+src));document.head.appendChild(s)})}
 AI.setState=(k,v,p)=>{AI.state[k]=v;AI.state[k+'P']=p;renderAIState()};
+/* ONNX Runtime: graphics card (WebGPU) when the device has one, else the processor (WASM, several threads when the page is isolated) */
+const ORTX={_g:null,gpuP:()=>ORTX._g||(ORTX._g=(async()=>{try{if(PREF.get('aiGPU',true)===false||!navigator.gpu)return false;const a=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});return !!a}catch(e){return false}})()),
+  threads:()=>self.crossOriginIsolated?Math.max(1,Math.min(8,(navigator.hardwareConcurrency||2)-1)):1};
+ORTX.bundle=async()=>asset((await ORTX.gpuP())?'ai/ort.webgpu.min.js':'ai/ort.wasm.min.js');
+// the WebGPU build of the runtime is 24 MB: stored in two pieces (hosting limit) and handed to ONNX Runtime as wasmBinary
+ORTX.binURLs=()=>[0,1].map(i=>new URL(asset(`ai/ortgpu/${i}.wasm`),location.href).href);
+ORTX.binary=async()=>{if(!(await ORTX.gpuP()))return null;if(!ORTX._bin)ORTX._bin=Promise.all(ORTX.binURLs().map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()}))).then(a=>{const n=a.reduce((t,b)=>t+b.byteLength,0),o=new Uint8Array(n);let k=0;for(const b of a){o.set(new Uint8Array(b),k);k+=b.byteLength}return o.buffer}).catch(e=>{ORTX._bin=null;throw e});return ORTX._bin};
+ORTX.eps=async()=>(await ORTX.gpuP())?['webgpu','wasm']:['wasm'];
+ORTX.create=async(ort,buf,o)=>{const {cpuOnly,...opt}=o||{},eps=cpuOnly?['wasm']:await ORTX.eps(),cpu=()=>ort.InferenceSession.create(buf,{...opt,executionProviders:['wasm']});
+  if(eps[0]==='wasm'){const s=await cpu();s.__ep='wasm';return s}
+  let s;try{s=await ort.InferenceSession.create(buf,{...opt,executionProviders:eps})}catch(e){console.warn('WebGPU indisponible pour ce modèle, retour au processeur',e);s=await cpu();s.__ep='wasm';return s}
+  // some operators only fail when they run: the first failure moves this model to the processor for good
+  const W={__ep:'webgpu',inputNames:s.inputNames,outputNames:s.outputNames,run:async(feeds,o)=>{if(W.__ep==='webgpu'){try{return await s.run(feeds,o)}catch(e){console.warn('WebGPU : échec à l’exécution, retour au processeur',e);W.__ep='wasm';try{s.release&&s.release()}catch(_){}s=await cpu()}}return s.run(feeds,o)}};
+  return W};
+window.PrismORT=ORTX;
 AI.ensureSeg=()=>AI._seg?Promise.resolve(AI._seg):(AI._segP||(AI._segP=AI._ensureSeg().finally(()=>{AI._segP=null})));
 AI._ensureSeg=async()=>{let failed=false;AI.setState('seg','load',0);try{
-    if(!window.ort)await loadScript(asset('ai/ort.wasm.min.js'));const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;
+    if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');{const bin=await ORTX.binary();if(bin)ort.env.wasm.wasmBinary=bin}ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;
     const n=11,parts=new Array(n);let done=0;await Promise.all([...Array(n).keys()].map(async i=>{let r;try{r=await fetch(asset(`ai/isnet/${i}.wasm`));if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer())}catch(e){failed=true;throw e}if(failed)return;done++;AI.setState('seg','load',done/n*0.9);busy(true,'Téléchargement du modèle de détourage (44 Mo, une seule fois)…',done/n*0.9)}));
     const total=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(total);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
-    busy(true,'Préparation du modèle…',0.95);AI._seg=await ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});AI.setState('seg','ready');return AI._seg}
+    busy(true,'Préparation du modèle…',0.95);AI._seg=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all',cpuOnly:true});/* ISNet: MaxPool with ceil mode is not supported by the WebGPU runtime */AI.setState('seg','ready');return AI._seg}
   catch(e){failed=true;console.error(e);AI.setState('seg','error');busy(false);toast('Le modèle de détourage n’a pas pu se charger : '+(e.message||e),5000);return null}};
 AI.subjectMask=async()=>{const d=S.doc;if(!d)return null;const key=d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();const C=AI.subjectCache;if(C&&C.w===d.w&&C.h===d.h&&C.key.length===key.length&&C.key.every((v,i)=>v===key[i]))return C.m;
   const sess=await AI.ensureSeg();if(!sess)return null;busy(true,'Détection du sujet…',null);await tick();try{const R=1024,src=flatSync(),t=mk(R,R),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(src,0,0,R,R);const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);
@@ -7720,7 +7741,7 @@ const histoVisible=()=>{const c=document.getElementById('histo');return !!c&&c.c
 function histoRefresh(){
   if(!S.doc||!histoVisible())return;
   if(S.contentDirty){requestRender();return}
-  try{if(typeof work!=='undefined'&&work.width>1&&S.workPos)histogram(wctx.getImageData(0,0,work.width,work.height));else{S.contentDirty=true;requestRender()}}
+  try{if(typeof work!=='undefined'&&work.width>1&&S.workPos&&S.workSize)histoNow();else{S.contentDirty=true;requestRender()}}
   catch(e){S.contentDirty=true;requestRender()}}
 W47.histoRefresh=histoRefresh;
 const histoKick=(()=>{let t=0;return(ms=120)=>{clearTimeout(t);t=setTimeout(()=>safe('histoKick',histoRefresh),ms)}})();
@@ -8920,6 +8941,8 @@ upscaleCanvas=async function(src,scale,model,onP){
 }
 
 
+window.PRISM_VERSION="0.4.0";
+
 /* ===== feat: feat/aidenoise.js ===== */
 {
 /* ================= Débruitage IA (SCUNet, réseau neuronal exécuté localement par ONNX Runtime web) ================= */
@@ -8928,27 +8951,27 @@ const DN={sess:null,loadP:null,TILE:256,OV:32,N:4,tms:null,abort:false,busyNow:f
 DN.WSRC=`let sess=null;
 self.onmessage=async e=>{const m=e.data;
  if(m.t==='init'){try{
-   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
+   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;if(m.bin){const bs=await Promise.all(m.bin.map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()})));const tot=bs.reduce((x,b)=>x+b.byteLength,0),wb=new Uint8Array(tot);let k=0;for(const b of bs){wb.set(new Uint8Array(b),k);k+=b.byteLength}ort.env.wasm.wasmBinary=wb.buffer}ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
    const n=m.chunks.length,parts=new Array(n);let done=0;
    await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.85})}));
    const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
    postMessage({t:'prog',v:0.92,prep:1});
-   sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});postMessage({t:'ready',threads:ort.env.wasm.numThreads})}
+   let eps=(m.eps||['wasm']).filter(x=>x!=='webgpu'||self.navigator.gpu),ep=eps[0];self.CPU=()=>ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});self.EP=ep;self.RUN=async f=>{try{return await sess.run(f)}catch(e){if(self.EP!=='webgpu')throw e;self.EP='wasm';sess=await self.CPU();return sess.run(f)}};try{sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:eps,graphOptimizationLevel:'all'})}catch(er){if(ep==='wasm')throw er;ep=self.EP='wasm';sess=await self.CPU()}postMessage({t:'ready',threads:ort.env.wasm.numThreads,ep})}
   catch(err){postMessage({t:'err',msg:String(err&&err.message||err)})}}
- else if(m.t==='run'){try{const ort=self.ort;const out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',new Float32Array(m.buf),m.dims)});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
+ else if(m.t==='run'){try{const ort=self.ort;const out=await self.RUN({[sess.inputNames[0]]:new ort.Tensor('float32',new Float32Array(m.buf),m.dims)});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
   catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
 DN.abs=u=>new URL(u,location.href).href;
 DN.load=()=>DN.sess?Promise.resolve(DN.sess):(DN.loadP||(DN.loadP=DN._load().finally(()=>{DN.loadP=null})));
-DN._load=()=>new Promise(res=>{DN.loadRes=res;
+DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);
   let w;try{w=new Worker(URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'})))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
   const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   w.onmessage=e=>{const m=e.data;
     if(m.t==='prog'){DN.busyCancel(true);busy(true,m.prep?'Préparation du modèle…':'Téléchargement du modèle de débruitage (43 Mo, une seule fois)…',m.v);DN.busyCancel(true)}
-    else if(m.t==='ready'){DN.threads=m.threads;DN.loadRes=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
+    else if(m.t==='ready'){DN.threads=m.threads;DN.lastEp=m.ep||'wasm';DN.loadRes=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
     else if(m.t==='err'){console.error(m.msg);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+m.msg,5000);res(null)}};
   w.onerror=e=>{console.error(e);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||'worker'),5000);res(null)};
-  w.postMessage({t:'init',ort:DN.abs(asset('ai/ort.wasm.min.js')),wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
 DN.pend=new Map();DN.rid=0;
 DN._onmsg=e=>{const m=e.data,p=DN.pend.get(m.id);if(!p)return;DN.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 DN.tile=(f,dims)=>new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
@@ -9354,14 +9377,14 @@ const LM={meta:null,availP:null,w:null,loadP:null,loadRes:null,pend:new Map(),ri
 LM.WSRC=`let sess=null;
 self.onmessage=async e=>{const m=e.data;
  if(m.t==='init'){try{
-   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
+   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;if(m.bin){const bs=await Promise.all(m.bin.map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()})));const tot=bs.reduce((x,b)=>x+b.byteLength,0),wb=new Uint8Array(tot);let k=0;for(const b of bs){wb.set(new Uint8Array(b),k);k+=b.byteLength}ort.env.wasm.wasmBinary=wb.buffer}ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
    const n=m.chunks.length,parts=new Array(n);let done=0;
    await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.8})}));
    const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(let i=0;i<n;i++){buf.set(parts[i],o);o+=parts[i].length;parts[i]=null}
    postMessage({t:'prog',v:0.9,prep:1});
-   sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});postMessage({t:'ready',threads:ort.env.wasm.numThreads})}
+   let eps=(m.eps||['wasm']).filter(x=>x!=='webgpu'||self.navigator.gpu),ep=eps[0];self.CPU=()=>ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});self.EP=ep;self.RUN=async f=>{try{return await sess.run(f)}catch(e){if(self.EP!=='webgpu')throw e;self.EP='wasm';sess=await self.CPU();return sess.run(f)}};try{sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:eps,graphOptimizationLevel:'all'})}catch(er){if(ep==='wasm')throw er;ep=self.EP='wasm';sess=await self.CPU()}postMessage({t:'ready',threads:ort.env.wasm.numThreads,ep})}
   catch(err){postMessage({t:'err',msg:String(err&&err.message||err)})}}
- else if(m.t==='run'){try{const ort=self.ort;const out=await sess.run({img:new ort.Tensor('float32',new Float32Array(m.img),m.dims),mask:new ort.Tensor('float32',new Float32Array(m.mask),[1,1,m.dims[2],m.dims[3]])});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
+ else if(m.t==='run'){try{const ort=self.ort;const out=await self.RUN({img:new ort.Tensor('float32',new Float32Array(m.img),m.dims),mask:new ort.Tensor('float32',new Float32Array(m.mask),[1,1,m.dims[2],m.dims[3]])});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
   catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
 LM.abs=u=>new URL(u,location.href).href;
 /* le modèle est-il livré avec cette version ? (réponse mémorisée) */
@@ -9369,17 +9392,17 @@ LM.avail=()=>{if(window.LAMA_DISABLE)return Promise.resolve(false);return LM.ava
     const u=asset('ai/lama/meta.json');let r=await fetch(u,{method:'HEAD',cache:'no-store'});if(!r.ok)return false;
     r=await fetch(u,{cache:'no-store'});if(!r.ok)return false;const m=JSON.parse(await r.text());if(!(m&&m.chunks>0))return false;LM.meta=m;return true}catch(e){return false}})())};
 LM.load=()=>LM.w?Promise.resolve(LM.w):(LM.loadP||(LM.loadP=LM._load().finally(()=>{LM.loadP=null})));
-LM._load=()=>new Promise(res=>{LM.loadRes=res;
+LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);LM.busyCancel(true);
   let w;try{w=new Worker(URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'})))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   const fail=msg=>{console.warn('lama',msg);try{w.terminate()}catch(e){}LM.loadRes=null;res(null)};
   w.onmessage=e=>{const m=e.data;
     if(m.t==='prog'){busy(true,m.prep?'Préparation du modèle…':'Chargement du modèle de suppression…',m.v);LM.busyCancel(true)}
-    else if(m.t==='ready'){LM.threads=m.threads;LM.loadRes=null;LM.loadW=null;LM.w=w;w.onmessage=LM._onmsg;res(w)}
+    else if(m.t==='ready'){LM.threads=m.threads;LM.ep=m.ep||'wasm';LM.loadRes=null;LM.loadW=null;LM.w=w;w.onmessage=LM._onmsg;res(w)}
     else if(m.t==='err')fail(m.msg)};
   w.onerror=e=>fail(e.message||'worker');
-  w.postMessage({t:'init',ort:LM.abs(asset('ai/ort.wasm.min.js')),wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
 LM._onmsg=e=>{const m=e.data,p=LM.pend.get(m.id);if(!p)return;LM.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 LM.infer=(img,mask,h,w)=>new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
 /* annulation : pendant le chargement on arrête le worker ; pendant le calcul on abandonne le résultat (le modèle reste en mémoire pour la prochaine fois) */
@@ -10980,6 +11003,349 @@ MENU2.file.items=()=>{const a=_mf();const g=a.find(x=>x&&x.label==='Photos multi
   return a};
 window.PrismStack={run:stackRun,command:stackCommand,dialog:stackDialog,fileFrames,layerFrames,estimate,grayPyr,pToM,inv3,apply,cap:stackCap};
 })();
+
+}
+
+/* ===== feat: feat/zz_aimask.js ===== */
+{
+/* ===== 0.4: AI masks for retouching.
+   1. "Retouche IA avec masques" (IA tab, Image menu, Ctrl+K): finds the subject and the sky, refines the subject edge on the photo itself,
+      then creates local adjustments (Sujet, Ciel, Arrière-plan) whose settings are measured on each region. Everything stays editable.
+   2. AI masks on any local adjustment: Masque section and Calque > Masque IA: Sujet, Ciel, Arrière-plan, to replace, add, remove or intersect. ===== */
+
+const AIM={};
+const covOf=m=>{if(!m)return 0;const s=Math.min(1,256/Math.max(m.width,m.height)),w=Math.max(1,m.width*s|0),h=Math.max(1,m.height*s|0),t=mk(w,h),g=rx(t);g.drawImage(m,0,0,w,h);const a=g.getImageData(0,0,w,h).data;let n=0;for(let i=3;i<a.length;i+=4)n+=a[i];return n/(255*w*h)};
+const invOf=m=>{const o=fullMask(),g=cx(o);g.globalCompositeOperation='destination-out';g.drawImage(m,0,0);return o};
+const minus=(a,b)=>{const o=cloneC(a),g=cx(o);g.globalCompositeOperation='destination-out';g.drawImage(b,0,0);return o};
+// statistics of the photo inside a mask, on a small proxy: median and percentiles of luminance, clipping, mean saturation
+function stats(m){const d=S.doc,s=Math.min(1,384/Math.max(d.w,d.h)),w=Math.max(1,d.w*s|0),h=Math.max(1,d.h*s|0),t=mk(w,h),g=rx(t);g.drawImage(flatSync(),0,0,w,h);const a=g.getImageData(0,0,w,h).data;
+  let ma=null;if(m){const u=mk(w,h),ug=rx(u);ug.drawImage(m,0,0,w,h);ma=ug.getImageData(0,0,w,h).data}
+  const L=[];let sat=0,ws=0,clip=0;
+  for(let i=0;i<a.length;i+=4){const wt=ma?ma[i+3]/255:1;if(wt<0.5||a[i+3]<10)continue;const r=a[i]/255,gg=a[i+1]/255,b=a[i+2]/255,l=0.2126*r+0.7152*gg+0.0722*b,mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);L.push(l);sat+=mx>0?(mx-mn)/mx:0;ws++;if(mx>0.985)clip++}
+  if(!L.length)return null;L.sort((x,y)=>x-y);const q=f=>L[Math.min(L.length-1,Math.floor(f*L.length))];
+  return{n:L.length,med:q(.5),lo:q(.02),hi:q(.98),spread:q(.9)-q(.1),sat:sat/ws,clip:clip/ws}}
+async function masks(onP){const d=S.doc;let subj=null,sky=null;
+  try{subj=await AI.subjectMask()}catch(e){console.warn(e)}if(S.doc!==d)return null;
+  const cs=covOf(subj);if(cs<0.02||cs>0.9)subj=null;
+  onP&&onP(.35,'Recherche du ciel…');
+  try{if(AI.skyMask)sky=await AI.skyMask(p=>onP&&onP(.35+.3*p,'Recherche du ciel…'))}catch(e){console.warn(e)}if(S.doc!==d)return null;
+  if(covOf(sky)<0.03)sky=null;
+  if(subj&&typeof refineMask==='function'){onP&&onP(.7,'Affinage du contour du sujet…');
+    const long=Math.max(d.w,d.h),ps=Math.min(1,2000/long);
+    try{const r=await refineMask(subj,{radius:clamp(Math.round(long*ps/400),2,12),eps:.0006,contrast:12,shift:0},ps,p=>onP&&onP(.7+.25*p,'Affinage du contour du sujet…'));if(r){const up=mk(d.w,d.h),g=rx(up);g.imageSmoothingQuality='high';g.drawImage(r,0,0,d.w,d.h);subj=up}}catch(e){console.warn(e)}}
+  if(subj)subj=mainBlobs(subj);
+  if(subj&&sky)sky=minus(sky,subj);
+  let bg=null;if(subj){bg=invOf(subj);if(sky)bg=minus(bg,sky)}
+  return{subj,sky,bg}}
+// keeps the main blobs of a mask (drops islands the detector left in textured areas: they would turn into blotches once adjusted)
+function mainBlobs(m){const R=512,s=Math.min(1,R/Math.max(m.width,m.height)),w=Math.max(1,Math.round(m.width*s)),h=Math.max(1,Math.round(m.height*s)),t=mk(w,h),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(m,0,0,w,h);
+  const a=g.getImageData(0,0,w,h).data,n=w*h,lab=new Int32Array(n).fill(-1),areas=[];const st=new Int32Array(n);
+  for(let i=0;i<n;i++){if(lab[i]>=0||a[i*4+3]<128)continue;const id=areas.length;let top=0,ar=0;st[top++]=i;lab[i]=id;
+    while(top){const j=st[--top];ar++;const x=j%w,y=(j/w)|0;for(const k of [x>0?j-1:-1,x<w-1?j+1:-1,y>0?j-w:-1,y<h-1?j+w:-1]){if(k>=0&&lab[k]<0&&a[k*4+3]>=128){lab[k]=id;st[top++]=k}}}areas.push(ar)}
+  if(!areas.length)return m;const big=Math.max(...areas),keep=areas.map(v=>v>=big*0.12);
+  // keep map, grown by a few pixels so the soft edge of a kept blob survives
+  const km=new Uint8Array(n);for(let i=0;i<n;i++)if(lab[i]>=0&&keep[lab[i]])km[i]=1;
+  const rr=3,gm=new Uint8Array(n);for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(!km[y*w+x])continue;for(let dy=-rr;dy<=rr;dy++){const Y=y+dy;if(Y<0||Y>=h)continue;for(let dx=-rr;dx<=rr;dx++){const X=x+dx;if(X>=0&&X<w)gm[Y*w+X]=1}}}
+  const kc=mk(w,h),kg=rx(kc),im=kg.createImageData(w,h);for(let i=0;i<n;i++){im.data[i*4]=im.data[i*4+1]=im.data[i*4+2]=255;im.data[i*4+3]=gm[i]?255:0}kg.putImageData(im,0,0);
+  // holes inside the subject (dark plumage, shadows the detector was unsure about): filled when small next to the subject
+  const out=new Uint8Array(n),q=new Int32Array(n);let top=0;const push=k=>{if(!km[k]&&!out[k]){out[k]=1;q[top++]=k}};
+  for(let x=0;x<w;x++){push(x);push((h-1)*w+x)}for(let y=0;y<h;y++){push(y*w);push(y*w+w-1)}
+  while(top){const j=q[--top],x=j%w,y=(j/w)|0;if(x>0)push(j-1);if(x<w-1)push(j+1);if(y>0)push(j-w);if(y<h-1)push(j+w)}
+  let holeA=0;for(let i=0;i<n;i++)if(!km[i]&&!out[i])holeA++;
+  // interior specks the detector was unsure about (even when they reach the border): closing then erosion of the kept map gives a solid core
+  const dil=(A,r)=>{const t=new Uint8Array(n),o=new Uint8Array(n);for(let y=0;y<h;y++){let c=0;for(let x=-r;x<w+r;x++){if(x+r<w&&A[y*w+x+r])c++;if(x-r-1>=0&&A[y*w+x-r-1])c--;if(x>=0&&x<w)t[y*w+x]=c>0?1:0}}
+    for(let x=0;x<w;x++){let c=0;for(let y=-r;y<h+r;y++){if(y+r<h&&t[(y+r)*w+x])c++;if(y-r-1>=0&&t[(y-r-1)*w+x])c--;if(y>=0&&y<h)o[y*w+x]=c>0?1:0}}return o};
+  const inv=A=>{const o=new Uint8Array(n);for(let i=0;i<n;i++)o[i]=A[i]?0:1;return o};
+  const cr=Math.max(2,Math.round(Math.max(w,h)/90)),core=inv(dil(inv(inv(dil(inv(dil(km,cr)),cr))),cr+2));
+  const hc=mk(w,h);if(holeA&&holeA<big*0.25){const hg=rx(hc),hi=hg.createImageData(w,h);for(let i=0;i<n;i++){hi.data[i*4]=hi.data[i*4+1]=hi.data[i*4+2]=255;hi.data[i*4+3]=(!km[i]&&!out[i])?255:0}hg.putImageData(hi,0,0)}
+  const o=cloneC(m),og=cx(o);og.globalCompositeOperation='destination-in';og.imageSmoothingQuality='high';og.drawImage(kc,0,0,m.width,m.height);og.globalCompositeOperation='source-over';if(holeA&&holeA<big*0.25)og.drawImage(hc,0,0,m.width,m.height);
+  {const cc=mk(w,h),cg=rx(cc),ci=cg.createImageData(w,h);for(let i=0;i<n;i++){ci.data[i*4]=ci.data[i*4+1]=ci.data[i*4+2]=255;ci.data[i*4+3]=core[i]?255:0}cg.putImageData(ci,0,0);og.imageSmoothingQuality='high';og.drawImage(cc,0,0,m.width,m.height)}
+  return o}
+AIM.masks=masks;
+const r2=v=>Math.round(v*100)/100;
+function devSubject(st){const z=DEV0();if(!st)return z;
+  z.exposure=r2(clamp(1.1*Math.log2(0.48/Math.max(0.03,st.med)),-0.4,0.5));
+  z.shadows=Math.round(clamp((0.12-st.lo)*160+8,0,35));z.highlights=st.hi>0.95?-20:0;
+  z.clarity=10;z.texture=8;z.vibrance=st.sat<0.25?12:5;return z}
+function devSky(st){const z=DEV0();if(!st)return z;
+  z.highlights=Math.round(-clamp(20+st.clip*300+(st.hi-0.85)*120,15,60));z.whites=st.clip>0.02?-15:-5;
+  z.dehaze=st.spread<0.25?18:10;z.vibrance=14;z.saturation=st.sat<0.15?6:0;
+  if(st.med>0.83)z.exposure=-r2(clamp((st.med-0.8)*2,0,0.4));return z}
+function devBg(st,sub){const z=DEV0();if(!st)return z;
+  const gap=sub?(st.med-sub.med):0;z.exposure=r2(clamp(-0.1-Math.max(0,gap)*0.4,-0.3,0));z.clarity=-6;z.saturation=-4;return z}
+
+async function aiMaskRetouch(){const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}const h0=S.history[S.hi];
+  const prog=(p,m)=>busy(true,m||'Analyse de la photo…',p);
+  let M=null;try{prog(.02,'Recherche du sujet…');await tick();M=await masks(prog)}catch(e){console.error(e)}finally{busy(false)}
+  if(!M||S.doc!==d){return}
+  if(S.history[S.hi]!==h0){toast('Retouche IA annulée : la photo a changé pendant l’analyse');return}
+  if(!M.subj&&!M.sky){toast('Ni sujet ni ciel nets dans cette photo : rien à masquer. Les réglages automatiques restent possibles.',5000);return}
+  const add=[],sSub=M.subj?stats(M.subj):null;
+  if(M.bg){const s=stats(M.bg);if(s){const L=newAdjust('Arrière-plan (IA)',M.bg);L.dev=devBg(s,sSub);add.push(L)}}
+  if(M.sky){const s=stats(M.sky);if(s){const L=newAdjust('Ciel (IA)',M.sky);L.dev=devSky(s);add.push(L)}}
+  if(M.subj&&sSub){const L=newAdjust('Sujet (IA)',M.subj);L.dev=devSubject(sSub);add.push(L)}
+  if(!add.length)return;
+  d.layers.push(...add);d.active=d.layers.length-1;markComp();if(typeof markContent==='function')markContent();pushHistory('Retouche IA avec masques');syncAll();try{switchTab('develop')}catch(e){}
+  toast(add.map(L=>L.name.replace(' (IA)','')).join(', ')+' : un réglage masqué chacun, déjà dosé. Ajustez ou masquez-les dans les calques.',6000)}
+AIM.retouch=aiMaskRetouch;
+
+// ---------- AI mask on the active local adjustment (or pixel layer mask) ----------
+const OPS=[['new','Remplacer'],['add','Ajouter'],['sub','Retirer'],['and','Croiser']];
+async function applyAIMask(kind,op){const d=S.doc,A=d&&d.layers[d.active];if(!A){toast('Ouvrez d’abord une photo');return}
+  if(A.kind==='adjust'&&!A.mask&&op!=='new'){op='new'}
+  const h0=S.history[S.hi];let M=null;try{busy(true,'Masque IA…',null);await tick();M=await masks((p,m)=>busy(true,m||'Masque IA…',p))}finally{busy(false)}
+  if(!M||S.doc!==d||S.history[S.hi]!==h0)return;
+  const m=kind==='subj'?M.subj:kind==='sky'?M.sky:M.bg;if(!m){toast(kind==='sky'?'Aucun ciel trouvé dans cette photo':'Aucun sujet net trouvé dans cette photo',4500);return}
+  let out;const cur=A.mask;
+  if(op==='new'||!cur)out=cloneC(m);
+  else{out=cloneC(cur);const g=cx(out);g.globalCompositeOperation=op==='add'?'source-over':op==='sub'?'destination-out':'destination-in';g.drawImage(m,0,0);g.globalCompositeOperation='source-over'}
+  if(A.kind==='adjust'&&!A.mask&&d.layers.filter(l=>l.kind==='adjust'&&!l.mask).length<=1){// never mask the only global adjustment: make a new local one
+    const L=newAdjust({subj:'Sujet (IA)',sky:'Ciel (IA)',bg:'Arrière-plan (IA)'}[kind],out);insertLayer(L,'Masque IA',true);switchTab('develop');toast('Nouveau réglage local créé sur ce masque');return}
+  A.mask=out;markComp();if(typeof markContent==='function')markContent();pushHistory('Masque IA');syncAll();toast('Masque mis à jour')}
+AIM.apply=applyAIMask;window.PrismAIMask=AIM;
+
+// Masque section (local adjustments): a row of AI buttons with the combination mode
+{const st=document.createElement('style');st.textContent='.aim-row{display:grid;gap:6px;margin:2px 0 10px}.aim-row .aim-t{font-size:11.5px;color:var(--fg-2)}.aim-row .aim-b{display:flex;gap:6px;flex-wrap:wrap}.aim-row select{font:inherit;font-size:12px}';document.body.appendChild(st)}
+function injectRow(){const root=document.querySelector('#zmSec .zm-root');if(!root||root.querySelector('.aim-row'))return;
+  const r=document.createElement('div');r.className='aim-row';
+  r.innerHTML=`<span class="aim-t">Masque IA</span><div class="aim-b"><button type="button" class="btn sm" data-aim="subj">Sujet</button><button type="button" class="btn sm" data-aim="sky">Ciel</button><button type="button" class="btn sm" data-aim="bg">Arrière-plan</button><select class="aim-op" aria-label="Combinaison">${OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>`;
+  r.addEventListener('click',e=>{const b=e.target.closest('[data-aim]');if(!b)return;e.preventDefault();e.stopPropagation();applyAIMask(b.dataset.aim,r.querySelector('.aim-op').value)});
+  root.insertBefore(r,root.firstChild)}
+{const body=document.getElementById('devBody');if(body)new MutationObserver(()=>injectRow()).observe(body,{childList:true,subtree:true})}
+
+// IA tab card
+const CARD=`<div class="card aim-card"><h4><svg viewBox="0 0 20 20"><circle cx="8" cy="8" r="3"/><path d="M3 17c.6-2.6 2.6-4 5-4"/><path d="M11 3.5h6M11 7h6M13 10.5h4"/><path d="M12 14.5l2 2 3.5-4"/></svg>Retouche IA avec masques</h4><p>L’IA repère le sujet et le ciel, affine leur contour, puis crée un réglage masqué pour chacun, dosé selon la photo. Tout reste modifiable.</p><div class="acts"><button class="btn sm primary" data-aim-go="1">Retoucher avec masques</button></div></div>`;
+function injectCard(){const p=document.getElementById('pane-ai');if(!p||p.querySelector('.aim-card'))return;const cards=p.querySelectorAll('.card');const ref=cards[1]||null;
+  const t=document.createElement('div');t.innerHTML=CARD;const c=t.firstChild;if(ref)ref.parentNode.insertBefore(c,ref);else p.appendChild(c)}
+{const p=document.getElementById('pane-ai');if(p){p.addEventListener('click',e=>{if(e.target.closest('[data-aim-go]')){e.stopPropagation();aiMaskRetouch()}},true);new MutationObserver(()=>injectCard()).observe(p,{childList:true});injectCard()}}
+
+// menus
+const _miAM=MENU2.image.items;MENU2.image.items=()=>{const a=_miAM();if(!a.some(x=>x&&x.label==='Retouche IA avec masques'))a.push(MI('Retouche IA avec masques',{icon:'subject',fn:aiMaskRetouch,dis:docDis()}));return a};
+const _mlAM=MENU2.layer.items;MENU2.layer.items=()=>{const a=_mlAM();if(a.some(x=>x&&x.label==='Masque IA'))return a;
+  const sub=()=>[['subj','Sujet'],['sky','Ciel'],['bg','Arrière-plan']].flatMap(([k,l],i)=>[...(i?[SEP]:[]),...OPS.map(([o,ol])=>MI(l+' : '+ol.toLowerCase(),{fn:()=>applyAIMask(k,o)}))]);
+  a.push(SEP,MI('Masque IA',{icon:'subject',sub,dis:docDis()}));return a};
+
+}
+
+/* ===== feat: feat/zz_brush.js ===== */
+{
+/* ===== 0.4: Densité (éclaircir, assombrir, saturer, désaturer, goutte d'eau, netteté) rebuilt.
+   Before, every dab re-processed the pixels the previous dab had just changed: the effect compounded with the speed of the hand,
+   8-bit rounding piled up into blotches in dark areas, and Netteté amplified its own output into a pixel grid along edges.
+   Now a stroke only paints a coverage map (0..1, building up like flow), and every pixel is recomputed from the photo as it was
+   before the stroke: the same pixel never gets processed twice within a stroke, whatever the speed or the number of passes.
+   Netteté is an unsharp mask on luminance (no colour fringes), with a noise threshold and a halo clamp to the local range. ===== */
+
+const BR={pre:null,T:128};
+const _bsBR=beginStroke;
+beginStroke=function(p,e){
+  let L0=null;try{L0=S.tool==='dodge'&&S.doc?pixelTarget():null}catch(err){}
+  BR.pre=L0?L0.canvas:null;
+  try{const r=_bsBR.apply(this,arguments);const st=S.stroke;if(st&&st.tool==='dodge'&&BR.pre&&!st.base&&st.layer.canvas!==BR.pre)st.base=BR.pre;return r}
+  finally{BR.pre=null}};
+
+const _pdBR=pixelDab;
+function accTile(st,tx,ty){const k=ty*65536+tx;let t=st.acc.get(k);if(!t){t=new Float32Array(BR.T*BR.T);st.acc.set(k,t)}return t}
+function gaussK(s){const r=Math.max(1,Math.ceil(s*3)),k=new Float32Array(2*r+1);let t=0;for(let i=-r;i<=r;i++){const v=Math.exp(-i*i/(2*s*s));k[i+r]=v;t+=v}for(let i=0;i<k.length;i++)k[i]/=t;return k}
+// separable gaussian of nch planes (Float32Array each) of size w*h
+function blurPlanes(P,w,h,s){const k=gaussK(s),r=(k.length-1)/2,tmp=new Float32Array(w*h);
+  for(const A of P){
+    for(let y=0;y<h;y++){const o=y*w;for(let x=0;x<w;x++){let v=0;for(let i=-r;i<=r;i++){const X=x+i<0?0:x+i>=w?w-1:x+i;v+=A[o+X]*k[i+r]}tmp[o+x]=v}}
+    for(let x=0;x<w;x++)for(let y=0;y<h;y++){let v=0;for(let i=-r;i<=r;i++){const Y=y+i<0?0:y+i>=h?h-1:y+i;v+=tmp[Y*w+x]*k[i+r]}A[y*w+x]=v}}
+  return P}
+
+pixelDab=function(st,p){
+  const d=S.doc,o=S.opts.dodge,mode=o.mode;
+  if(!st.base){const c=BR.pre;if(!c||!st.layer||st.layer.canvas===c)return _pdBR.apply(this,arguments);st.base=c}
+  if(!st.acc){st.acc=new Map();st.bctx=rx(st.base)}
+  const r=o.size/2,x0=Math.max(0,Math.floor(p.x-r)),y0=Math.max(0,Math.floor(p.y-r)),x1=Math.min(d.w,Math.ceil(p.x+r)),y1=Math.min(d.h,Math.ceil(p.y+r));if(x1<=x0||y1<=y0)return;
+  const w=x1-x0,h=y1-y0;
+  // per-dab amount: about five dabs overlap each pixel (spacing 20 % of the size); one pass at strength s gives about s at the centre
+  const s=Math.min(.97,Math.max(.01,o.strength)),a0=1-Math.pow(1-s,1/2.6);
+  const sel=st.selC?st.selC.getImageData(x0,y0,w,h).data:null;
+  const needBlur=mode==='blur'||mode==='sharpen';
+  const sig=mode==='sharpen'?Math.max(.9,Math.min(2.2,Math.max(d.w,d.h)/4000)):Math.max(1.2,Math.min(10,o.size/36));
+  const m=needBlur?Math.ceil(sig*3)+2:0,bx0=Math.max(0,x0-m),by0=Math.max(0,y0-m),bw=Math.min(d.w,x1+m)-bx0,bh=Math.min(d.h,y1+m)-by0;
+  const B=st.bctx.getImageData(bx0,by0,bw,bh).data;
+  // coverage update
+  const cov=new Float32Array(w*h),T=BR.T;
+  for(let y=0;y<h;y++){const Y=y0+y,ty=(Y/T)|0,ly=Y-ty*T;let tile=null,ttx=-1;
+    for(let x=0;x<w;x++){const X=x0+x,dx=X+.5-p.x,dy=Y+.5-p.y,q=(dx*dx+dy*dy)/(r*r);
+      const tx=(X/T)|0;if(tx!==ttx){ttx=tx;tile=null}
+      if(q>=1){if(!tile)tile=st.acc.get(ty*65536+tx)||null;cov[y*w+x]=tile?tile[ly*T+(X-tx*T)]:0;continue}
+      let f=(1-q);f*=f;if(sel)f*=sel[(y*w+x)*4+3]/255;
+      if(mode!=='blur'&&mode!=='sharpen'){const j=((Y-by0)*bw+(X-bx0))*4;f*=toneW(B[j],B[j+1],B[j+2])}
+      if(!tile)tile=accTile(st,tx,ty);const ii=ly*T+(X-tx*T);let a=tile[ii];if(f>0.0005){a+=a0*f*(1-a);tile[ii]=a}cov[y*w+x]=a}}
+  // result, always from the photo as it was before the stroke
+  const img=st.ctx.getImageData(x0,y0,w,h),out=img.data;
+  let Pb=null;
+  if(needBlur){const n=bw*bh;
+    if(mode==='blur'){Pb=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];for(let i=0;i<n;i++){Pb[0][i]=B[i*4];Pb[1][i]=B[i*4+1];Pb[2][i]=B[i*4+2]}}
+    else{Pb=[new Float32Array(n)];for(let i=0;i<n;i++)Pb[0][i]=0.2126*B[i*4]+0.7152*B[i*4+1]+0.0722*B[i*4+2]}
+    blurPlanes(Pb,bw,bh,sig)}
+  const EV=0.85,amt=1.2,thr=4,OV=4;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const X=x0+x,Y=y0+y,dx=X+.5-p.x,dy=Y+.5-p.y;if(dx*dx+dy*dy>=r*r)continue;
+    const c=cov[y*w+x],j=(y*w+x)*4,bi=(Y-by0)*bw+(X-bx0),k=bi*4;
+    const R=B[k],G=B[k+1],Bl=B[k+2];out[j+3]=B[k+3];
+    if(c<=0){out[j]=R;out[j+1]=G;out[j+2]=Bl;continue}
+    if(mode==='dodge'||mode==='burn'){const gm=mode==='dodge'?1/(1+c*EV):1+c*EV;out[j]=255*Math.pow(R/255,gm);out[j+1]=255*Math.pow(G/255,gm);out[j+2]=255*Math.pow(Bl/255,gm)}
+    else if(mode==='saturate'||mode==='desaturate'){const l=0.2126*R+0.7152*G+0.0722*Bl,f=mode==='saturate'?1+c*0.9:1-c;out[j]=l+(R-l)*f;out[j+1]=l+(G-l)*f;out[j+2]=l+(Bl-l)*f}
+    else if(mode==='blur'){out[j]=R+(Pb[0][bi]-R)*c;out[j+1]=G+(Pb[1][bi]-G)*c;out[j+2]=Bl+(Pb[2][bi]-Bl)*c}
+    else{const l=0.2126*R+0.7152*G+0.0722*Bl;let det=l-Pb[0][bi];const ad=Math.abs(det);
+      if(ad<=thr){out[j]=R;out[j+1]=G;out[j+2]=Bl;continue}
+      det=Math.sign(det)*(ad-thr)*Math.min(1,(ad-thr)/6);let dd=det*amt*c;
+      // halo clamp: never beyond the 3x3 range of the original photo (plus a few levels)
+      let mn=255,mx=0;const lx=X-bx0,ly=Y-by0;
+      for(let yy=-1;yy<=1;yy++){const YY=ly+yy;if(YY<0||YY>=bh)continue;for(let xx=-1;xx<=1;xx++){const XX=lx+xx;if(XX<0||XX>=bw)continue;const kk=(YY*bw+XX)*4,v=0.2126*B[kk]+0.7152*B[kk+1]+0.0722*B[kk+2];if(v<mn)mn=v;if(v>mx)mx=v}}
+      if(l+dd>mx+OV)dd=Math.max(0,mx+OV-l);else if(l+dd<mn-OV)dd=Math.min(0,mn-OV-l);
+      out[j]=R+dd;out[j+1]=G+dd;out[j+2]=Bl+dd}}
+  st.ctx.putImageData(img,x0,y0)};
+
+}
+
+/* ===== feat: feat/zz_dexp.js ===== */
+{
+/* ===== 0.4: Double exposition, like the multiple exposure mode of a Fujifilm camera (Additif, Moyenne, Clair, Sombre, plus Écran)
+   or done by the AI in one click (Silhouette: the second photo fills the subject, the background goes white).
+   Non-destructive: the second photo is a layer (blend mode + opacity, mask for the silhouette), adjustable live in the dialog. ===== */
+
+const DX={};
+{const st=document.createElement('style');st.textContent='@media (min-width:701px){.scrim.light .dlg.dx-dlg{right:10px;top:92px;width:360px;max-height:calc(100dvh - 110px);overflow:auto}}';document.body.appendChild(st)}
+const DX_MODES=[['screen','Écran','Le rendu film classique : seules les lumières s’additionnent'],['average','Moyenne','Les deux photos à parts égales (Fujifilm : Moyenne)'],['add','Additif','Les deux expositions s’additionnent, comme sur pellicule (Fujifilm : Additif)'],['lighten','Clair','Garde le plus clair des deux (Fujifilm : Clair)'],['darken','Sombre','Garde le plus sombre des deux (Fujifilm : Sombre)'],['silhouette','Silhouette (IA)','La seconde photo remplit le sujet, le fond devient clair']];
+const pick1=()=>new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='image/*,.heic,.heif,.tif,.tiff,'+RAW_ACCEPT;i.onchange=()=>res(i.files[0]||null);i.oncancel=()=>res(null);i.click()});
+const pick2=()=>new Promise(res=>{const i=document.createElement('input');i.type='file';i.multiple=true;i.accept='image/*,.heic,.heif,.tif,.tiff,'+RAW_ACCEPT;i.onchange=()=>res([...i.files]);i.oncancel=()=>res([]);i.click()});
+async function decode(f){let bm=null;if(!RAW_EXT.test(f.name||'')&&!/\.(heic|heif|tiff?)$/i.test(f.name||'')){try{bm=await createImageBitmap(f)}catch(e){}}
+  const src=bm||await styleFromFile(f);const d=S.doc,lim=d?Math.max(d.w,d.h)*1.5:6000,s=Math.min(1,lim/Math.max(src.width,src.height));
+  const c=mk(Math.max(1,Math.round(src.width*s)),Math.max(1,Math.round(src.height*s)));const g=rx(c);g.imageSmoothingQuality='high';g.drawImage(src,0,0,c.width,c.height);bm&&bm.close&&bm.close();return c}
+function grayOf(c){const o=mk(c.width,c.height),g=rx(o);g.drawImage(c,0,0);for(let y0=0;y0<c.height;y0+=512){const h=Math.min(512,c.height-y0),im=g.getImageData(0,y0,c.width,h),a=im.data;for(let i=0;i<a.length;i+=4){const l=0.2126*a[i]+0.7152*a[i+1]+0.0722*a[i+2];a[i]=a[i+1]=a[i+2]=l}g.putImageData(im,0,y0)}return o}
+
+// draws the second photo into a document-size canvas: "cover" fit, then zoom, offset (in % of the document) and mirror
+function drawB(st){const d=S.doc,c=st.Lb.canvas.width===d.w&&st.Lb.canvas.height===d.h?st.Lb.canvas:mk(d.w,d.h),g=cx(c),src=st.bw?(st.gray||(st.gray=grayOf(st.src))):st.src;
+  g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(0,0,d.w,d.h);
+  const box=st.mode==='silhouette'&&st.bb?st.bb:{x0:0,y0:0,x1:d.w,y1:d.h},bw=box.x1-box.x0,bh=box.y1-box.y0;
+  const k=Math.max(bw/src.width,bh/src.height)*st.zoom,w=src.width*k,h=src.height*k,cxp=(box.x0+box.x1)/2+st.ox/100*d.w,cyp=(box.y0+box.y1)/2+st.oy/100*d.h;
+  g.imageSmoothingQuality='high';g.save();g.translate(cxp,cyp);if(st.flip)g.scale(-1,1);g.drawImage(src,-w/2,-h/2,w,h);g.restore();
+  if(st.mode==='add'){// additive: baked against the photo below, the layer is then shown normally
+    const base=st.flat;g.globalCompositeOperation='lighter';g.drawImage(base,0,0);g.globalCompositeOperation='source-over'}
+  st.Lb.canvas=c}
+function applyMode(st){const L=st.Lb,m=st.mode;
+  L.blend=m==='screen'||m==='silhouette'?'screen':m==='lighten'?'lighten':m==='darken'?'darken':'source-over';
+  L.opacity=m==='average'?st.mix/200:st.mix/100;// Moyenne: 100 % on the slider = an exact 50/50 average
+  L.mask=m==='silhouette'&&st.subj?st.subj:null;
+  if(st.Lf){st.Lf.visible=m==='silhouette';st.Lf.opacity=st.bg/100}
+  if(m==='add'||st.addWas){drawB(st)}st.addWas=m==='add';
+  markComp();requestRender()}
+async function ensureSubject(st){if(st.subj!==undefined)return st.subj;const d=S.doc;let m=null;try{m=await AI.subjectMask()}catch(e){console.warn(e)}
+  if(S.doc!==d)return null;let bb=m?maskBBox(m):null;if(bb&&(bb.x1-bb.x0)*(bb.y1-bb.y0)<d.w*d.h*0.02)bb=null;
+  st.subj=bb?m:null;st.bb=bb;
+  if(st.subj){const inv=fullMask(),g=cx(inv);g.globalCompositeOperation='destination-out';g.drawImage(st.subj,0,0);const wc=mk(d.w,d.h),wg=cx(wc);wg.fillStyle='#ffffff';wg.fillRect(0,0,d.w,d.h);
+    st.Lf=newPixel('Fond clair',wc);st.Lf.mask=inv;st.Lf.visible=false;const i=d.layers.indexOf(st.Lb);d.layers.splice(i,0,st.Lf);d.active=d.layers.indexOf(st.Lb);syncAll()}
+  return st.subj}
+
+async function dexpDialog(file){const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}
+  if(!file)file=await pick1();if(!file)return;
+  busy(true,'Lecture de la seconde photo…',null);let src;try{await tick();src=await decode(file)}catch(e){busy(false);console.error(e);toast('Cette photo ne s’ouvre pas : '+(e.message||e),5000);return}busy(false);
+  if(S.doc!==d)return;
+  const h0=S.history[S.hi],a0=d.active,n0=d.layers.length;
+  const st={src,gray:null,bw:false,mode:'screen',mix:100,bg:90,zoom:1,ox:0,oy:0,flip:false,flat:flatSync&&cloneC(flatSync()),subj:undefined,bb:null,Lf:null};
+  st.Lb=newPixel('Double exposition · '+(file.name||'photo').replace(/\.[^.]+$/,''),mk(d.w,d.h));d.layers.push(st.Lb);d.active=d.layers.length-1;
+  drawB(st);applyMode(st);syncAll();
+  let done=false;
+  const cleanup=()=>{if(done)return;done=true;for(const L of [st.Lb,st.Lf]){const i=L?d.layers.indexOf(L):-1;if(i>=0)d.layers.splice(i,1)}d.active=Math.min(a0,d.layers.length-1);markComp();syncAll()};
+  const modes=DX_MODES.map(([v,l,t])=>`<button class="btn sm dx-m" data-m="${v}" title="${esc(t)}">${esc(l)}</button>`).join('');
+  dialog({title:'Double exposition',light:true,body:`<p class="muted" style="margin:0 0 10px">Choisissez un mode comme sur l’appareil, ou laissez l’IA composer. Tout reste modifiable ensuite : la seconde photo est un calque.</p>
+    <button class="btn primary" id="dxAI" style="width:100%;margin-bottom:10px">Composer avec l’IA</button>
+    <div class="dx-modes" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${modes}</div>
+    <p class="muted" id="dxHint" style="margin:0 0 8px;font-size:12px"></p>
+    ${rangeRow('dxMix','Intensité',0,100,1,100,' %')}${rangeRow('dxZoom','Échelle',50,300,1,100,' %')}${rangeRow('dxX','Position horizontale',-50,50,1,0,' %')}${rangeRow('dxY','Position verticale',-50,50,1,0,' %')}
+    <div id="dxBgRow">${rangeRow('dxBg','Fond clair',0,100,1,90,' %')}</div>
+    <div style="display:flex;gap:14px;margin-top:8px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="dxBW"> Seconde photo en noir et blanc</label><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="dxFlip"> Miroir</label></div>`,
+    onOpen:el=>{
+      el.classList.add('dx-dlg');const q=s=>el.querySelector(s);
+      const sync=()=>{el.querySelectorAll('.dx-m').forEach(b=>b.classList.toggle('primary',b.dataset.m===st.mode));q('#dxHint').textContent=(DX_MODES.find(x=>x[0]===st.mode)||[])[2]||'';q('#dxBgRow').style.display=st.mode==='silhouette'?'':'none'};
+      const setMode=async m=>{if(m==='silhouette'){const s=await ensureSubject(st);if(!s){toast('Aucun sujet net trouvé : le mode Écran est gardé',4500);m='screen'}}st.mode=m;drawB(st);applyMode(st);sync()};
+      el.querySelectorAll('.dx-m').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
+      const bind=(id,k,fn)=>{const r=q('#'+id),o=q('#'+id+'-o');r.addEventListener('input',()=>{st[k]=+r.value;o.textContent=r.value+' %';fn()})};
+      bind('dxMix','mix',()=>applyMode(st));bind('dxZoom','zoom',()=>{st.zoom=+q('#dxZoom').value/100;drawB(st);markComp()});
+      bind('dxX','ox',()=>{drawB(st);markComp()});bind('dxY','oy',()=>{drawB(st);markComp()});bind('dxBg','bg',()=>applyMode(st));
+      q('#dxBW').onchange=e=>{st.bw=e.target.checked;drawB(st);markComp()};q('#dxFlip').onchange=e=>{st.flip=e.target.checked;drawB(st);markComp()};
+      q('#dxAI').onclick=async()=>{const s=await ensureSubject(st);
+        if(s){st.mode='silhouette';st.zoom=1.08;st.ox=0;st.oy=-3;st.mix=100;st.bg=90}else{st.mode='screen';st.zoom=1;st.ox=0;st.oy=0;st.mix=100}
+        for(const [id,v] of [['dxMix',st.mix],['dxZoom',Math.round(st.zoom*100)],['dxX',st.ox],['dxY',st.oy],['dxBg',st.bg]]){q('#'+id).value=v;q('#'+id+'-o').textContent=v+' %'}
+        drawB(st);applyMode(st);sync();toast(s?'Silhouette composée : réglez l’échelle et la position si besoin':'Pas de sujet net : fondu en mode Écran',4000)};
+      sync()},
+    buttons:[{label:'Annuler',onClick:()=>{cleanup()}},{label:'Appliquer',primary:true,onClick:()=>{if(S.doc!==d||S.history[S.hi]!==h0){cleanup();return}
+      done=true;if(st.Lf&&!st.Lf.visible){const i=d.layers.indexOf(st.Lf);if(i>=0)d.layers.splice(i,1)}d.active=d.layers.indexOf(st.Lb);markComp();pushHistory('Double exposition');syncAll();toast('Double exposition ajoutée en calque')}}]});}
+// from the home screen or with no photo: two photos at once
+async function dexpStart(){if(S.doc){dexpDialog();return}
+  const fs=await pick2();if(!fs.length)return;let a=fs[0],b=fs[1];
+  await openBlob(a);if(!S.doc)return;if(!b)b=await pick1();if(b)dexpDialog(b)}
+DX.dialog=dexpDialog;DX.start=dexpStart;window.PrismDexp=DX;
+
+// menus: Fichier > Photos multiples, Image, and the palette (which lists menu items)
+const _mfDX=MENU2.file.items;
+MENU2.file.items=()=>{const a=_mfDX();const g=a.find(x=>x&&x.label==='Photos multiples'&&typeof x.sub==='function');const it=MI('Double exposition…',{fn:dexpStart});
+  if(g){const s0=g.sub;if(!g.__dx){g.__dx=1;g.sub=()=>{const b=s0();return b.some(x=>x&&x.label===it.label)?b:[it,...b]}}}
+  else if(!a.some(x=>x&&x.label===it.label))a.push(SEP,it);
+  return a};
+const _miDX=MENU2.image.items;MENU2.image.items=()=>{const a=_miDX();if(!a.some(x=>x&&x.label==='Double exposition…'))a.push(SEP,MI('Double exposition…',{fn:dexpStart,dis:docDis()}));return a};
+// home screen tile
+{const box=document.getElementById('wTiles');if(box&&!box.querySelector('.dx-tile')){const b=document.createElement('button');b.className='w-tile dx-tile';b.type='button';
+  b.innerHTML='<svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg><b>Double exposition</b><span>Deux photos en une, à la main ou par l’IA</span>';
+  b.addEventListener('click',e=>{e.stopPropagation();dexpStart()});box.appendChild(b)}}
+
+}
+
+/* ===== feat: feat/zz_ui.js ===== */
+{
+/* ===== 0.4: version shown at the bottom, the library logo goes to the home screen, home screen with a photo still open ===== */
+
+// ---------- version, in the status bar and on the home screen ----------
+const VER={v:window.PRISM_VERSION||'',where:window.__TAURI__?'app':'web'};
+const verText=()=>VER.v?`Prism ${VER.v}${VER.where==='web'?' · web':''}`:'Prism';
+{const st=document.createElement('style');st.textContent=`
+.st-ver{font:500 11px/1 var(--mono,ui-monospace,monospace);color:var(--fg-3,var(--fg-2));opacity:.75;padding:0 10px;white-space:nowrap;user-select:text;flex:none}
+body.no-doc .empty{background:var(--stage)}
+.w-ver{margin-top:22px;font:500 11.5px/1 var(--mono,ui-monospace,monospace);color:var(--fg-3,var(--fg-2));opacity:.75;text-align:center;width:100%}
+.w-back{display:flex;align-items:center;gap:10px;width:100%;margin-top:22px;padding:12px 16px;border:1px solid var(--accent-line,var(--line));background:var(--chrome);border-radius:var(--r);color:inherit;font:inherit;cursor:pointer;text-align:left}
+.w-back:hover{background:var(--chrome-2)}.w-back b{font-weight:600}.w-back span{color:var(--fg-2);font-size:12px;margin-left:auto}
+.w-back svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}`;document.body.appendChild(st)}
+function placeVersion(){
+  const bar=document.querySelector('footer.statusbar');
+  if(bar&&!bar.querySelector('.st-ver')){const e=document.createElement('div');e.className='st-ver';e.id='stVer';bar.appendChild(e)}
+  const wl=document.querySelector('#empty .welcome');
+  if(wl&&!wl.querySelector('.w-ver')){const e=document.createElement('div');e.className='w-ver';wl.appendChild(e)}
+  document.querySelectorAll('.st-ver,.w-ver').forEach(e=>{e.textContent=verText();e.title=VER.where==='app'?'Version de l’application installée':'Version de Prism en ligne'})}
+placeVersion();
+if(VER.where==='app')try{window.__TAURI__.app.getVersion().then(v=>{if(v){VER.v=v;placeVersion()}}).catch(()=>{})}catch(e){}
+new MutationObserver(()=>{if(!document.querySelector('#empty .w-ver'))placeVersion()}).observe(document.getElementById('empty'),{childList:true,subtree:true});
+
+// ---------- home screen while a photo is open: a way back to it ----------
+const home=document.getElementById('empty');
+function homeBack(){
+  const wl=home.querySelector('.welcome');if(!wl)return;let b=wl.querySelector('.w-back');
+  if(!S.doc||home.hidden){if(b)b.remove();return}
+  if(!b){b=document.createElement('button');b.className='w-back';b.type='button';b.onclick=leaveHome;const t=wl.querySelector('.w-tiles');wl.insertBefore(b,t||null)}
+  b.innerHTML=`<svg viewBox="0 0 20 20"><path d="M12 5l-5 5 5 5"/></svg><b>Revenir à « ${esc(S.doc.name||'photo')} »</b><span>Échap</span>`}
+function leaveHome(){if(!S.doc)return;home.hidden=true;try{updateDocName()}catch(e){}requestRender()}
+window.showHome=function(){if(typeof LIB!=='undefined'&&LIB.open)closeLibrary();home.hidden=false;homeBack();try{updateDocName()}catch(e){}};
+new MutationObserver(homeBack).observe(home,{attributes:true,attributeFilter:['hidden']});
+// with a photo hidden behind the home screen, editing shortcuts must not reach it
+addEventListener('keydown',e=>{
+  if(home.hidden||!S.doc||(typeof LIB!=='undefined'&&LIB.open))return;
+  if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,[contenteditable],dialog,.dlg,.modal,#cmdk'))return;
+  if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();leaveHome();return}
+  const k=e.key.toLowerCase(),mod=e.metaKey||e.ctrlKey;
+  if(mod&&['o','n','k'].includes(k))return;
+  if(e.key.length===1||['Delete','Backspace','Enter'].includes(e.key)||mod){e.stopImmediatePropagation()}},true);
+
+// ---------- library logo: back to the home screen (the editor logo still opens the library) ----------
+if(typeof openLibrary==='function'){const _ol=openLibrary;openLibrary=async function(...a){const r=await _ol.apply(this,a);
+  const m=document.querySelector('#library .lb-top .lb-mark');
+  if(m&&!m.dataset.home){const n=m.cloneNode(true);n.dataset.home='1';const t='Revenir à l’accueil';n.title=t;n.setAttribute('aria-label',t);
+    const go=e=>{e.stopPropagation();e.preventDefault();window.showHome()};n.addEventListener('click',go);n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')go(e)});m.replaceWith(n)}
+  return r}}
 
 }
 </script>
