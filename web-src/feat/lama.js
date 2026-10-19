@@ -12,9 +12,9 @@ self.onmessage=async e=>{const m=e.data;
    await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.8})}));
    const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(let i=0;i<n;i++){buf.set(parts[i],o);o+=parts[i].length;parts[i]=null}
    postMessage({t:'prog',v:0.9,prep:1});
-   sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});postMessage({t:'ready',threads:ort.env.wasm.numThreads})}
+   let eps=(m.eps||['wasm']).filter(x=>x!=='webgpu'||self.navigator.gpu),ep=eps[0];self.CPU=()=>ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});self.EP=ep;self.RUN=async f=>{try{return await sess.run(f)}catch(e){if(self.EP!=='webgpu')throw e;self.EP='wasm';sess=await self.CPU();return sess.run(f)}};try{sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:eps,graphOptimizationLevel:'all'})}catch(er){if(ep==='wasm')throw er;ep=self.EP='wasm';sess=await self.CPU()}postMessage({t:'ready',threads:ort.env.wasm.numThreads,ep})}
   catch(err){postMessage({t:'err',msg:String(err&&err.message||err)})}}
- else if(m.t==='run'){try{const ort=self.ort;const out=await sess.run({img:new ort.Tensor('float32',new Float32Array(m.img),m.dims),mask:new ort.Tensor('float32',new Float32Array(m.mask),[1,1,m.dims[2],m.dims[3]])});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
+ else if(m.t==='run'){try{const ort=self.ort;const out=await self.RUN({img:new ort.Tensor('float32',new Float32Array(m.img),m.dims),mask:new ort.Tensor('float32',new Float32Array(m.mask),[1,1,m.dims[2],m.dims[3]])});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
   catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
 LM.abs=u=>new URL(u,location.href).href;
 /* le modèle est-il livré avec cette version ? (réponse mémorisée) */
@@ -22,17 +22,17 @@ LM.avail=()=>{if(window.LAMA_DISABLE)return Promise.resolve(false);return LM.ava
     const u=asset('ai/lama/meta.json');let r=await fetch(u,{method:'HEAD',cache:'no-store'});if(!r.ok)return false;
     r=await fetch(u,{cache:'no-store'});if(!r.ok)return false;const m=JSON.parse(await r.text());if(!(m&&m.chunks>0))return false;LM.meta=m;return true}catch(e){return false}})())};
 LM.load=()=>LM.w?Promise.resolve(LM.w):(LM.loadP||(LM.loadP=LM._load().finally(()=>{LM.loadP=null})));
-LM._load=()=>new Promise(res=>{LM.loadRes=res;
+LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);LM.busyCancel(true);
   let w;try{w=new Worker(URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'})))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   const fail=msg=>{console.warn('lama',msg);try{w.terminate()}catch(e){}LM.loadRes=null;res(null)};
   w.onmessage=e=>{const m=e.data;
     if(m.t==='prog'){busy(true,m.prep?'Préparation du modèle…':'Chargement du modèle de suppression…',m.v);LM.busyCancel(true)}
-    else if(m.t==='ready'){LM.threads=m.threads;LM.loadRes=null;LM.loadW=null;LM.w=w;w.onmessage=LM._onmsg;res(w)}
+    else if(m.t==='ready'){LM.threads=m.threads;LM.ep=m.ep||'wasm';LM.loadRes=null;LM.loadW=null;LM.w=w;w.onmessage=LM._onmsg;res(w)}
     else if(m.t==='err')fail(m.msg)};
   w.onerror=e=>fail(e.message||'worker');
-  w.postMessage({t:'init',ort:LM.abs(asset('ai/ort.wasm.min.js')),wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
 LM._onmsg=e=>{const m=e.data,p=LM.pend.get(m.id);if(!p)return;LM.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 LM.infer=(img,mask,h,w)=>new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
 /* annulation : pendant le chargement on arrête le worker ; pendant le calcul on abandonne le résultat (le modèle reste en mémoire pour la prochaine fois) */

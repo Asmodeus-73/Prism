@@ -1507,12 +1507,24 @@ function toggleMask(){S.showMask=!S.showMask;renderTarget();requestRender()}
 const AI={state:{seg:'idle',up:'idle'},subjectCache:null,_ort:null,_seg:null,_tf:null,_up:{}};
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('script '+src));document.head.appendChild(s)})}
 AI.setState=(k,v,p)=>{AI.state[k]=v;AI.state[k+'P']=p;renderAIState()};
+/* ONNX Runtime: graphics card (WebGPU) when the device has one, else the processor (WASM, several threads when the page is isolated) */
+const ORTX={_g:null,gpuP:()=>ORTX._g||(ORTX._g=(async()=>{try{if(PREF.get('aiGPU',true)===false||!navigator.gpu)return false;const a=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});return !!a}catch(e){return false}})()),
+  threads:()=>self.crossOriginIsolated?Math.max(1,Math.min(8,(navigator.hardwareConcurrency||2)-1)):1};
+ORTX.bundle=async()=>asset((await ORTX.gpuP())?'ai/ort.webgpu.min.js':'ai/ort.wasm.min.js');
+ORTX.eps=async()=>(await ORTX.gpuP())?['webgpu','wasm']:['wasm'];
+ORTX.create=async(ort,buf,opt)=>{const eps=await ORTX.eps(),cpu=()=>ort.InferenceSession.create(buf,{...opt,executionProviders:['wasm']});
+  if(eps[0]==='wasm'){const s=await cpu();s.__ep='wasm';return s}
+  let s;try{s=await ort.InferenceSession.create(buf,{...opt,executionProviders:eps})}catch(e){console.warn('WebGPU indisponible pour ce modèle, retour au processeur',e);s=await cpu();s.__ep='wasm';return s}
+  // some operators only fail when they run: the first failure moves this model to the processor for good
+  const W={__ep:'webgpu',inputNames:s.inputNames,outputNames:s.outputNames,run:async(feeds,o)=>{if(W.__ep==='webgpu'){try{return await s.run(feeds,o)}catch(e){console.warn('WebGPU : échec à l’exécution, retour au processeur',e);W.__ep='wasm';try{s.release&&s.release()}catch(_){}s=await cpu()}}return s.run(feeds,o)}};
+  return W};
+window.PrismORT=ORTX;
 AI.ensureSeg=()=>AI._seg?Promise.resolve(AI._seg):(AI._segP||(AI._segP=AI._ensureSeg().finally(()=>{AI._segP=null})));
 AI._ensureSeg=async()=>{let failed=false;AI.setState('seg','load',0);try{
-    if(!window.ort)await loadScript(asset('ai/ort.wasm.min.js'));const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;
+    if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;
     const n=11,parts=new Array(n);let done=0;await Promise.all([...Array(n).keys()].map(async i=>{let r;try{r=await fetch(asset(`ai/isnet/${i}.wasm`));if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer())}catch(e){failed=true;throw e}if(failed)return;done++;AI.setState('seg','load',done/n*0.9);busy(true,'Téléchargement du modèle de détourage (44 Mo, une seule fois)…',done/n*0.9)}));
     const total=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(total);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
-    busy(true,'Préparation du modèle…',0.95);AI._seg=await ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});AI.setState('seg','ready');return AI._seg}
+    busy(true,'Préparation du modèle…',0.95);AI._seg=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all'});AI.setState('seg','ready');return AI._seg}
   catch(e){failed=true;console.error(e);AI.setState('seg','error');busy(false);toast('Le modèle de détourage n’a pas pu se charger : '+(e.message||e),5000);return null}};
 AI.subjectMask=async()=>{const d=S.doc;if(!d)return null;const key=d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();const C=AI.subjectCache;if(C&&C.w===d.w&&C.h===d.h&&C.key.length===key.length&&C.key.every((v,i)=>v===key[i]))return C.m;
   const sess=await AI.ensureSeg();if(!sess)return null;busy(true,'Détection du sujet…',null);await tick();try{const R=1024,src=flatSync(),t=mk(R,R),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(src,0,0,R,R);const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);

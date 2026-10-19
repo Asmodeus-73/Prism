@@ -9,22 +9,22 @@ self.onmessage=async e=>{const m=e.data;
    await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.85})}));
    const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
    postMessage({t:'prog',v:0.92,prep:1});
-   sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});postMessage({t:'ready',threads:ort.env.wasm.numThreads})}
+   let eps=(m.eps||['wasm']).filter(x=>x!=='webgpu'||self.navigator.gpu),ep=eps[0];self.CPU=()=>ort.InferenceSession.create(buf.buffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});self.EP=ep;self.RUN=async f=>{try{return await sess.run(f)}catch(e){if(self.EP!=='webgpu')throw e;self.EP='wasm';sess=await self.CPU();return sess.run(f)}};try{sess=await ort.InferenceSession.create(buf.buffer,{executionProviders:eps,graphOptimizationLevel:'all'})}catch(er){if(ep==='wasm')throw er;ep=self.EP='wasm';sess=await self.CPU()}postMessage({t:'ready',threads:ort.env.wasm.numThreads,ep})}
   catch(err){postMessage({t:'err',msg:String(err&&err.message||err)})}}
- else if(m.t==='run'){try{const ort=self.ort;const out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',new Float32Array(m.buf),m.dims)});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
+ else if(m.t==='run'){try{const ort=self.ort;const out=await self.RUN({[sess.inputNames[0]]:new ort.Tensor('float32',new Float32Array(m.buf),m.dims)});const d=out[sess.outputNames[0]].data;const c=new Float32Array(d);postMessage({t:'res',id:m.id,buf:c.buffer},[c.buffer])}
   catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
 DN.abs=u=>new URL(u,location.href).href;
 DN.load=()=>DN.sess?Promise.resolve(DN.sess):(DN.loadP||(DN.loadP=DN._load().finally(()=>{DN.loadP=null})));
-DN._load=()=>new Promise(res=>{DN.loadRes=res;
+DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);
   let w;try{w=new Worker(URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'})))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
   const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   w.onmessage=e=>{const m=e.data;
     if(m.t==='prog'){DN.busyCancel(true);busy(true,m.prep?'Préparation du modèle…':'Téléchargement du modèle de débruitage (43 Mo, une seule fois)…',m.v);DN.busyCancel(true)}
-    else if(m.t==='ready'){DN.threads=m.threads;DN.loadRes=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
+    else if(m.t==='ready'){DN.threads=m.threads;DN.lastEp=m.ep||'wasm';DN.loadRes=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
     else if(m.t==='err'){console.error(m.msg);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+m.msg,5000);res(null)}};
   w.onerror=e=>{console.error(e);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||'worker'),5000);res(null)};
-  w.postMessage({t:'init',ort:DN.abs(asset('ai/ort.wasm.min.js')),wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
 DN.pend=new Map();DN.rid=0;
 DN._onmsg=e=>{const m=e.data,p=DN.pend.get(m.id);if(!p)return;DN.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 DN.tile=(f,dims)=>new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
