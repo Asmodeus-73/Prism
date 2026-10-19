@@ -13,7 +13,9 @@ async function rawDecode16(file,wb){busy(true,'Développement du fichier RAW (16
     const hist=[new Uint32Array(1024),new Uint32Array(1024),new Uint32Array(1024)];const step=Math.max(1,Math.floor(W*H/400000));let cnt=0;for(let i=0;i<W*H;i+=step){hist[0][data[i*3]>>6]++;hist[1][data[i*3+1]>>6]++;hist[2][data[i*3+2]>>6]++;cnt++}
     let white=0;for(let c=0;c<3;c++){let tot=0,v=1023;for(;v>0;v--){tot+=hist[c][v];if(tot>cnt*0.01)break}white=Math.max(white,(v+1)/1024)}
     const bits=[];const mk_=meta.camera_make||meta.make,md_=meta.camera_model||meta.model;if(mk_||md_)bits.push([mk_,md_].filter(Boolean).join(' ').trim());if(meta.iso_speed)bits.push('ISO '+Math.round(meta.iso_speed));if(meta.shutter)bits.push(meta.shutter>=1?meta.shutter+' s':'1/'+Math.round(1/meta.shutter)+' s');if(meta.aperture)bits.push('f/'+(+meta.aperture).toFixed(1));if(meta.focal_len)bits.push(Math.round(meta.focal_len)+' mm');
-    return{data,w:W,h:H,meta:bits.join(' · '),white:clamp(white,1/16,1)}}
+    /* what the lens profile needs: camera, lens, focal length, aperture (the lens name comes from the file's EXIF when it is TIFF-based) */
+    const info={make:mk_||'',model:md_||'',focal:+meta.focal_len||0,fn:+meta.aperture||0,lens:''};try{const T=tiffRead(buf),s=T&&exifSummary(T);if(s){info.lens=s.lens||'';if(!info.focal&&s.focal)info.focal=s.focal}}catch(e){}
+    return{data,w:W,h:H,meta:bits.join(' · '),white:clamp(white,1/16,1),info}}
   finally{try{raw&&raw.dispose&&raw.dispose()}catch(e){}busy(false)}}
 function rawProxy(R,maxS){const f=Math.max(1,Math.ceil(Math.max(R.w,R.h)/maxS));if(f===1)return R;const w=Math.floor(R.w/f),h=Math.floor(R.h/f),o=new Float32Array(w*h*3),D=R.data,k=1/(f*f);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){let r=0,g=0,b=0;for(let j=0;j<f;j++){let p=((y*f+j)*R.w+x*f)*3;for(let i=0;i<f;i++,p+=3){r+=D[p];g+=D[p+1];b+=D[p+2]}}const q=(y*w+x)*3;o[q]=r*k;o[q+1]=g*k;o[q+2]=b*k}return{data:o,w,h,white:R.white}}
@@ -30,7 +32,7 @@ function rawDevelop(R,set,wantHi){const W=R.w,H=R.h,D=R.data,n=W*H,space=set.spa
     o[q]=er+dz>=255?255:(er+dz)|0;o[q+1]=eg+dz>=255?255:(eg+dz)|0;o[q+2]=eb+dz>=255?255:(eb+dz)|0;o[q+3]=255}
   g.putImageData(id,0,0);if(HI)c._hi=HI;return c}
 /* replaces the 8-bit decoder: every RAW now goes through the 16-bit linear pipeline */
-decodeRaw=async function(file,set){set=set||RAW_DEF();const R=await rawDecode16(file,set.wb);busy(true,'Développement du fichier RAW (16 bits)…',null);await tick();try{const c=rawDevelop(R,set,true);c._raw=true;RAWC={file,set,R};return{c,meta:R.meta,set}}finally{busy(false)}};
+decodeRaw=async function(file,set){set=set||RAW_DEF();const R=await rawDecode16(file,set.wb);busy(true,'Développement du fichier RAW (16 bits)…',null);await tick();try{const c=rawDevelop(R,set,true);c._raw=true;RAWC={file,set,R};try{FMT.info.set(c,{meta:R.meta,sum:R.info})}catch(e){}return{c,meta:R.meta,set}}finally{busy(false)}};
 async function attachRaw(file,set){const d=S.doc;if(!d)return;const key='raw_'+uid8();d.raw={key,name:file.name,set:{...set},w:d.w,h:d.h,file};try{await IDB.put('blobs',key,file)}catch(e){console.warn(e)}}
 async function rawDialog(){const d=S.doc;if(!d||!d.raw){toast('Disponible pour les photos ouvertes depuis un fichier RAW');return}
   if(d.w!==d.raw.w||d.h!==d.raw.h){toast('Le RAW ne peut plus être redéveloppé après un recadrage, une rotation ou un redimensionnement. Annulez-les d’abord.',6000);return}

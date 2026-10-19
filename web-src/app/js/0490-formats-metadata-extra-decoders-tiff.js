@@ -128,7 +128,7 @@ function sniff(u8,name){const s4=String.fromCharCode(...u8.subarray(0,4)),n=(nam
 /* loadImageFile now understands every format: returns an <img> or a canvas (canvas._hi for 16-bit sources) */
 const _loadImageFile=loadImageFile;
 loadImageFile=async function(file){const u8=new Uint8Array(await file.slice(0,Math.min(file.size,1<<20)).arrayBuffer()),kind=sniff(u8,file.name);
-  if(kind==='tiff'){busy(true,'Lecture du TIFF…',null);try{const im=await decodeTIFF(new Uint8Array(await file.arrayBuffer())),c=canvasFrom16(im);FMT.info.set(c,{space:im.space,meta:[im.sum.line,'TIFF'+(im.hi?' 16 bits':'')].filter(Boolean).join(' · '),exif:null});return c}finally{busy(false)}}
+  if(kind==='tiff'){busy(true,'Lecture du TIFF…',null);try{const im=await decodeTIFF(new Uint8Array(await file.arrayBuffer())),c=canvasFrom16(im);FMT.info.set(c,{space:im.space,meta:[im.sum.line,'TIFF'+(im.hi?' 16 bits':'')].filter(Boolean).join(' · '),exif:null,sum:im.sum});return c}finally{busy(false)}}
   if(kind==='pdf')return decodePDF(new Uint8Array(await file.arrayBuffer()));
   if(kind==='tga')return decodeTGA(new Uint8Array(await file.arrayBuffer()));
   if(kind==='svg')return decodeSVG(file);
@@ -138,5 +138,5 @@ loadImageFile=async function(file){const u8=new Uint8Array(await file.slice(0,Ma
   return im};
 /* setDoc picks up colour space, EXIF and camera line found while decoding */
 const _setDoc=setDoc;
-setDoc=function(src,name,opts={}){const inf=FMT.info.get(src);if(inf){opts={...opts};if(inf.space&&!opts.space)opts.space=inf.space;if(inf.meta&&!opts.meta)opts.meta=inf.meta}_setDoc(src,name,opts);if(S.doc)S.doc.exif=inf&&inf.exif||null};
+setDoc=function(src,name,opts={}){const inf=FMT.info.get(src);if(inf){opts={...opts};if(inf.space&&!opts.space)opts.space=inf.space;if(inf.meta&&!opts.meta)opts.meta=inf.meta}_setDoc(src,name,opts);if(S.doc)S.doc.shot=inf&&inf.sum||null;if(S.doc)S.doc.exif=inf&&inf.exif||null};
 
