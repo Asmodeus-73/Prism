@@ -20,9 +20,7 @@ async function masks(onP){const d=S.doc;let subj=null,sky=null;
   onP&&onP(.35,'Recherche du ciel…');
   try{if(AI.skyMask)sky=await AI.skyMask(p=>onP&&onP(.35+.3*p,'Recherche du ciel…'))}catch(e){console.warn(e)}if(S.doc!==d)return null;
   if(covOf(sky)<0.03)sky=null;
-  if(subj&&typeof refineMask==='function'){onP&&onP(.7,'Affinage du contour du sujet…');
-    const long=Math.max(d.w,d.h),ps=Math.min(1,2000/long);
-    try{const r=await refineMask(subj,{radius:clamp(Math.round(long*ps/400),2,12),eps:.0006,contrast:12,shift:0},ps,p=>onP&&onP(.7+.25*p,'Affinage du contour du sujet…'));if(r){const up=mk(d.w,d.h),g=rx(up);g.imageSmoothingQuality='high';g.drawImage(r,0,0,d.w,d.h);subj=up}}catch(e){console.warn(e)}}
+  // the subject mask comes back already snapped to the photo's edges
   if(subj)subj=mainBlobs(subj);
   if(subj&&sky)sky=minus(sky,subj);
   let bg=null;if(subj){bg=invOf(subj);if(sky)bg=minus(bg,sky)}

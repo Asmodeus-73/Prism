@@ -1,0 +1,1 @@
+{"model": "isnet-general-use", "fmt": "onnx, poids float16 relus en float32, MaxPool sans ceil_mode", "chunks": [10070100, 10070100, 10070100, 10070100, 10070100, 10070100, 10070100, 10070100, 10070096], "total": 90630896, "sha256": "9f3e57f7d75e9ec79cbb09d68895076cc895c7bf1338ca408ea9b8ec8c718a9a", "input": [1, 3, 1024, 1024], "norm": "(x/255-0.5)/1"}

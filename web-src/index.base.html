@@ -888,7 +888,7 @@ void main(){vec4 s=texture(uSrc,vUv);vec3 c=s.rgb,orig=c;
 GPU.init();
 
 /* ================= state ================= */
-const BLENDS=[['source-over','Normal'],['darken','Obscurcir'],['multiply','Produit'],['color-burn','Densité couleur +'],['lighten','Éclaircir'],['screen','Superposition'],['color-dodge','Densité couleur −'],['overlay','Incrustation'],['soft-light','Lumière tamisée'],['hard-light','Lumière crue'],['difference','Différence'],['exclusion','Exclusion'],['hue','Teinte'],['saturation','Saturation'],['color','Couleur'],['luminosity','Luminosité']];
+const BLENDS=[['source-over','Normal'],['darken','Obscurcir'],['multiply','Produit'],['color-burn','Densité couleur +'],['lighten','Éclaircir'],['screen','Superposition'],['color-dodge','Densité couleur −'],['lighter','Addition'],['overlay','Incrustation'],['soft-light','Lumière tamisée'],['hard-light','Lumière crue'],['difference','Différence'],['exclusion','Exclusion'],['hue','Teinte'],['saturation','Saturation'],['color','Couleur'],['luminosity','Luminosité']];
 const S={doc:null,tool:'heal',zoom:1,panX:0,panY:0,pr:1,fitted:true,history:[],hi:-1,maxHist:30,color:'#f4efe6',docVer:0,
   compare:'off',splitX:0.5,holdBefore:false,showMask:false,
   opts:{selMode:'new',marquee:{shape:'rect',feather:0,ratio:'free'},lasso:{feather:0},wand:{tol:28,contiguous:true,all:true},crop:{ratio:'free'},
@@ -1525,17 +1525,34 @@ ORTX.create=async(ort,buf,o)=>{const {cpuOnly,...opt}=o||{},eps=cpuOnly?['wasm']
   return W};
 window.PrismORT=ORTX;
 AI.ensureSeg=()=>AI._seg?Promise.resolve(AI._seg):(AI._segP||(AI._segP=AI._ensureSeg().finally(()=>{AI._segP=null})));
-AI._ensureSeg=async()=>{let failed=false;AI.setState('seg','load',0);try{
+/* chunked model files: ai/<dir>/meta.json lists the chunk sizes; the chunks are fetched in parallel and joined */
+AI.fetchModel=async(dir,label,onP)=>{const r0=await fetch(asset(dir+'meta.json'));if(!r0.ok)throw new Error('modèle '+r0.status);const meta=await r0.json(),sizes=meta.chunks,total=meta.total;
+  const buf=new Uint8Array(total),offs=sizes.map((_,i)=>sizes.slice(0,i).reduce((a,b)=>a+b,0));let got=0;
+  await Promise.all(sizes.map(async(n,i)=>{const r=await fetch(asset(`${dir}${i}.wasm`));if(!r.ok)throw new Error('modèle '+r.status);const rd=r.body&&r.body.getReader?r.body.getReader():null;
+    if(!rd){const b=new Uint8Array(await r.arrayBuffer());buf.set(b,offs[i]);got+=b.length;onP&&onP(got/total);return}
+    let o=offs[i];for(;;){const {done,value}=await rd.read();if(done)break;buf.set(value,o);o+=value.length;got+=value.length;onP&&onP(got/total)}
+    if(o-offs[i]!==n)throw new Error('modèle incomplet')}));
+  return{buf,meta}};
+AI.SEG_DIR='ai/isnet2/';
+AI._ensureSeg=async()=>{AI.setState('seg','load',0);try{
     if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');{const bin=await ORTX.binary();if(bin)ort.env.wasm.wasmBinary=bin}ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;
-    const n=11,parts=new Array(n);let done=0;await Promise.all([...Array(n).keys()].map(async i=>{let r;try{r=await fetch(asset(`ai/isnet/${i}.wasm`));if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer())}catch(e){failed=true;throw e}if(failed)return;done++;AI.setState('seg','load',done/n*0.9);busy(true,'Téléchargement du modèle de détourage (44 Mo, une seule fois)…',done/n*0.9)}));
-    const total=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(total);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
-    busy(true,'Préparation du modèle…',0.95);AI._seg=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all',cpuOnly:true});/* ISNet: MaxPool with ceil mode is not supported by the WebGPU runtime */AI.setState('seg','ready');return AI._seg}
-  catch(e){failed=true;console.error(e);AI.setState('seg','error');busy(false);toast('Le modèle de détourage n’a pas pu se charger : '+(e.message||e),5000);return null}};
-AI.subjectMask=async()=>{const d=S.doc;if(!d)return null;const key=d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();const C=AI.subjectCache;if(C&&C.w===d.w&&C.h===d.h&&C.key.length===key.length&&C.key.every((v,i)=>v===key[i]))return C.m;
-  const sess=await AI.ensureSeg();if(!sess)return null;busy(true,'Détection du sujet…',null);await tick();try{const R=1024,src=flatSync(),t=mk(R,R),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(src,0,0,R,R);const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);
-    for(let i=0;i<N;i++){f[i]=(a[i*4]-128)/256;f[i+N]=(a[i*4+1]-128)/256;f[i+2*N]=(a[i*4+2]-128)/256}const ort=window.ort;const out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',f,[1,3,R,R])});const o=out[sess.outputNames[0]].data;
-    let mn=1e9,mx=-1e9;for(let i=0;i<N;i++){if(o[i]<mn)mn=o[i];if(o[i]>mx)mx=o[i]}const sc=mx-mn>1e-6?1/(mx-mn):1;const m8=new Uint8ClampedArray(N);for(let i=0;i<N;i++)m8[i]=clamp((o[i]-mn)*sc*255,0,255);
-    const small=maskFromU8(m8,R,R,true),m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(small,0,0,d.w,d.h);AI.subjectCache={key,w:d.w,h:d.h,m};return m}
+    const {buf}=await AI.fetchModel(AI.SEG_DIR,'détourage',p=>{AI.setState('seg','load',p*0.9);busy(true,'Téléchargement du modèle de détourage (90 Mo, une seule fois)…',p*0.9)});
+    busy(true,'Préparation du modèle…',0.95);AI._seg=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all'});AI.setState('seg','ready');return AI._seg}
+  catch(e){console.error(e);AI.setState('seg','error');busy(false);toast('Le modèle de détourage n’a pas pu se charger : '+(e.message||e),5000);return null}};
+/* the subject as the model sees it (1024 × 1024 probabilities), or null when nothing stands out */
+AI.segRaw=async(src)=>{const sess=await AI.ensureSeg();if(!sess)return null;const R=1024,t=mk(R,R),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(src,0,0,R,R);const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);
+  for(let i=0;i<N;i++){f[i]=a[i*4]/255-0.5;f[i+N]=a[i*4+1]/255-0.5;f[i+2*N]=a[i*4+2]/255-0.5}
+  const ort=window.ort,out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',f,[1,3,R,R])}),o=out[sess.outputNames[0]].data;
+  let mx=0;for(let i=0;i<N;i++)if(o[i]>mx)mx=o[i];if(mx<0.25)return null;
+  // probabilities: stretched only when the model is unsure everywhere (a faint subject), never from the minimum (that turns background noise into mask)
+  const k=mx<0.9?1/mx:1,m8=new Uint8ClampedArray(N);for(let i=0;i<N;i++)m8[i]=o[i]*k*255;return{m8,R}};
+AI.subjectMask=async()=>{const d=S.doc;if(!d)return null;const key=d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();const C=AI.subjectCache;if(C&&C.w===d.w&&C.h===d.h&&C.key.length===key.length&&C.key.every((v,i)=>v===key[i])){if(!C.m)toast('Aucun sujet net dans cette photo',3500);return C.m}
+  if(!(await AI.ensureSeg()))return null;busy(true,'Détection du sujet…',null);await tick();try{const raw=await AI.segRaw(flatSync());if(S.doc!==d)return null;
+    let m=null;if(!raw)toast('Aucun sujet net dans cette photo',3500);
+    else{const small=maskFromU8(raw.m8,raw.R,raw.R,true),up=mk(d.w,d.h),ug=cx(up);ug.imageSmoothingQuality='high';ug.drawImage(small,0,0,d.w,d.h);m=up;
+      // the model works at 1024 px: its edge is snapped to the photo's own edges (guided filter) at up to 2048 px
+      const long=Math.max(d.w,d.h),ps=Math.min(1,2048/long);if(long>1100){try{busy(true,'Affinage du contour…',null);await tick();m=await refineMask(up,{radius:clamp(Math.round(long*ps/256),3,12),eps:0.0004,contrast:8,shift:0},ps)}catch(e){console.warn(e)}}}
+    AI.subjectCache={key,w:d.w,h:d.h,m};return m}
   catch(e){console.error(e);toast('Détection du sujet impossible : '+(e.message||e),5000);return null}finally{busy(false)}};
 AI.selectSubject=async()=>{const d=S.doc;const m=await AI.subjectMask();if(!m||S.doc!==d)return;combineSel(m,'new','Sélectionner le sujet');toast('Sujet sélectionné')};
 AI.removeBackground=async()=>{const L=pixelTarget();if(!L)return;const d0=S.doc;const m=await AI.subjectMask();if(!m||S.doc!==d0||!d0.layers.includes(L))return;L.mask=cloneC(m);L.editMask=true;S.doc.active=S.doc.layers.indexOf(L);markComp();pushHistory('Supprimer l’arrière-plan');syncAll();toast('Arrière-plan masqué. Peignez le masque pour corriger les bords. Exportez en PNG pour garder la transparence.',5000)};
@@ -1794,7 +1811,7 @@ async function importZip(file){const z=await readZip(file);
 
 /* ================= PSD (Photoshop) ================= */
 async function ensurePSD(){if(!window.agPsd)await loadScript(asset('psd/ag-psd.min.js'));return window.agPsd}
-const PSD_BLEND={'normal':'source-over','multiply':'multiply','screen':'screen','overlay':'overlay','darken':'darken','lighten':'lighten','color dodge':'color-dodge','color burn':'color-burn','hard light':'hard-light','soft light':'soft-light','difference':'difference','exclusion':'exclusion','hue':'hue','saturation':'saturation','color':'color','luminosity':'luminosity'};
+const PSD_BLEND={'normal':'source-over','multiply':'multiply','screen':'screen','overlay':'overlay','darken':'darken','lighten':'lighten','color dodge':'color-dodge','linear dodge':'lighter','color burn':'color-burn','hard light':'hard-light','soft light':'soft-light','difference':'difference','exclusion':'exclusion','hue':'hue','saturation':'saturation','color':'color','luminosity':'luminosity'};
 const BLEND_PSD=Object.fromEntries(Object.entries(PSD_BLEND).map(([a,b])=>[b,a]));
 function grayToAlpha(src,w,h,left,top,def){const m=mk(w,h),g=rx(m);if(def){g.fillStyle='#fff';g.fillRect(0,0,w,h)}if(src){const t=mk(src.width,src.height),tg=rx(t);tg.drawImage(src,0,0);const id=tg.getImageData(0,0,t.width,t.height),p=id.data;for(let i=0;i<p.length;i+=4){p[i+3]=p[i];p[i]=p[i+1]=p[i+2]=255}tg.putImageData(id,0,0);g.clearRect(left,top,t.width,t.height);g.drawImage(t,left,top)}return m}
 async function importPSD(file,name){busy(true,'Lecture du fichier Photoshop…',null);try{setCS('srgb');const ag=await ensurePSD();const buf=await file.arrayBuffer();const psd=ag.readPsd(buf,{skipThumbnail:true,useImageData:false});
@@ -2306,7 +2323,7 @@ function _setSat(c,s,o){const mx=Math.max(c[0],c[1],c[2]),mn=Math.min(c[0],c[1],
 const _D=x=>x<=0.25?((16*x-12)*x+4)*x:Math.sqrt(x);
 const BSEP={multiply:(b,s)=>b*s,screen:(b,s)=>b+s-b*s,overlay:(b,s)=>b<=0.5?2*b*s:1-2*(1-b)*(1-s),darken:(b,s)=>b<s?b:s,lighten:(b,s)=>b>s?b:s,
   'color-dodge':(b,s)=>b===0?0:s>=1?1:Math.min(1,b/(1-s)),'color-burn':(b,s)=>b>=1?1:s<=0?0:1-Math.min(1,(1-b)/s),'hard-light':(b,s)=>s<=0.5?2*b*s:1-2*(1-b)*(1-s),
-  'soft-light':(b,s)=>s<=0.5?b-(1-2*s)*b*(1-b):b+(2*s-1)*(_D(b)-b),difference:(b,s)=>Math.abs(b-s),exclusion:(b,s)=>b+s-2*b*s};
+  'soft-light':(b,s)=>s<=0.5?b-(1-2*s)*b*(1-b):b+(2*s-1)*(_D(b)-b),difference:(b,s)=>Math.abs(b-s),exclusion:(b,s)=>b+s-2*b*s,lighter:(b,s)=>Math.min(1,b+s)};
 function blendFF(F,S2,mode,op){const sep=BSEP[mode],t1=[0,0,0],t2=[0,0,0],cb=[0,0,0],cs=[0,0,0],B=[0,0,0];
   for(let j=0;j<F.length;j+=4){const as=S2[j+3]*op;if(as<=0)continue;const ab=F[j+3];
     cs[0]=S2[j];cs[1]=S2[j+1];cs[2]=S2[j+2];
@@ -7938,7 +7955,7 @@ optTool.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&optToo
 const more=document.createElement('div');more.id='w47more';more.hidden=true;
 const moreBtn=document.createElement('button');moreBtn.type='button';moreBtn.id='w47moreBtn';moreBtn.hidden=true;moreBtn.setAttribute('aria-haspopup','true');moreBtn.setAttribute('aria-expanded','false');
 const OV={busy:false,open:false};
-const isPinned=n=>n.id==='cropApply'||n.id==='cropReset'||(n.matches&&n.matches('[data-act=apply],[data-act=reset]'));
+const isPinned=n=>n.id==='cropApply'||n.id==='cropReset'||(n.matches&&n.matches('[data-act=apply],[data-act=reset],[data-pin]'));
 const isKeep=n=>n.id==='srcBtn';
 const isCtl=n=>n.nodeType===1&&n!==more&&n!==moreBtn&&!n.classList.contains('tname')&&!n.classList.contains('hint')&&!n.classList.contains('kbhint');
 function closeMore(){OV.open=false;more.hidden=true;moreBtn.setAttribute('aria-expanded','false');moreBtn.classList.remove('on')}
