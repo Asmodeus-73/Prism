@@ -1740,6 +1740,10 @@ async function openLocalProject(id){const m=await IDB.get('projects',id);if(!m){
   const c=Cloud.list.find(p=>p.id===id);if(m.sync&&c&&c.updatedAt>m.updatedAt&&Cloud.ok){return Cloud.open(id)}
   await loadManifest(m,t=>IDB.get('blobs',t.key));return true}
 
+
+/* leaving the page (closing the tab or the app, switching apps on a phone): the last edits are saved now rather than in 2.5 s */
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&SAVE.timer)flushSave().catch(e=>console.error(e))});
+addEventListener('pagehide',()=>{if(SAVE.timer)flushSave().catch(e=>console.error(e))});
 /* ================= cloud sync (claude.ai account: db + assets) ================= */
 const Cloud={ok:false,db:null,assets:null,uid:null,list:[],state:'off',unsub:null,usage:null,
   async init(){try{if(!(window.claude&&window.claude.use))return;const [db,assets,user]=await Promise.all(['db','assets','user'].map(n=>window.claude.use(n).catch(()=>null)));
@@ -3329,7 +3333,7 @@ function camFromMeta(meta){const seg=String(meta||'').split(' · ')[0]||'';retur
 const _uel=updateExifLine;updateExifLine=function(){_uel();const e=$('#hexif');if(!e||e.hidden)return;const f=e.querySelector('span');if(f){const n=camNorm(f.textContent);if(n)f.textContent=n;else if(FMT_WORDS.test(f.textContent)){}}}
 
 /* ================= v8.2: 16-bit PSD export (own writer: ag-psd only writes 8 bits) ================= */
-const PSD_KEY={'source-over':'norm','darken':'dark','multiply':'mul ','color-burn':'idiv','lighten':'lite','screen':'scrn','color-dodge':'div ','overlay':'over','soft-light':'sLit','hard-light':'hLit','difference':'diff','exclusion':'smud','hue':'hue ','saturation':'sat ','color':'colr','luminosity':'lum '};
+const PSD_KEY={'source-over':'norm','darken':'dark','multiply':'mul ','color-burn':'idiv','lighten':'lite','screen':'scrn','color-dodge':'div ','overlay':'over','soft-light':'sLit','hard-light':'hLit','difference':'diff','exclusion':'smud','hue':'hue ','saturation':'sat ','color':'colr','luminosity':'lum ','lighter':'lddg'};
 async function encodePSD16(d,onP){const W=d.w,H=d.h,N=W*H,chunks=[];const prog=(p,m)=>onP&&onP(p,m);
   const hdr=n=>{const b=new Uint8Array(n);return{b,v:new DataView(b.buffer),p:0}};
   const asc=s=>{const o=[];for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);o.push(c<128&&c>=32?c:63)}return o};
@@ -3853,8 +3857,8 @@ Cloud.remove=async function(id){const r=this.col.doc(id),s=await r.get().catch((
     if(r&&r.device!==DEVICE&&r.updatedAt>(d.updatedAt||0)+500&&r.updatedAt!==this._warned&&clean){this._warned=r.updatedAt;toast(`Mis à jour depuis ${r.deviceName||'votre autre appareil'}`,4000);this.open(d.pid);return}}return prev()}})();
 
 /* ================= v9: large photos on iPhone and iPad ================= */
-if(IS_IOS){(async()=>{try{let ok=0;for(const n of [20e6,26e6]){const w=Math.round(Math.sqrt(n*1.5)),h=Math.round(n/w),c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(w-3,h-3,3,3);const p=g.getImageData(w-2,h-2,1,1).data;if(p[0]===255&&p[3]===255)ok=n;else break;c.width=c.height=1}
-  if(ok>MAX_PX){MAX_PX=ok;S.maxHistBoost=1}}catch(e){}})()}
+if(IS_IOS){(async()=>{try{let ok=0;for(const n of [20e6,26e6]){const w=Math.round(Math.sqrt(n*1.5)),h=Math.round(n/w),c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(w-3,h-3,3,3);const p=g.getImageData(w-2,h-2,1,1).data;const good=p[0]===255&&p[3]===255;c.width=c.height=1;if(good)ok=n;else break}
+  if(ok>MAX_PX)MAX_PX=ok}catch(e){}})()}
 
 /* ================= v9: plain-language messages, memory guard ================= */
 const FRIENDLY=[
@@ -3890,6 +3894,12 @@ function memEstimate(){const d=S.doc;if(!d)return 0;const px=d.w*d.h;let b=0;for
 const memBudget=()=>IS_IOS?5e8:Math.min(3e9,(navigator.deviceMemory||4)*4e8);
 const _pushHistory16=pushHistory;pushHistory=function(){const r=_pushHistory16.apply(this,arguments);try{const d=S.doc;if(d&&!d._memWarned){const e=memEstimate(),bud=memBudget();if(e>bud*0.8){d._memWarned=true;toast(`Cette photo de ${(d.w*d.h/1e6).toFixed(0)} Mpx avec ${d.layers.length} calques occupe environ ${(e/1e9).toFixed(1).replace('.',',')} Go de mémoire. Fusionnez quelques calques (${MOD}E) pour garder de la fluidité.`,8000)}}}catch(e){}return r};
 
+
+/* an error nothing caught: it is said once in plain words (at most every 30 s) instead of failing silently */
+{let last=0;const IGN=/ResizeObserver|annulé|AbortError|Script error\.?$/i;
+ const say=e=>{const m=String(e&&(e.message||e.reason&&e.reason.message||e.reason)||e||'');if(!m||IGN.test(m))return;console.error('Prism :',e.error||e.reason||e);const t=Date.now();if(t-last<30000)return;last=t;
+   try{toast('Un problème inattendu est survenu ('+m.slice(0,120)+'). Votre travail reste enregistré ; si cela se répète, rechargez Prism.',6000)}catch(_){}};
+ addEventListener('error',e=>{if(e.target&&e.target!==window)return;say(e)});addEventListener('unhandledrejection',e=>say(e))}
 /* ================= v10: library organisation (albums, smart albums, folders, dates, flags, grouping) ================= */
 Object.assign(LIB,{album:'',folder:'',date:'',flag:'',smart:'',size:PREF.get('lbSize',170),group:PREF.get('lbGroup',true)});
 const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -5395,8 +5405,8 @@ function indexedDialog(){if(!S.doc)return;
 /* ---------- ICC export ---------- */
 async function iccExport(o){busy(true,'Conversion de couleurs…',null);await tick();
   try{const m=await CMS.load();const hp=CMS.open(o.bytes);if(!hp)throw new Error('profil ICC illisible');
-    const cs=String.fromCharCode(...o.bytes.subarray(16,20));if(cs!=='RGB ')throw new Error('profil '+cs.trim()+' : seuls les profils RVB sont pris en charge ici');
-    const T=CMS.ns.TYPE_RGBA_8,io=CS==='display-p3'?CMS.p3:CMS.srgb,fl=(o.bpc?0x2000:0)|0x4000;
+    const cs=String.fromCharCode(...o.bytes.subarray(16,20));if(cs==='CMYK')return await iccExportCMYK(o,m,hp);if(cs!=='RGB ')throw new Error('profil '+cs.trim()+' : seuls les profils RVB et CMJN sont pris en charge');
+    const T=CMS.ns.TYPE_RGBA_8,io=CS==='display-p3'?CMS.p3:CMS.srgb,fl=o.bpc?0x2000:0;
     const xf=m.cmsCreateTransform(io,T,hp,T,o.intent,fl);if(!xf)throw new Error('transformation impossible avec ce profil');
     let c=await renderDoc(1);if(o.fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}
     const g=cx(c),id=g.getImageData(0,0,c.width,c.height),n=c.width*c.height,CH=1<<20;
@@ -5410,8 +5420,22 @@ async function iccExport(o){busy(true,'Conversion de couleurs…',null);await ti
       blob=await pngWithExif(new Blob(parts,{type:'image/png'}),ex)}
     busy(false);await saveFile(blob,(S.doc.name||'image').replace(/\.[a-z0-9]+$/i,'')+'-'+(o.name||'icc').replace(/[^\w-]+/g,'_')+'.'+(o.fmt==='jpeg'?'jpg':'png'))
   }catch(e){busy(false);console.error(e);toast('Export impossible : '+(e.message||e),5000)}}
+/* CMYK (CMJN) for print: the photo is flattened on white, converted with the printer's profile and written as a CMYK TIFF carrying that profile */
+async function iccExportCMYK(o,m,hp){const io=CS==='display-p3'?CMS.p3:CMS.srgb,xf=m.cmsCreateTransform(io,CMS.ns.TYPE_RGB_8,hp,CMS.ns.TYPE_CMYK_8,o.intent,o.bpc?0x2000:0);if(!xf)throw new Error('transformation impossible avec ce profil');
+  const c0=await renderDoc(1),W=c0.width,H=c0.height,c=mk(W,H),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(c0,0,0);
+  const a=g.getImageData(0,0,W,H).data,n=W*H,cmyk=new Uint8Array(n*4),CH=1<<20,rgb=new Uint8Array(Math.min(CH,n)*3);
+  for(let s=0;s<n;s+=CH){const k=Math.min(CH,n-s);for(let i=0;i<k;i++){const j=(s+i)*4;rgb[i*3]=a[j];rgb[i*3+1]=a[j+1];rgb[i*3+2]=a[j+2]}
+    const out=m.cmsDoTransform(xf,rgb.subarray(0,k*3),k);cmyk.set(out.subarray(0,k*4),s*4);busy(true,'Conversion en CMJN…',s/n);await tick()}
+  m.cmsDeleteTransform(xf);const blob=await encodeTIFFCMYK(cmyk,W,H,o.bytes);busy(false);
+  await saveFile(blob,(S.doc.name||'image').replace(/\.[a-z0-9]+$/i,'')+'-'+(o.name||'cmjn').replace(/[^\w-]+/g,'_')+'.tif')}
+async function encodeTIFFCMYK(pix,w,h,icc){const comp=await zlib(pix),tags=[],T=(id,type,count,val)=>tags.push({id,type,count,val});
+  const nT=12,ifd=8,ifdLen=2+nT*12+4,bpsOff=ifd+ifdLen,iccOff=bpsOff+8,dataOff=iccOff+icc.length+(icc.length&1);
+  T(256,4,1,w);T(257,4,1,h);T(258,3,4,bpsOff);T(259,3,1,8);T(262,3,1,5);T(273,4,1,dataOff);T(277,3,1,4);T(278,4,1,h);T(279,4,1,comp.length);T(284,3,1,1);T(332,3,1,1);T(34675,7,icc.length,iccOff);
+  const head=new Uint8Array(dataOff),v=new DataView(head.buffer);head[0]=73;head[1]=73;v.setUint16(2,42,true);v.setUint32(4,ifd,true);v.setUint16(ifd,nT,true);
+  tags.forEach((t,i)=>{const o=ifd+2+i*12;v.setUint16(o,t.id,true);v.setUint16(o+2,t.type,true);v.setUint32(o+4,t.count,true);if(t.type===3&&t.count===1)v.setUint16(o+8,t.val,true);else v.setUint32(o+8,t.val,true)});v.setUint32(ifd+2+nT*12,0,true);
+  for(let c=0;c<4;c++)v.setUint16(bpsOff+c*2,8,true);head.set(icc,iccOff);return new Blob([head,comp],{type:'image/tiff'})}
 async function iccDialog(){if(!S.doc)return;let bytes=null,name='';if(await proofLoadSaved()){bytes=PROOF.bytes;name=PROOF.name}
-  dialog({title:'Exporter avec un profil ICC',light:true,body:`<p class="muted" style="margin:0 0 8px">Convertit les couleurs vers n’importe quel profil RVB (écran, labo photo, espace de travail) et l’intègre au fichier. Le profil reste sur cet appareil.</p>
+  dialog({title:'Exporter avec un profil ICC',light:true,body:`<p class="muted" style="margin:0 0 8px">Convertit les couleurs vers un profil RVB (écran, labo photo) ou CMJN (imprimeur) et l’intègre au fichier. Avec un profil CMJN, le fichier est un TIFF CMJN prêt pour l’impression. Le profil reste sur cet appareil.</p>
   <div class="inline"><button class="btn sm" id="icPick">Choisir un profil ICC…</button><span id="icName" class="muted">${name?esc(name):'Aucun profil'}</span></div>
   <label class="field">Format<select id="icF"><option value="jpeg">JPEG</option><option value="png">PNG</option></select></label>
   <label class="field">Intention<select id="icI"><option value="0">Perceptuelle</option><option value="1" selected>Colorimétrie relative</option><option value="2">Saturation</option><option value="3">Colorimétrie absolue</option></select></label>
@@ -10122,6 +10146,8 @@ function parseXmp(text,fname){
   set('Texture','texture');set('Clarity2012','clarity');set('Dehaze','dehaze');set('Vibrance','vibrance');set('Saturation','saturation');
   {const t=f('Temperature');if(t!=null){dv.temp=clamp(Math.abs(t)<=100?t:(t-5500)/50,-100,100);done.add('Temperature')}}
   set('Tint','tint',100/150);
+  /* JPEG/TIFF presets carry relative values (-100..100) under other names */
+  if(!done.has('Temperature'))set('IncrementalTemperature','temp');if(!done.has('Tint'))set('IncrementalTint','tint');
   if(/^true$/i.test(String(kv.get('ConvertToGrayscale')))){dv.saturation=-100;done.add('ConvertToGrayscale')}else if(kv.has('ConvertToGrayscale'))done.add('ConvertToGrayscale');
   set('Sharpness','sharpen',1,0,150);set('SharpenRadius','sharpRadius',1,0.5,3);set('LuminanceSmoothing','noise',1,0,100);
   const curve=(key,ch)=>{const v=kv.get(key);if(!Array.isArray(v))return;const pts=v.map(s=>s.split(/[,\s]+/).map(Number)).filter(p=>p.length>=2&&isFinite(p[0])&&isFinite(p[1])).map(p=>[clamp(p[0]/255,0,1),clamp(p[1]/255,0,1)]).sort((a,b)=>a[0]-b[0]);
@@ -10874,6 +10900,50 @@ if(window.PrismF){PN.oldStitch=window.PrismF.stitch;window.PrismF.stitch=stitchF
 {const _f=MENU2.file.items;const mapIt=it=>{if(!it||it==='-'||typeof it!=='object')return it;if(it.label==='Panorama…')return{...it,fn:panoDialog2};if(it.sub){const s=it.sub;return{...it,sub:()=>s().map(mapIt)}}return it};
  MENU2.file.items=()=>_f().map(mapIt)}
 })();
+
+}
+
+/* ===== feat: feat/print.js ===== */
+{
+/* ================= Imprimer : la photo seule, au format de papier choisi ================= */
+/* The page lays out one sheet (#printSheet) and hides everything else for printing; the desktop app opens the system
+   print dialog itself (print_page), the browser through window.print(). */
+const PAPERS=[['a4','A4',210,297],['a3','A3',297,420],['a5','A5',148,210],['letter','Lettre US',215.9,279.4],['10x15','10 × 15 cm',100,150],['13x18','13 × 18 cm',130,180],['20x30','20 × 30 cm',200,300]];
+const PR={el:null,url:null};
+function sheetSize(o,d){const P=PAPERS.find(x=>x[0]===o.paper)||PAPERS[0];let w=P[2],h=P[3];if((d.w>d.h)!==(w>h))[w,h]=[h,w];return{w,h}}
+/* size of the photo on the page (mm) and the resolution it prints at */
+function layout(o,d){const pg=sheetSize(o,d),aw=pg.w-2*o.margin,ah=pg.h-2*o.margin,k=o.fit==='fill'?Math.max(aw/d.w,ah/d.h):Math.min(aw/d.w,ah/d.h);
+  return{pg,iw:d.w*k,ih:d.h*k,aw,ah,dpi:Math.round(25.4/k)}}
+function cleanup(){if(PR.el){PR.el.remove();PR.el=null}if(PR.url){URL.revokeObjectURL(PR.url);PR.url=null}}
+async function doPrint(o){const d=S.doc;if(!d)return;busy(true,'Préparation de l’impression…',null);await tick();
+  try{cleanup();const c=await renderDoc(1),w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);
+    const blob=await new Promise(r=>w.toBlob(r,'image/jpeg',0.95));PR.url=URL.createObjectURL(blob);
+    const L=layout(o,d),el=document.createElement('div');el.id='printSheet';
+    el.innerHTML=`<style>@page{size:${L.pg.w}mm ${L.pg.h}mm;margin:0}@media print{html,body{background:#fff!important;margin:0!important}body>*:not(#printSheet){display:none!important}#printSheet{display:block!important}}
+      #printSheet{display:none;width:${L.pg.w}mm;height:${L.pg.h}mm;overflow:hidden;position:relative;break-after:avoid}
+      #printSheet .pa{position:absolute;left:${o.margin}mm;top:${o.margin}mm;width:${L.aw}mm;height:${L.ah}mm;overflow:hidden;display:flex;align-items:center;justify-content:center}
+      #printSheet img{width:${L.iw}mm;height:${L.ih}mm;flex:none;max-width:none}</style><div class="pa"><img alt=""></div>`;
+    const img=el.querySelector('img');await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('image'));img.src=PR.url});
+    document.body.appendChild(el);PR.el=el;busy(false);
+    addEventListener('afterprint',cleanup,{once:true});
+    const D=window.PRISM_DESKTOP;if(D&&D.invoke)await D.invoke('print_page');else window.print();
+    setTimeout(()=>{if(PR.el===el&&!matchMedia('print').matches)cleanup()},60000)}
+  catch(e){busy(false);cleanup();console.error(e);toast('Impression impossible : '+(e.message||e),5000)}}
+function printDialog(){const d=S.doc;if(!d)return;const o={paper:PREF.get('prPaper','a4'),margin:+PREF.get('prMargin',10),fit:PREF.get('prFit','fit')};
+  const sel=(id,opts,v)=>`<select id="${id}">${opts.map(([k,t])=>`<option value="${k}"${String(k)===String(v)?' selected':''}>${t}</option>`).join('')}</select>`;
+  dialog({title:'Imprimer',light:true,body:`<label class="field">Papier${sel('prP',PAPERS.map(p=>[p[0],p[1]]),o.paper)}</label>
+    <label class="field">Marges${sel('prM',[[0,'Aucune'],[5,'5 mm'],[10,'10 mm'],[15,'15 mm'],[20,'20 mm']],o.margin)}</label>
+    <label class="field">Photo${sel('prF',[['fit','Entière dans la page'],['fill','Remplir la page (bords coupés)']],o.fit)}</label>
+    <p class="muted" id="prInfo" style="margin:8px 0 0;font-size:12px"></p>`,
+    buttons:[{label:'Annuler'},{label:'Imprimer…',primary:true,onClick:el=>{const v={paper:$('#prP',el).value,margin:+$('#prM',el).value,fit:$('#prF',el).value};PREF.set('prPaper',v.paper);PREF.set('prMargin',v.margin);PREF.set('prFit',v.fit);setTimeout(()=>doPrint(v),30)}}],
+    onOpen:el=>{const upd=()=>{const L=layout({paper:$('#prP',el).value,margin:+$('#prM',el).value,fit:$('#prF',el).value},d);
+        $('#prInfo',el).textContent=`Photo imprimée à ${(L.iw/10).toFixed(1).replace('.',',')} × ${(L.ih/10).toFixed(1).replace('.',',')} cm, ${L.dpi} pixels par pouce${L.dpi<150?' : un peu juste, l’agrandissement IA aidera':''}.`};
+      el.querySelectorAll('select').forEach(s=>s.onchange=upd);upd()}})}
+const _fim=MENU2.file.items;
+MENU2.file.items=function(){const a=_fim.apply(this,arguments),it=MI('Imprimer…',{icon:'export',kbd:MOD+'P',fn:printDialog,dis:S.doc?false:NODOC});
+  const k=a.findIndex(x=>x&&x.label==='Exporter…');a.splice(k<0?a.length:k+1,0,it);return a};
+addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='p'&&S.doc&&!e.target.closest('input,textarea,[contenteditable]')){e.preventDefault();printDialog()}},true);
+window.PrismPrint={dialog:printDialog,layout};
 
 }
 

@@ -44,6 +44,12 @@ async fn save_file(
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// Opens the system print dialog for the window (the page has laid out only the photo to print).
+#[tauri::command]
+fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -60,6 +66,7 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("prismsync", sync::protocol)
         .invoke_handler(tauri::generate_handler![
             save_file,
+            print_page,
             sync::sync_folder,
             sync::sync_choose,
             sync::sync_stop,

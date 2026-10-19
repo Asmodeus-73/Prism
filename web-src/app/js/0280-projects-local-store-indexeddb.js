@@ -46,3 +46,7 @@ async function openLocalProject(id){const m=await IDB.get('projects',id);if(!m){
   const c=Cloud.list.find(p=>p.id===id);if(m.sync&&c&&c.updatedAt>m.updatedAt&&Cloud.ok){return Cloud.open(id)}
   await loadManifest(m,t=>IDB.get('blobs',t.key));return true}
 
+
+/* leaving the page (closing the tab or the app, switching apps on a phone): the last edits are saved now rather than in 2.5 s */
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&SAVE.timer)flushSave().catch(e=>console.error(e))});
+addEventListener('pagehide',()=>{if(SAVE.timer)flushSave().catch(e=>console.error(e))});

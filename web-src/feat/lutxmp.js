@@ -160,6 +160,8 @@ function parseXmp(text,fname){
   set('Texture','texture');set('Clarity2012','clarity');set('Dehaze','dehaze');set('Vibrance','vibrance');set('Saturation','saturation');
   {const t=f('Temperature');if(t!=null){dv.temp=clamp(Math.abs(t)<=100?t:(t-5500)/50,-100,100);done.add('Temperature')}}
   set('Tint','tint',100/150);
+  /* JPEG/TIFF presets carry relative values (-100..100) under other names */
+  if(!done.has('Temperature'))set('IncrementalTemperature','temp');if(!done.has('Tint'))set('IncrementalTint','tint');
   if(/^true$/i.test(String(kv.get('ConvertToGrayscale')))){dv.saturation=-100;done.add('ConvertToGrayscale')}else if(kv.has('ConvertToGrayscale'))done.add('ConvertToGrayscale');
   set('Sharpness','sharpen',1,0,150);set('SharpenRadius','sharpRadius',1,0.5,3);set('LuminanceSmoothing','noise',1,0,100);
   const curve=(key,ch)=>{const v=kv.get(key);if(!Array.isArray(v))return;const pts=v.map(s=>s.split(/[,\s]+/).map(Number)).filter(p=>p.length>=2&&isFinite(p[0])&&isFinite(p[1])).map(p=>[clamp(p[0]/255,0,1),clamp(p[1]/255,0,1)]).sort((a,b)=>a[0]-b[0]);

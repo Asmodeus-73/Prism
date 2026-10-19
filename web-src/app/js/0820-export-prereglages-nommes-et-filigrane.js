@@ -333,8 +333,8 @@ function indexedDialog(){if(!S.doc)return;
 /* ---------- ICC export ---------- */
 async function iccExport(o){busy(true,'Conversion de couleurs…',null);await tick();
   try{const m=await CMS.load();const hp=CMS.open(o.bytes);if(!hp)throw new Error('profil ICC illisible');
-    const cs=String.fromCharCode(...o.bytes.subarray(16,20));if(cs!=='RGB ')throw new Error('profil '+cs.trim()+' : seuls les profils RVB sont pris en charge ici');
-    const T=CMS.ns.TYPE_RGBA_8,io=CS==='display-p3'?CMS.p3:CMS.srgb,fl=(o.bpc?0x2000:0)|0x4000;
+    const cs=String.fromCharCode(...o.bytes.subarray(16,20));if(cs==='CMYK')return await iccExportCMYK(o,m,hp);if(cs!=='RGB ')throw new Error('profil '+cs.trim()+' : seuls les profils RVB et CMJN sont pris en charge');
+    const T=CMS.ns.TYPE_RGBA_8,io=CS==='display-p3'?CMS.p3:CMS.srgb,fl=o.bpc?0x2000:0;
     const xf=m.cmsCreateTransform(io,T,hp,T,o.intent,fl);if(!xf)throw new Error('transformation impossible avec ce profil');
     let c=await renderDoc(1);if(o.fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}
     const g=cx(c),id=g.getImageData(0,0,c.width,c.height),n=c.width*c.height,CH=1<<20;
@@ -348,8 +348,22 @@ async function iccExport(o){busy(true,'Conversion de couleurs…',null);await ti
       blob=await pngWithExif(new Blob(parts,{type:'image/png'}),ex)}
     busy(false);await saveFile(blob,(S.doc.name||'image').replace(/\.[a-z0-9]+$/i,'')+'-'+(o.name||'icc').replace(/[^\w-]+/g,'_')+'.'+(o.fmt==='jpeg'?'jpg':'png'))
   }catch(e){busy(false);console.error(e);toast('Export impossible : '+(e.message||e),5000)}}
+/* CMYK (CMJN) for print: the photo is flattened on white, converted with the printer's profile and written as a CMYK TIFF carrying that profile */
+async function iccExportCMYK(o,m,hp){const io=CS==='display-p3'?CMS.p3:CMS.srgb,xf=m.cmsCreateTransform(io,CMS.ns.TYPE_RGB_8,hp,CMS.ns.TYPE_CMYK_8,o.intent,o.bpc?0x2000:0);if(!xf)throw new Error('transformation impossible avec ce profil');
+  const c0=await renderDoc(1),W=c0.width,H=c0.height,c=mk(W,H),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(c0,0,0);
+  const a=g.getImageData(0,0,W,H).data,n=W*H,cmyk=new Uint8Array(n*4),CH=1<<20,rgb=new Uint8Array(Math.min(CH,n)*3);
+  for(let s=0;s<n;s+=CH){const k=Math.min(CH,n-s);for(let i=0;i<k;i++){const j=(s+i)*4;rgb[i*3]=a[j];rgb[i*3+1]=a[j+1];rgb[i*3+2]=a[j+2]}
+    const out=m.cmsDoTransform(xf,rgb.subarray(0,k*3),k);cmyk.set(out.subarray(0,k*4),s*4);busy(true,'Conversion en CMJN…',s/n);await tick()}
+  m.cmsDeleteTransform(xf);const blob=await encodeTIFFCMYK(cmyk,W,H,o.bytes);busy(false);
+  await saveFile(blob,(S.doc.name||'image').replace(/\.[a-z0-9]+$/i,'')+'-'+(o.name||'cmjn').replace(/[^\w-]+/g,'_')+'.tif')}
+async function encodeTIFFCMYK(pix,w,h,icc){const comp=await zlib(pix),tags=[],T=(id,type,count,val)=>tags.push({id,type,count,val});
+  const nT=12,ifd=8,ifdLen=2+nT*12+4,bpsOff=ifd+ifdLen,iccOff=bpsOff+8,dataOff=iccOff+icc.length+(icc.length&1);
+  T(256,4,1,w);T(257,4,1,h);T(258,3,4,bpsOff);T(259,3,1,8);T(262,3,1,5);T(273,4,1,dataOff);T(277,3,1,4);T(278,4,1,h);T(279,4,1,comp.length);T(284,3,1,1);T(332,3,1,1);T(34675,7,icc.length,iccOff);
+  const head=new Uint8Array(dataOff),v=new DataView(head.buffer);head[0]=73;head[1]=73;v.setUint16(2,42,true);v.setUint32(4,ifd,true);v.setUint16(ifd,nT,true);
+  tags.forEach((t,i)=>{const o=ifd+2+i*12;v.setUint16(o,t.id,true);v.setUint16(o+2,t.type,true);v.setUint32(o+4,t.count,true);if(t.type===3&&t.count===1)v.setUint16(o+8,t.val,true);else v.setUint32(o+8,t.val,true)});v.setUint32(ifd+2+nT*12,0,true);
+  for(let c=0;c<4;c++)v.setUint16(bpsOff+c*2,8,true);head.set(icc,iccOff);return new Blob([head,comp],{type:'image/tiff'})}
 async function iccDialog(){if(!S.doc)return;let bytes=null,name='';if(await proofLoadSaved()){bytes=PROOF.bytes;name=PROOF.name}
-  dialog({title:'Exporter avec un profil ICC',light:true,body:`<p class="muted" style="margin:0 0 8px">Convertit les couleurs vers n’importe quel profil RVB (écran, labo photo, espace de travail) et l’intègre au fichier. Le profil reste sur cet appareil.</p>
+  dialog({title:'Exporter avec un profil ICC',light:true,body:`<p class="muted" style="margin:0 0 8px">Convertit les couleurs vers un profil RVB (écran, labo photo) ou CMJN (imprimeur) et l’intègre au fichier. Avec un profil CMJN, le fichier est un TIFF CMJN prêt pour l’impression. Le profil reste sur cet appareil.</p>
   <div class="inline"><button class="btn sm" id="icPick">Choisir un profil ICC…</button><span id="icName" class="muted">${name?esc(name):'Aucun profil'}</span></div>
   <label class="field">Format<select id="icF"><option value="jpeg">JPEG</option><option value="png">PNG</option></select></label>
   <label class="field">Intention<select id="icI"><option value="0">Perceptuelle</option><option value="1" selected>Colorimétrie relative</option><option value="2">Saturation</option><option value="3">Colorimétrie absolue</option></select></label>

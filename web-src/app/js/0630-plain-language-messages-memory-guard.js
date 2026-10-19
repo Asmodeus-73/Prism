@@ -32,3 +32,9 @@ function memEstimate(){const d=S.doc;if(!d)return 0;const px=d.w*d.h;let b=0;for
 const memBudget=()=>IS_IOS?5e8:Math.min(3e9,(navigator.deviceMemory||4)*4e8);
 const _pushHistory16=pushHistory;pushHistory=function(){const r=_pushHistory16.apply(this,arguments);try{const d=S.doc;if(d&&!d._memWarned){const e=memEstimate(),bud=memBudget();if(e>bud*0.8){d._memWarned=true;toast(`Cette photo de ${(d.w*d.h/1e6).toFixed(0)} Mpx avec ${d.layers.length} calques occupe environ ${(e/1e9).toFixed(1).replace('.',',')} Go de mémoire. Fusionnez quelques calques (${MOD}E) pour garder de la fluidité.`,8000)}}}catch(e){}return r};
 
+
+/* an error nothing caught: it is said once in plain words (at most every 30 s) instead of failing silently */
+{let last=0;const IGN=/ResizeObserver|annulé|AbortError|Script error\.?$/i;
+ const say=e=>{const m=String(e&&(e.message||e.reason&&e.reason.message||e.reason)||e||'');if(!m||IGN.test(m))return;console.error('Prism :',e.error||e.reason||e);const t=Date.now();if(t-last<30000)return;last=t;
+   try{toast('Un problème inattendu est survenu ('+m.slice(0,120)+'). Votre travail reste enregistré ; si cela se répète, rechargez Prism.',6000)}catch(_){}};
+ addEventListener('error',e=>{if(e.target&&e.target!==window)return;say(e)});addEventListener('unhandledrejection',e=>say(e))}

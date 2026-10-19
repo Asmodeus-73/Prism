@@ -1,5 +1,5 @@
 /* ================= v8.2: 16-bit PSD export (own writer: ag-psd only writes 8 bits) ================= */
-const PSD_KEY={'source-over':'norm','darken':'dark','multiply':'mul ','color-burn':'idiv','lighten':'lite','screen':'scrn','color-dodge':'div ','overlay':'over','soft-light':'sLit','hard-light':'hLit','difference':'diff','exclusion':'smud','hue':'hue ','saturation':'sat ','color':'colr','luminosity':'lum '};
+const PSD_KEY={'source-over':'norm','darken':'dark','multiply':'mul ','color-burn':'idiv','lighten':'lite','screen':'scrn','color-dodge':'div ','overlay':'over','soft-light':'sLit','hard-light':'hLit','difference':'diff','exclusion':'smud','hue':'hue ','saturation':'sat ','color':'colr','luminosity':'lum ','lighter':'lddg'};
 async function encodePSD16(d,onP){const W=d.w,H=d.h,N=W*H,chunks=[];const prog=(p,m)=>onP&&onP(p,m);
   const hdr=n=>{const b=new Uint8Array(n);return{b,v:new DataView(b.buffer),p:0}};
   const asc=s=>{const o=[];for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);o.push(c<128&&c>=32?c:63)}return o};
