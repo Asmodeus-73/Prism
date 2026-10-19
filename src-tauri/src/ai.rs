@@ -284,7 +284,7 @@ fn run(model: &Model, specs: &[InSpec], body: &[u8]) -> Result<Vec<u8>, String> 
 }
 
 fn le<T, const N: usize>(b: &[u8], f: fn([u8; N]) -> T) -> Vec<T> {
-    b.chunks_exact(N).map(|c| f(c.try_into().unwrap())).collect()
+    b.as_chunks::<N>().0.iter().map(|c| f(*c)).collect()
 }
 
 fn header(request: &Request<'_>, name: &str) -> Result<String, String> {
