@@ -74,16 +74,43 @@ const _sf=stampFor;stampFor=function(size,hard,color){const t=S.tool;if(t!=='bru
  else{g.fillStyle='#000';g.beginPath();g.arc(s/2,s/2,s/2,0,7);g.fill()}
  g.restore();if(hard<.95&&!String(tip).startsWith('c:')&&'filter'in g&&tip!=='chalk'&&tip!=='splat'){const t2=mk(s,s),g2=cx(t2);g2.filter=`blur(${Math.round((1-hard)*s*.12)}px)`;g2.drawImage(c,0,0);g.clearRect(0,0,s,s);g.drawImage(t2,0,0)}
  g.globalCompositeOperation='source-in';g.fillStyle=col;g.fillRect(0,0,s,s);return c};
+/* Photoshop brushes (.abr, versions 1, 2, 6 and later): the sampled tips, as grey levels (255 = paint). Computed round tips are skipped. */
+function parseABR(u8){const v=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),out=[];let p=0;const u16=()=>{const x=v.getUint16(p);p+=2;return x},u32=()=>{const x=v.getUint32(p);p+=4;return x},i32=()=>{const x=v.getInt32(p);p+=4;return x};
+  const sample=(w,h,depth,comp)=>{const bpp=depth>>3,n=w*h*bpp,raw=new Uint8Array(n);
+    if(!comp){raw.set(u8.subarray(p,p+n));p+=n}
+    else{const rows=[];for(let y=0;y<h;y++)rows.push(u16());let o=0;for(const len of rows){const end=p+len;while(p<end&&o<n){const c=(u8[p++]<<24)>>24;if(c>=0){for(let k=0;k<=c&&o<n;k++)raw[o++]=u8[p++]}else if(c!==-128){const b=u8[p++];for(let k=0;k<1-c&&o<n;k++)raw[o++]=b}}p=end}}
+    if(bpp===1)return raw;const g=new Uint8Array(w*h);for(let i=0;i<w*h;i++)g[i]=raw[i*2];return g};
+  const ver=u16();
+  if(ver===1||ver===2){const count=u16();for(let i=0;i<count;i++){const type=u16(),size=u32(),next=p+size;
+      if(type===2){p+=4;p+=2;let name='';if(ver===2){const L=u32();for(let k=0;k<L;k++){const c=u16();if(c)name+=String.fromCharCode(c)}}p+=1+8;const t=i32(),l=i32(),b=i32(),r=i32(),depth=u16(),comp=u8[p++];
+        const w=r-l,h=b-t;if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16))out.push({name,w,h,data:sample(w,h,depth,comp)})}
+      p=next}return out}
+  if(ver<6||ver>10)throw new Error('version '+ver);const sub=u16();
+  while(p+12<=u8.length){if(String.fromCharCode(u8[p],u8[p+1],u8[p+2],u8[p+3])!=='8BIM')break;const key=String.fromCharCode(u8[p+4],u8[p+5],u8[p+6],u8[p+7]);p+=8;const len=u32(),end=p+len;
+    if(key==='samp'){while(p+4<end){let size=u32();while(size%4)size++;const next=p+size;p+=sub===1?47:301;const t=i32(),l=i32(),b=i32(),r=i32(),depth=u16(),comp=u8[p++],w=r-l,h=b-t;
+        if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)){try{out.push({name:'',w,h,data:sample(w,h,depth,comp)})}catch(e){}}p=next}}
+    p=end+(len&1?1:0)}
+  return out}
+window.PrismABR=parseABR;
+/* an ABR tip as a black image whose opacity is the tip, ready for importTip */
+async function abrTipFile(t,i,base){const c=mk(t.w,t.h),g=cx(c),im=g.createImageData(t.w,t.h);for(let k=0;k<t.w*t.h;k++)im.data[k*4+3]=t.data[k];g.putImageData(im,0,0);
+  const b=await new Promise(r=>c.toBlob(r,'image/png'));return new File([b],(t.name||base+' '+(i+1))+'.png',{type:'image/png'})}
 function importTip(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const N=128,c=mk(N,N),g=cx(c);const sc=Math.min(N/im.width,N/im.height);g.drawImage(im,(N-im.width*sc)/2,(N-im.height*sc)/2,im.width*sc,im.height*sc);const a=rx(c).getImageData(0,0,N,N),d=a.data;let hasAlpha=false;for(let i=3;i<d.length;i+=4)if(d[i]<250){hasAlpha=true;break}
   for(let i=0;i<d.length;i+=4){const al=hasAlpha?d[i+3]:255-(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);d[i]=d[i+1]=d[i+2]=0;d[i+3]=al}g.putImageData(a,0,0);res(c.toDataURL('image/png'))};im.onerror=()=>res(null);im.src=URL.createObjectURL(file)})}
 function traitDialog(){const t=S.tool==='eraser'?'eraser':S.tool==='clone'?'clone':'brush',o=S.opts[t];
  const tipOpts=Object.keys(TIPS).map(k=>`<option value="${k}" ${o.tip===k?'selected':''}>${TIPS[k]}</option>`).join('')+CUSTOM.map((c,i)=>`<option value="c:${i}" ${o.tip==='c:'+i?'selected':''}>${esc(c.name)}</option>`).join('');
- dialog({title:t==='eraser'?'Gomme : réglages du trait':t==='clone'?'Tampon : réglages du trait':'Pinceau : réglages du trait',body:`${t==='clone'?'':`<label class="field">Forme de la pointe<select id="trTip">${tipOpts}</select></label><div class="row"><button class="btn sm" id="trImp">Importer une pointe (image)…</button><span class="muted" style="font-size:12px">Les zones sombres ou opaques de l’image deviennent la forme du pinceau.</span></div>`}
+ dialog({title:t==='eraser'?'Gomme : réglages du trait':t==='clone'?'Tampon : réglages du trait':'Pinceau : réglages du trait',body:`${t==='clone'?'':`<label class="field">Forme de la pointe<select id="trTip">${tipOpts}</select></label><div class="row"><button class="btn sm" id="trImp">Importer une pointe (image ou .abr)…</button><span class="muted" style="font-size:12px">Les zones sombres ou opaques de l’image deviennent la forme du pinceau.</span></div>`}
  ${rangeRow('trSp','Espacement',1,200,1,o.spacing||12,' %')}${t==='clone'?'':rangeRow('trAng','Angle de la pointe',-180,180,1,o.angle||0,'°')+rangeRow('trRd','Aplatissement',8,100,1,o.round||100,' %')}${rangeRow('trSm','Lissage du trait',0,100,1,o.smooth||0,' %')}
  ${t==='clone'?'':`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="trPr" ${o.pressSize!==false?'checked':''}>Le stylet fait varier la taille (pression)</label>`}`,
  onOpen:el=>{const bind=(id,k,f=1)=>{const r=$('#'+id,el);if(!r)return;r.oninput=()=>{o[k]=+r.value*f;$('#'+id+'-o',el).textContent=r.value+(id==='trAng'?'°':' %');if(k==='spacing')PREF.set('spacing_'+t,o.spacing)}};bind('trSp','spacing');bind('trAng','angle');bind('trRd','round');bind('trSm','smooth');
   const pr=$('#trPr',el);if(pr)pr.onchange=()=>{o.pressSize=pr.checked};const tp=$('#trTip',el);if(tp)tp.onchange=()=>{o.tip=tp.value;PREF.set('tip_'+t,o.tip);if(/^(chalk|splat)$/.test(o.tip)||o.tip.startsWith('c:')){o.spacing=o.tip.startsWith('c:')?25:20;$('#trSp',el).value=o.spacing;$('#trSp-o',el).textContent=o.spacing+' %'}};
-  const im=$('#trImp',el);if(im)im.onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=async()=>{const file=f.files[0];if(!file)return;const url=await importTip(file);if(!url){toast('Image illisible.');return}CUSTOM=[...CUSTOM,{id:Date.now(),name:(file.name||'Pointe').replace(/\.[a-z0-9]+$/i,'').slice(0,24),url}].slice(-12);PREF.set('brushTips',CUSTOM);const i=CUSTOM.length-1;o.tip='c:'+i;PREF.set('tip_'+t,o.tip);closeDialog();traitDialog();toast('Pointe ajoutée au pinceau.')};f.click()}},
+  const im=$('#trImp',el);if(im)im.onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='image/*,.abr';f.onchange=async()=>{const file=f.files[0];if(!file)return;
+    if(/\.abr$/i.test(file.name)){let tips=[];try{tips=parseABR(new Uint8Array(await file.arrayBuffer()))}catch(e){console.error(e)}
+      if(!tips.length){toast('Aucune pointe utilisable dans ce fichier de pinceaux (seules les pointes dessinées sont reprises).',5000);return}
+      const base=file.name.replace(/\.abr$/i,'').slice(0,18),add=[];for(let i=0;i<tips.length&&add.length<12;i++){const url=await importTip(await abrTipFile(tips[i],i,base));if(url)add.push({id:Date.now()+i,name:(tips[i].name||base+' '+(i+1)).slice(0,24),url})}
+      CUSTOM=[...CUSTOM,...add].slice(-12);PREF.set('brushTips',CUSTOM);o.tip='c:'+(CUSTOM.length-add.length);PREF.set('tip_'+t,o.tip);closeDialog();traitDialog();
+      toast(add.length+' pointe'+(add.length>1?'s':'')+' Photoshop ajoutée'+(add.length>1?'s':'')+(tips.length>add.length?' (les 12 premières)':'')+'.',4000);return}
+    const url=await importTip(file);if(!url){toast('Image illisible.');return}CUSTOM=[...CUSTOM,{id:Date.now(),name:(file.name||'Pointe').replace(/\.[a-z0-9]+$/i,'').slice(0,24),url}].slice(-12);PREF.set('brushTips',CUSTOM);const i=CUSTOM.length-1;o.tip='c:'+i;PREF.set('tip_'+t,o.tip);closeDialog();traitDialog();toast('Pointe ajoutée au pinceau.')};f.click()}},
  buttons:[{label:'Fermer',primary:true,onClick:()=>{renderPill()}}]})}
 PILL_ACT.trait=traitDialog;
 const _pe3=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe3.apply(this,arguments)||'';if(t==='brush'||t==='eraser'||t==='clone')h+=`<button class="btn sm" data-act="trait" title="Pointe, espacement, angle, lissage, pression du stylet">Trait…</button>`;return h};
