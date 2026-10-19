@@ -1,0 +1,1 @@
+{"model": "DeepLabv3+ Xception ADE20K (TensorFlow model zoo)", "fmt": "onnx, poids float16 relus en float32", "input": "uint8 [1,513,513,3]", "output": "logits [1,129,129,151]", "chunks": [10276928, 10276928, 10276928, 10276928, 10276928, 10276928, 10276928, 10276925], "total": 82215421, "sha256": "7d7e10f2863ceb043570e9e4c7ae478d0fb776f6dc70a74dde47876e73dd6b58"}

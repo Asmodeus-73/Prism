@@ -81,14 +81,13 @@ AIM.retouch=aiMaskRetouch;
 const OPS=[['new','Remplacer'],['add','Ajouter'],['sub','Retirer'],['and','Croiser']];
 async function applyAIMask(kind,op){const d=S.doc,A=d&&d.layers[d.active];if(!A){toast('Ouvrez d’abord une photo');return}
   if(A.kind==='adjust'&&!A.mask&&op!=='new'){op='new'}
-  const h0=S.history[S.hi];let M=null;try{busy(true,'Masque IA…',null);await tick();M=await masks((p,m)=>busy(true,m||'Masque IA…',p))}finally{busy(false)}
-  if(!M||S.doc!==d||S.history[S.hi]!==h0)return;
-  const m=kind==='subj'?M.subj:kind==='sky'?M.sky:M.bg;if(!m){toast(kind==='sky'?'Aucun ciel trouvé dans cette photo':'Aucun sujet net trouvé dans cette photo',4500);return}
+  const h0=S.history[S.hi];let m=null;try{busy(true,'Masque IA…',null);await tick();m=await AI.categoryMask(kind)}finally{busy(false)}
+  if(!m||S.doc!==d||S.history[S.hi]!==h0)return;
   let out;const cur=A.mask;
   if(op==='new'||!cur)out=cloneC(m);
   else{out=cloneC(cur);const g=cx(out);g.globalCompositeOperation=op==='add'?'source-over':op==='sub'?'destination-out':'destination-in';g.drawImage(m,0,0);g.globalCompositeOperation='source-over'}
   if(A.kind==='adjust'&&!A.mask&&d.layers.filter(l=>l.kind==='adjust'&&!l.mask).length<=1){// never mask the only global adjustment: make a new local one
-    const L=newAdjust({subj:'Sujet (IA)',sky:'Ciel (IA)',bg:'Arrière-plan (IA)'}[kind],out);insertLayer(L,'Masque IA',true);switchTab('develop');toast('Nouveau réglage local créé sur ce masque');return}
+    const L=newAdjust(AI.categoryLabel(kind)+' (IA)',out);insertLayer(L,'Masque IA',true);switchTab('develop');toast('Nouveau réglage local créé sur ce masque');return}
   A.mask=out;markComp();if(typeof markContent==='function')markContent();pushHistory('Masque IA');syncAll();toast('Masque mis à jour')}
 AIM.apply=applyAIMask;window.PrismAIMask=AIM;
 
@@ -96,8 +95,9 @@ AIM.apply=applyAIMask;window.PrismAIMask=AIM;
 {const st=document.createElement('style');st.textContent='.aim-row{display:grid;gap:6px;margin:2px 0 10px}.aim-row .aim-t{font-size:11.5px;color:var(--fg-2)}.aim-row .aim-b{display:flex;gap:6px;flex-wrap:wrap}.aim-row select{font:inherit;font-size:12px}';document.body.appendChild(st)}
 function injectRow(){const root=document.querySelector('#zmSec .zm-root');if(!root||root.querySelector('.aim-row'))return;
   const r=document.createElement('div');r.className='aim-row';
-  r.innerHTML=`<span class="aim-t">Masque IA</span><div class="aim-b"><button type="button" class="btn sm" data-aim="subj">Sujet</button><button type="button" class="btn sm" data-aim="sky">Ciel</button><button type="button" class="btn sm" data-aim="bg">Arrière-plan</button><select class="aim-op" aria-label="Combinaison">${OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>`;
+  r.innerHTML=`<span class="aim-t">Masque IA</span><div class="aim-b"><button type="button" class="btn sm" data-aim="subj">Sujet</button><button type="button" class="btn sm" data-aim="sky">Ciel</button><button type="button" class="btn sm" data-aim="people">Personnes</button><button type="button" class="btn sm" data-aim="bg">Arrière-plan</button><select class="aim-more" aria-label="Autres masques IA"><option value="">Autre…</option>${AI.categories().filter(k=>!['subj','sky','people','bg'].includes(k)).map(k=>`<option value="${k}">${AI.categoryLabel(k)}</option>`).join('')}</select><select class="aim-op" aria-label="Combinaison">${OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>`;
   r.addEventListener('click',e=>{const b=e.target.closest('[data-aim]');if(!b)return;e.preventDefault();e.stopPropagation();applyAIMask(b.dataset.aim,r.querySelector('.aim-op').value)});
+  r.addEventListener('change',e=>{const t=e.target.closest('.aim-more');if(!t||!t.value)return;const k=t.value;t.value='';applyAIMask(k,r.querySelector('.aim-op').value)});
   root.insertBefore(r,root.firstChild)}
 {const body=document.getElementById('devBody');if(body)new MutationObserver(()=>injectRow()).observe(body,{childList:true,subtree:true})}
 
@@ -110,5 +110,5 @@ function injectCard(){const p=document.getElementById('pane-ai');if(!p||p.queryS
 // menus
 const _miAM=MENU2.image.items;MENU2.image.items=()=>{const a=_miAM();if(!a.some(x=>x&&x.label==='Retouche IA avec masques'))a.push(MI('Retouche IA avec masques',{icon:'subject',fn:aiMaskRetouch,dis:docDis()}));return a};
 const _mlAM=MENU2.layer.items;MENU2.layer.items=()=>{const a=_mlAM();if(a.some(x=>x&&x.label==='Masque IA'))return a;
-  const sub=()=>[['subj','Sujet'],['sky','Ciel'],['bg','Arrière-plan']].flatMap(([k,l],i)=>[...(i?[SEP]:[]),...OPS.map(([o,ol])=>MI(l+' : '+ol.toLowerCase(),{fn:()=>applyAIMask(k,o)}))]);
+  const sub=()=>AI.categories().map(k=>MI(AI.categoryLabel(k),{sub:()=>OPS.map(([o,ol])=>MI(ol,{fn:()=>applyAIMask(k,o)}))}));
   a.push(SEP,MI('Masque IA',{icon:'subject',sub,dis:docDis()}));return a};

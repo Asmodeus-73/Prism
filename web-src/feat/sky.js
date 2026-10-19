@@ -92,11 +92,15 @@ SKY.mask=async(onP)=>{const d=S.doc;if(!d)return null;
   onP&&onP(.05);await tick();
   const t0=performance.now();
   const res=SKY.analyze(g1.getImageData(0,0,W,H).data,W,H);SKY.last={...res.info,cov:res.cov,msAnalyze:Math.round(performance.now()-t0)};
+  // with the scene model: it decides what is sky; the colour analysis above only settles the uncertain band along the horizon
+  if(AI.skyPrior){let P=null;try{P=await AI.skyPrior(W,H)}catch(e){console.warn(e)}if(S.doc!==d)return null;
+    if(P){const n=W*H,m=new Uint8Array(n),Hm=res.mask;let cov=0;for(let i=0;i<n;i++){const p=P[i];const v=p>0.8?255:p<0.2?0:(Hm&&Hm[i]?Math.max(p,0.6)*255:Math.min(p,0.4)*255);m[i]=v;cov+=v}
+      res.mask=cov>n*255*0.002?m:null;res.soft=true;SKY.last.model=true}}
   if(!res.mask)return null;
   onP&&onP(.35);await tick();
   // masque grossier -> canvas alpha, puis remontée à ~1600 px
   const ps=Math.min(1,1600/long),RW=Math.max(1,Math.round(d.w*ps)),RH=Math.max(1,Math.round(d.h*ps));
-  const mc=mk(W,H),mg=rx(mc),im=mg.createImageData(W,H),md=im.data;for(let i=0;i<W*H;i++){md[i*4]=md[i*4+1]=md[i*4+2]=255;md[i*4+3]=res.mask[i]?255:0}mg.putImageData(im,0,0);
+  const mc=mk(W,H),mg=rx(mc),im=mg.createImageData(W,H),md=im.data;for(let i=0;i<W*H;i++){md[i*4]=md[i*4+1]=md[i*4+2]=255;md[i*4+3]=res.soft?res.mask[i]:(res.mask[i]?255:0)}mg.putImageData(im,0,0);
   const up=mk(RW,RH),ug=rx(up);ug.imageSmoothingQuality='high';ug.drawImage(mc,0,0,RW,RH);
   const gc=mk(RW,RH),gg=rx(gc);gg.imageSmoothingQuality='high';gg.drawImage(flat,0,0,RW,RH);
   const n=RW*RH,gd=gg.getImageData(0,0,RW,RH).data,ud=ug.getImageData(0,0,RW,RH);
