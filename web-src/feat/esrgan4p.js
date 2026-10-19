@@ -36,6 +36,7 @@ const tileSize=()=>(navigator.deviceMemory||8)>=8?64:48;
 let CANCEL=false;
 const fmtT=s=>s<90?Math.max(1,Math.round(s))+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1).replace('.',',')+' h';
 async function benchRate(model){
+  if(model.onnx)return UPX.rate(model);
   if(X4.rate)return X4.rate;const tf=window.tf;
   const run=async n=>{const x=tf.randomUniform([1,n,n,3],0,255),t0=performance.now(),y=model.predict(x);await y.data();y.dispose();x.dispose();return performance.now()-t0};
   await run(8);const t=await run(16);X4.rate=t/256;return X4.rate}
@@ -73,7 +74,7 @@ AI.upscale=async function(scale,quality){
   try{
     let m;
     AI.setState('up','load',0);busy(true,'Chargement du modèle haute qualité…',0.05);
-    try{m=await loadX4(p=>busy(true,'Chargement du modèle haute qualité…',p))}catch(e){console.error(e);AI.setState('up','error');busy(false);toast('Le modèle haute qualité n’a pas pu se charger : '+(e.message||e),5000);return}
+    try{m=(await UPX.load('x4p'))||await loadX4(p=>busy(true,'Chargement du modèle haute qualité…',p))}catch(e){console.error(e);AI.setState('up','error');busy(false);toast('Le modèle haute qualité n’a pas pu se charger : '+(e.message||e),5000);return}
     AI.setState('up','ready');
     busy(true,'Estimation de la durée…',null);await tick();
     const rate=await benchRate(m),px=d.layers.filter(l=>l.kind==='pixel').length*d.w*d.h,est=rate*px/1000;
@@ -108,4 +109,35 @@ function upDialog(){
 window.__x4p.dialog=upDialog;
 const _mi=MENU2.image.items;
 MENU2.image.items=()=>{const a=_mi();const it=a.find(x=>x&&x.label&&/^Agrandir ×2 avec l’IA/.test(x.label));if(it)it.fn=upDialog;return a};
+
+/* ONNX engine: the same two Real-ESRGAN networks as ONNX graphs (ai/up-compact1, ai/up-x4p1), run by the app's native engine
+   (graphics card through DirectML / Core ML) or by WebGPU in the browser. Without either, TensorFlow.js (WebGL) above stays in use. */
+const UPX={m:{},P:{},DIR:{fast:['ai/up-compact1/','d’agrandissement',3],x4p:['ai/up-x4p1/','haute qualité',34]}};
+UPX.ok=async()=>{if(PREF.get('upOnnx',true)===false)return false;const N=window.PrismNAI;return !!((N&&await N.ok())||await PrismORT.gpuP())};
+UPX.load=async kind=>{if(!(await UPX.ok()))return null;if(UPX.m[kind])return UPX.m[kind];
+  const [dir,label,mb]=UPX.DIR[kind],s=await AI.ortSession(dir,label,mb);busy(false);if(!s)return null;
+  return UPX.m[kind]={onnx:true,native:4,x4p:kind==='x4p',sess:s,T:kind==='x4p'?128:256,P:16}};
+UPX.tile=async(m,c)=>{const w=c.width,h=c.height,a=cx(c).getImageData(0,0,w,h).data,n=w*h,f=new Float32Array(3*n);
+  for(let i=0;i<n;i++){f[i]=a[i*4]/255;f[i+n]=a[i*4+1]/255;f[i+2*n]=a[i*4+2]/255}
+  const s=m.sess,ort=window.ort,x=ort?new ort.Tensor('float32',f,[1,3,h,w]):{data:f,dims:[1,3,h,w],type:'float32'};
+  const y=(await s.run({[s.inputNames[0]]:x}))[s.outputNames[0]].data,W=w*4,H=h*4,N=W*H,im=new ImageData(W,H),o=im.data;
+  for(let i=0;i<N;i++){o[i*4]=y[i]*255;o[i*4+1]=y[i+N]*255;o[i*4+2]=y[i+2*N]*255;o[i*4+3]=255}return im};
+/* time per source pixel, from one tile (warms the engine up too) */
+UPX.rate=async m=>{if(m.rate)return m.rate;const c=mk(m.T,m.T);cx(c).fillStyle='#888';cx(c).fillRect(0,0,m.T,m.T);await UPX.tile(m,c);const t0=performance.now();await UPX.tile(m,c);return m.rate=(performance.now()-t0)/(m.T*m.T)};
+UPX.canvas=async(src,scale,m,onP)=>{const W=src.width,H=src.height,N=4,T=m.T,P=m.P,out=mk(W*scale,H*scale),og=cx(out);og.imageSmoothingEnabled=true;og.imageSmoothingQuality='high';
+  const nx=Math.ceil(W/T),ny=Math.ceil(H/T),tot=nx*ny,t0=performance.now();let k=0;
+  for(let ty=0;ty<ny;ty++)for(let tx=0;tx<nx;tx++){if(CANCEL)throw new Error('annulé');
+    const x0=tx*T,y0=ty*T,tw=Math.min(T,W-x0),th=Math.min(T,H-y0),px0=Math.max(0,x0-P),py0=Math.max(0,y0-P),px1=Math.min(W,x0+tw+P),py1=Math.min(H,y0+th+P),pw=px1-px0,ph=py1-py0;
+    const tc=scr('upin',pw,ph),tg=cx(tc);tg.clearRect(0,0,pw,ph);tg.drawImage(src,px0,py0,pw,ph,0,0,pw,ph);
+    const im=await UPX.tile(m,tc),oc=scr('upout',pw*N,ph*N);cx(oc).putImageData(im,0,0);
+    og.drawImage(oc,(x0-px0)*N,(y0-py0)*N,tw*N,th*N,x0*scale,y0*scale,tw*scale,th*scale);
+    k++;const el=(performance.now()-t0)/1000;onP&&onP(k/tot,el/k*(tot-k));await tick()}
+  const a=resample(src,W*scale,H*scale);og.globalCompositeOperation='destination-in';og.drawImage(a,0,0);return out};
+{const _uc=upscaleCanvas;upscaleCanvas=async function(src,scale,model,onP){if(model&&model.onnx)return UPX.canvas(src,scale,model,(p,eta)=>{AI._eta=eta;onP&&onP(p)});return _uc.apply(this,arguments)}}
+/* "Rapide" goes to the ONNX engine too, and can be cancelled with Échap like "Qualité maximale" */
+{const _eu=AI.ensureUp;AI.ensureUp=async function(scale){if(!AI._max){const m=await UPX.load('fast');if(m)return m}return _eu.apply(this,arguments)}}
+{const _u=AI.upscale;AI.upscale=async function(scale,quality){if(quality==='max')return _u.apply(this,arguments);if(AI._fBusy||AI._xBusy)return;AI._fBusy=true;CANCEL=false;
+  const onKey=e=>{if(e.key==='Escape'){CANCEL=true;e.stopPropagation()}};addEventListener('keydown',onKey,true);
+  try{await _u.apply(this,arguments);if(CANCEL)toast('Agrandissement annulé')}catch(e){if(!CANCEL)throw e;toast('Agrandissement annulé')}finally{AI._fBusy=false;CANCEL=false;removeEventListener('keydown',onKey,true);busy(false)}}}
+window.__x4p.onnx=UPX;
 }

@@ -18,6 +18,8 @@ const swaps = [
   ["'https://fonts.googleapis.com/css2?'+q+'&display=swap'", "'desktop/fonts/fonts.css'"],
   [/https:\/\/fonts\.googleapis\.com\/css2\?[^"']*/g, 'desktop/fonts/fonts.css'],
   [/<link rel="preconnect"[^>]*>/g, ''],
+  // Fonts load right away (the print/onload trick is an inline handler the app's CSP blocks).
+  [` media="print" onload="this.media='all'"`, ''],
   // Synced files are served by the app instead of claude.ai.
   ["'/_blob/'", 'PRISM_BLOB'],
   ['"/_blob/${', '"${PRISM_BLOB}${'],

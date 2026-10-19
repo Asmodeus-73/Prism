@@ -84,7 +84,6 @@ function mkImg(c,name){return{c,w:c.width,h:c.height,name,gc:{},gx:{}}}
 function cachedGray(im,kind,w,h){const k=kind+w;return im.gx[k]||(im.gx[k]=kind==='bp'?grayBP(im.c,w,h):grayF(im.c,w,h))}
 function grayF(c,w,h){const t=mk(w,h),g=cx(t);g.imageSmoothingQuality='high';g.drawImage(c,0,0,w,h);const d=rx(t).getImageData(0,0,w,h).data,a=new Float32Array(w*h);
   for(let i=0;i<a.length;i++)a[i]=d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114;t.width=t.height=1;return a}
-function grayNorm(c,w,h){const a=grayF(c,w,h);let m=0;for(let i=0;i<a.length;i++)m+=a[i];m/=a.length;let v=0;for(let i=0;i<a.length;i++){const e=a[i]-m;v+=e*e}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]=(a[i]-m)/sd;return a}
 /* gris passe-bande normalisé : insensible à l'exposition, au vignettage et aux dégradés lents */
 function grayBP(c,w,h){const a=grayF(c,w,h),bl=boxBlurF(a,w,h,Math.max(3,Math.round(w/24)));let v=0;for(let i=0;i<a.length;i++){a[i]-=bl[i];v+=a[i]*a[i]}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]/=sd;return a}
 function gray8At(im,sc){const w=Math.max(8,Math.round(im.w*sc)),k=w+'x'+sc;if(im.gc[k])return im.gc[k];

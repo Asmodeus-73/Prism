@@ -1,0 +1,25 @@
+/* ================= shared reviews (client comments) ================= */
+const Review={ok:false,list:[],owner:false,comments:null,
+  async init(){try{if(!(window.claude&&window.claude.use))return;const db=await window.claude.use('db').catch(()=>null);const user=await window.claude.use('user').catch(()=>null);if(!db)return;
+      this.db=db;this.col=db.collection('reviews');this.owner=user?!!(await Promise.resolve(user.isOwner()).catch(()=>false)):false;this.canWrite=!!Cloud.ok&&this.owner;this.ok=true;this.comments=await window.claude.use('comments').catch(()=>null);
+      this.col.onSnapshot(s=>{this.list=s.docs.map(x=>({...x.data(),rid:x.id})).filter(r=>r&&r.asset).sort((a,b)=>b.createdAt-a.createdAt);if($('#review'))renderReview();
+        if(!this.owner&&this.list.length&&!this._shown){this._shown=true;openReview()}},()=>{})}catch(e){console.warn(e)}},
+  async share(note){const d=S.doc;const sc=Math.min(1,2560/Math.max(d.w,d.h));const c=await renderDoc(sc);const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);
+    const r=await Cloud.assets.upload(await toBlob(w,'image/jpeg',0.9),{type:'image/jpeg'});const rid='r'+uid8();await this.col.doc(rid).set({name:d.name,asset:r.id,w:w.width,h:w.height,note:note||'',createdAt:Date.now(),project:d.pid});return rid},
+  async remove(rid){const r=this.list.find(x=>x.rid===rid);await this.col.doc(rid).delete();if(r)Cloud.assets.delete(r.asset).catch(()=>{})}};
+function shareDialog(){if(!S.doc)return;if(!Cloud.ok){toast('Le partage pour avis fonctionne quand Prism est ouvert depuis votre compte Claude');return}
+  dialog({title:'Partager pour avis',body:`<p class="muted">Une version JPEG de la photo (2560 px) est publiée dans l’espace « Avis » de Prism. Vos projets et vos calques restent privés.</p><label class="field">Message pour la personne qui commente (facultatif)<textarea id="shNote" rows="3" placeholder="Ex. : dites-moi si la peau vous paraît naturelle"></textarea></label>
+    <p class="muted">Ensuite, partagez Prism depuis le menu Partager de claude.ai avec le droit « Commentateur ». La personne verra la photo et pourra cliquer dessus pour commenter ; vous verrez ses commentaires ici, dans Fichier › Avis partagés.</p>`,
+    buttons:[{label:'Annuler'},{label:'Partager',primary:true,onClick:el=>{const note=$('#shNote',el).value;busy(true,'Publication…',null);Review.share(note).then(()=>{busy(false);toast('Photo partagée pour avis');openReview()}).catch(e=>{busy(false);toast('Partage impossible : '+(e.code||e.message),5000)})}}]})}
+function openReview(){let r=$('#review');if(!r){r=document.createElement('section');r.id='review';r.className='review';r.setAttribute('aria-label','Photos partagées pour avis');document.body.appendChild(r)}renderReview()}
+function closeReview(){$('#review')?.remove()}
+function renderReview(sel){const r=$('#review');if(!r)return;const L=Review.list;const cur=sel||r.dataset.cur;const it=L.find(x=>x.rid===cur)||L[0];if(it)r.dataset.cur=it.rid;
+  r.innerHTML=`<header class="rv-top"><div class="mark"><i aria-hidden="true"></i><span>Prism</span></div><b>Photos partagées pour avis</b><span class="rv-sp"></span>${Review.comments?'<button class="btn sm" id="rvCom">Commenter cette photo</button>':''}<button class="btn sm" id="rvClose">${Review.owner?'Retour à l’édition':'Ouvrir l’éditeur'}</button></header>
+  ${L.length?`<div class="rv-body"><nav class="rv-list">${L.map(x=>`<button class="rv-item${it&&x.rid===it.rid?' on':''}" data-rid="${esc(x.rid)}"><img src="/_blob/${esc(x.asset)}" alt=""><span>${esc(x.name)}</span><small>${fmtDate(x.createdAt)}</small></button>`).join('')}</nav>
+    <figure class="rv-main">${it.note?`<figcaption class="rv-note">${esc(it.note)}</figcaption>`:''}<div class="rv-img"><img id="rvImg" src="/_blob/${esc(it.asset)}" alt="${esc(it.name)}" width="${it.w}" height="${it.h}"></div>
+    <p class="rv-help">Pour commenter un endroit précis, activez le mode commentaire de claude.ai puis cliquez sur la photo.${Review.owner?' Les commentaires apparaissent ici pour vous aussi.':''}</p>${Review.owner?`<div class="rv-own"><button class="btn sm" id="rvDel">Retirer cette photo</button></div>`:''}</figure></div>`
+  :`<p class="rv-empty">${Review.owner?'Aucune photo partagée. Ouvrez une photo puis Fichier › Partager pour avis.':'Aucune photo n’est partagée pour avis pour le moment.'}</p>`}`;
+  r.onclick=async e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='rvClose'){closeReview();return}if(b.dataset.rid){renderReview(b.dataset.rid);return}
+    if(b.id==='rvCom'){try{const res=await Review.comments.openComposer({element:$('#rvImg')});if(!res.opened)toast('Cliquez d’abord sur la page, puis réessayez')}catch(err){toast('Les commentaires ne sont pas disponibles ici')}return}
+    if(b.id==='rvDel'&&await askConfirm('Retirer cette photo des avis ? Ses commentaires restent dans claude.ai.',{ok:'Retirer',danger:true})){await Review.remove(r.dataset.cur).catch(err=>toast('Impossible : '+(err.code||err.message)))}}}
+

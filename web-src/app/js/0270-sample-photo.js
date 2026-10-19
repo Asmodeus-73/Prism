@@ -1,0 +1,20 @@
+/* ================= sample photo ================= */
+function loadSample(){const W=1800,H=1200,c=mk(W,H),g=cx(c);let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646};const pv=[];for(let i=0;i<512;i++)pv.push(rnd());
+  const noise=x=>{const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return pv[i&511]*(1-u)+pv[(i+1)&511]*u},fbm=(x,o)=>{let v=0,a=0.5,fq=1;for(let k=0;k<o;k++){v+=a*Math.abs(noise(x*fq)*2-1);a*=0.5;fq*=2.03}return v};const hy=Math.round(H*0.63);
+  let sk=g.createLinearGradient(0,0,0,hy);sk.addColorStop(0,'#3a4d72');sk.addColorStop(0.45,'#8f8aa0');sk.addColorStop(0.78,'#d9a687');sk.addColorStop(1,'#efc79c');g.fillStyle=sk;g.fillRect(0,0,W,hy);
+  let sun=g.createRadialGradient(W*0.66,hy*0.83,4,W*0.66,hy*0.83,W*0.45);sun.addColorStop(0,'rgba(255,236,200,.95)');sun.addColorStop(0.06,'rgba(255,214,160,.65)');sun.addColorStop(0.35,'rgba(255,190,140,.18)');sun.addColorStop(1,'rgba(255,190,140,0)');g.fillStyle=sun;g.fillRect(0,0,W,hy);
+  for(let k=0;k<26;k++){const x=rnd()*W,y=rnd()*hy*0.55+20,w=120+rnd()*360,h=10+rnd()*26,cg=g.createRadialGradient(x,y,1,x,y,w/2);cg.addColorStop(0,`rgba(255,${200+rnd()*40|0},${190+rnd()*40|0},${0.12+rnd()*0.18})`);cg.addColorStop(1,'rgba(255,220,200,0)');g.save();g.translate(x,y);g.scale(1,h/w);g.translate(-x,-y);g.fillStyle=cg;g.beginPath();g.arc(x,y,w/2,0,7);g.fill();g.restore()}
+  [{b:0.47,a:0.17,s:0.0022,col:[150,140,165],o:4},{b:0.53,a:0.14,s:0.0035,col:[110,104,128],o:5},{b:0.58,a:0.09,s:0.006,col:[72,72,88],o:5},{b:0.615,a:0.05,s:0.011,col:[44,48,52],o:4}].forEach((Lr,li)=>{g.beginPath();g.moveTo(0,hy+2);const off=li*97.3;for(let x=0;x<=W;x+=3)g.lineTo(x,H*Lr.b-fbm(x*Lr.s+off,Lr.o)*H*Lr.a*2);g.lineTo(W,hy+2);g.closePath();const mg=g.createLinearGradient(0,H*(Lr.b-Lr.a*1.3),0,hy);mg.addColorStop(0,`rgb(${Lr.col.map(v=>v+18).join()})`);mg.addColorStop(1,`rgb(${Lr.col.map(v=>v-14).join()})`);g.fillStyle=mg;g.fill()});
+  g.fillStyle='#1b2420';for(let x=-10;x<W*0.42;x+=7+rnd()*9){const h=30+rnd()*70*(1-x/(W*0.5));g.beginPath();g.moveTo(x,hy);g.lineTo(x+h*0.18,hy-h);g.lineTo(x+h*0.36,hy);g.fill()}
+  // a small cabin with a lit window and a wooden pier: something to try the magic eraser on
+  g.fillStyle='#2a221f';g.fillRect(1180,hy-46,70,46);g.beginPath();g.moveTo(1172,hy-46);g.lineTo(1215,hy-78);g.lineTo(1258,hy-46);g.fill();g.fillStyle='#f2c27a';g.fillRect(1196,hy-34,14,12);
+  g.fillStyle='#38405a';g.fillRect(0,hy,W,H-hy);g.save();g.translate(0,2*hy);g.scale(1,-1);g.globalAlpha=0.82;g.drawImage(c,0,0,W,hy,0,0,W,hy);g.restore();g.globalAlpha=1;
+  const wt=g.createLinearGradient(0,hy,0,H);wt.addColorStop(0,'rgba(40,60,90,.25)');wt.addColorStop(1,'rgba(18,26,40,.85)');g.fillStyle=wt;g.fillRect(0,hy,W,H-hy);
+  for(let k=0;k<420;k++){const y=hy+Math.pow(rnd(),1.6)*(H-hy),x=rnd()*W,w=10+rnd()*90*(1+(y-hy)/(H-hy)*2);g.fillStyle=`rgba(255,${210+rnd()*30|0},180,${0.05+rnd()*0.12})`;g.fillRect(x,y,w,1+rnd()*1.5)}
+  g.fillStyle='#231c18';g.fillRect(560,hy+60,260,9);for(let k=0;k<6;k++)g.fillRect(570+k*48,hy+60,6,60);
+  const fg=g.createLinearGradient(0,H*0.9,0,H);fg.addColorStop(0,'rgba(10,14,12,0)');fg.addColorStop(1,'rgba(10,14,12,.9)');g.fillStyle=fg;g.fillRect(0,H*0.88,W,H*0.12);
+  g.strokeStyle='rgba(14,20,16,.85)';for(let k=0;k<260;k++){const x=rnd()*W,h=20+rnd()*60;g.lineWidth=1+rnd()*1.5;g.beginPath();g.moveTo(x,H);g.quadraticCurveTo(x+(rnd()-0.5)*20,H-h*0.6,x+(rnd()-0.5)*30,H-h);g.stroke()}
+  [[300,160,9],[520,260,6],[930,120,11],[1240,300,7],[1500,210,8],[760,380,5]].forEach(([x,y,r])=>{const sg=g.createRadialGradient(x,y,0,x,y,r);sg.addColorStop(0,'rgba(40,30,30,.75)');sg.addColorStop(0.6,'rgba(40,30,30,.45)');sg.addColorStop(1,'rgba(40,30,30,0)');g.fillStyle=sg;g.beginPath();g.arc(x,y,r,0,7);g.fill()});
+  const img=g.getImageData(0,0,W,H),d=img.data;for(let i=0;i<d.length;i+=4){const n=(rnd()-0.5)*9;for(let k=0;k<3;k++)d[i+k]=clamp(28+d[i+k]*0.8+n,0,255)}g.putImageData(img,0,0);
+  setDoc(c,'lac-au-crepuscule.jpg',{sample:true});toast('Photo d’exemple chargée. Ouvrez la vôtre (JPEG, HEIC ou RAW) avec Fichier > Ouvrir ou en la glissant ici.',4000)}
+

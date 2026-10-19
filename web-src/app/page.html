@@ -1,0 +1,84 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prism</title>
+<style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+</head><body>
+<style>
+@@CSS@@</style>
+
+<div id="app" class="app">
+  <a class="skip" href="#view">Aller à la photo</a>
+  <header class="bar" role="banner">
+    <div class="bar-l">
+      <button class="ib only-compact" id="bMenu" aria-label="Menu" aria-haspopup="menu"><svg viewBox="0 0 20 20"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg></button>
+      <div class="mark" aria-label="Prism"></div>
+      <nav class="menubar" id="menubar" role="menubar" aria-label="Menu principal"></nav>
+      <nav class="menus" id="menus" hidden></nav>
+    </div>
+    <button class="docname" id="docname" title="Ouvrir la photothèque"></button>
+    <div class="bar-r">
+      <button class="ib" id="bCmd" aria-label="Rechercher une commande" title="Rechercher une commande (Ctrl+K)"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13.2 13.2 17 17"/></svg></button>
+      <span class="vsep" aria-hidden="true"></span>
+      <button class="ib" id="bUndo" aria-label="Annuler" title="Annuler (Ctrl+Z)"><svg viewBox="0 0 20 20"><path d="M7 4L3 8l4 4"/><path d="M3 8h9a5 5 0 010 10H9"/></svg></button>
+      <button class="ib" id="bRedo" aria-label="Rétablir" title="Rétablir (Ctrl+Maj+Z)"><svg viewBox="0 0 20 20"><path d="M13 4l4 4-4 4"/><path d="M17 8H8a5 5 0 000 10h3"/></svg></button>
+      <span class="vsep hide-compact" aria-hidden="true"></span>
+      <button class="tb hide-compact" id="bCompare" aria-pressed="false" title="Comparer avant / après (Y). Maintenez \ pour voir l’original."><svg viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M10 2.5v15"/><path d="M10 4h5.5a2 2 0 012 2v8a2 2 0 01-2 2H10z" fill="currentColor" stroke="none" opacity=".35"/></svg><span>Avant / après</span></button>
+      <button class="tb" id="bAssist" hidden aria-pressed="false" title="Retoucher en décrivant ce que vous voulez"><svg viewBox="0 0 20 20"><path d="M10 2.5l1.6 4.4 4.4 1.6-4.4 1.6L10 14.5l-1.6-4.4L4 8.5l4.4-1.6z"/><path d="M15.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg><span>Assistant</span></button>
+      <button class="ib hide-compact" id="bSync" aria-label="État de l’enregistrement"></button>
+      <button class="btn primary" id="bExport"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 15.5h12"/></svg><span>Exporter</span></button>
+    </div>
+  </header>
+  <div class="optbar" id="optbar"><div class="opt-tool" id="optTool" aria-hidden="true"></div><div class="pill" id="pill" role="toolbar" aria-label="Options de l’outil"></div></div>
+  <main class="work">
+    <nav class="tools dock" id="dock" role="toolbar" aria-label="Outils" aria-orientation="vertical"></nav>
+    <section class="stage" id="stage" aria-label="Photo">
+      <canvas id="view" tabindex="-1" aria-label="Zone de travail"></canvas>
+      <form class="composer" id="composer" hidden autocomplete="off"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5l1.6 4.4 4.4 1.6-4.4 1.6L10 14.5l-1.6-4.4L4 8.5l4.4-1.6z"/></svg><input id="cmpIn" aria-label="Décrivez une retouche" placeholder="Décrivez une retouche : « rends le ciel plus dramatique »" enterkeyhint="send"><span id="cmpSt" role="status"></span><button type="submit" class="btn primary sm" id="cmpGo">Retoucher</button><button type="button" class="btn sm" id="cmpStop" hidden>Arrêter</button><button type="button" class="ib cmp-x" id="cmpX" aria-label="Fermer l’assistant"><svg viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15"/></svg></button></form>
+      <div class="split" id="split" hidden><span class="lbl l">Avant</span><span class="lbl r">Après</span><div class="knob"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 6l-4 4 4 4M13 6l4 4-4 4"/></svg></div></div>
+      <div class="badge" id="beforeBadge" hidden>Original</div>
+      <div class="drop" id="drop" hidden>Déposez la photo pour l’ouvrir</div>
+      <div class="empty" id="empty" hidden><div><h2>Ouvrez une photo</h2><button class="btn primary" id="bOpenEmpty">Choisir une photo</button> <button class="btn" id="bProjEmpty">Photothèque</button></div></div>
+    </section>
+    <aside class="insp side" data-sheet="peek" aria-label="Panneaux">
+      <button class="grab" id="sheetGrab" aria-label="Agrandir ou réduire le panneau"><i></i></button>
+      <section class="panel histo-panel" id="histoPanel">
+        <button class="ph" id="histoHead" aria-expanded="true" aria-controls="histoBody"><span>Histogramme</span><svg class="chev" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 8l4 4 4-4"/></svg></button>
+        <div class="histo" id="histoBody"><canvas id="histo" width="620" height="172" aria-label="Histogramme de la photo" role="img"></canvas><div class="hmeta"><span id="hmL">—</span><span id="hmR"></span></div><div class="hexif" id="hexif" hidden></div></div>
+      </section>
+      <section class="panel qa-panel" id="qaPanel">
+        <div class="ph-row"><button class="ph" id="qaHead" aria-expanded="true" aria-controls="qa"><span>Actions rapides</span><svg class="chev" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 8l4 4 4-4"/></svg></button><button class="ib qa-edit" id="qaEdit" aria-label="Personnaliser les actions rapides" title="Personnaliser les actions rapides"><svg viewBox="0 0 20 20"><path d="M4 6h8M15 6h1M4 14h2M9 14h7"/><circle cx="13.5" cy="6" r="1.8"/><circle cx="7.5" cy="14" r="1.8"/></svg></button></div>
+        <div class="qa" id="qa" role="toolbar" aria-label="Actions rapides"></div>
+      </section>
+      <div class="tabs" role="tablist" aria-label="Panneaux">
+        <button data-tab="develop" class="on" role="tab" aria-selected="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h8M15 6h1M4 14h2M9 14h7"/><circle cx="13.5" cy="6" r="1.8"/><circle cx="7.5" cy="14" r="1.8"/></svg><span>Réglages</span></button>
+        <button data-tab="layers" role="tab" aria-selected="false" class="only-compact"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3 17 6.8 10 10.6 3 6.8z"/><path d="M3 10.2l7 3.8 7-3.8M3 13.6l7 3.8 7-3.8"/></svg><span>Calques</span></button>
+        <button data-tab="ai" role="tab" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5l1.6 4.4 4.4 1.6-4.4 1.6L10 14.5l-1.6-4.4L4 8.5l4.4-1.6z"/><path d="M15.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg><span>IA</span></button>
+        <button data-tab="history" role="tab" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.3l2.8 1.8"/></svg><span>Historique</span></button>
+      </div>
+      <div class="pane" id="pane-develop" role="tabpanel"></div>
+      <div class="pane" id="pane-ai" role="tabpanel" hidden></div>
+      <div class="pane" id="pane-history" role="tabpanel" hidden></div>
+      <div class="splitter" id="lySplit" role="separator" aria-orientation="horizontal" aria-label="Redimensionner le panneau Calques" tabindex="0"></div>
+      <section class="panel layers-panel" id="layersPanel" aria-labelledby="lyHead">
+        <div class="ph static" id="lyHead"><span>Calques</span></div>
+        <div class="pane" id="pane-layers" role="tabpanel" hidden></div>
+      </section>
+    </aside>
+  </main>
+  <footer class="statusbar" role="contentinfo">
+    <div class="status" id="status" aria-live="off"></div>
+    <div class="st-doc" id="stDoc"></div>
+    <div class="zoom"><button class="ib" id="bZoomOut" aria-label="Zoom arrière" title="Zoom arrière (Ctrl+−)"><svg viewBox="0 0 20 20"><path d="M5 10h10"/></svg></button><button class="z" id="zoomLbl" title="Ajuster à l’écran (Ctrl+0)">100 %</button><button class="ib" id="bZoomIn" aria-label="Zoom avant" title="Zoom avant (Ctrl++)"><svg viewBox="0 0 20 20"><path d="M5 10h10M10 5v10"/></svg></button></div>
+  </footer>
+</div>
+<input type="file" id="fileOpen" accept="image/*,.tif,.tiff,.pdf,.tga,.svg,.jxl,.bmp,.ico,.avif,.psd,.zip,.heic,.heif,.dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.pef,.srw,.3fr,.iiq,.erf,.mef,.mos,.kdc,.dcr,.x3f,.raw" hidden>
+<input type="file" id="fileProject" accept=".zip,.psd,.psb,application/zip" hidden>
+<input type="file" id="fileLayer" accept="image/*,.tif,.tiff,.pdf,.tga,.svg,.jxl,.bmp,.ico,.avif,.heic,.heif,.dng,.cr2,.cr3,.nef,.arw,.raf,.orf,.rw2" hidden>
+
+<script>
+@@JS@@</script>
+
+
+</body></html>

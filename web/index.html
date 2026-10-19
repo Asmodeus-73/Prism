@@ -1,9 +1,10 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Prism</title>
+<style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+</head><body>
 <style>
 [hidden]{display:none!important}
 /* ================= Prism v8: docked workspace. Menu bar, tool options, tools | photo | panels, status bar ================= */
@@ -409,7 +410,7 @@ details.sec.mod>summary .dot{display:block}
 .dlg h3{margin:0;padding:18px 20px 4px;font:600 16px/1.3 var(--ui);letter-spacing:-.01em}
 .dlg .body{padding:10px 20px;display:grid;gap:12px}
 .dlg .body .row{grid-template-columns:110px minmax(0,1fr) 52px}
-.dlg .foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px 18px}
+.dlg .foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:12px 20px 18px}
 .dlg .field{display:grid;gap:5px;font-size:12.5px;color:var(--fg-2);font-weight:500}
 .dlg .inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dlg input[type=text],.dlg input[type=number],.dlg textarea{width:100%}
@@ -888,7 +889,7 @@ void main(){vec4 s=texture(uSrc,vUv);vec3 c=s.rgb,orig=c;
 GPU.init();
 
 /* ================= state ================= */
-const BLENDS=[['source-over','Normal'],['darken','Obscurcir'],['multiply','Produit'],['color-burn','Densité couleur +'],['lighten','Éclaircir'],['screen','Superposition'],['color-dodge','Densité couleur −'],['overlay','Incrustation'],['soft-light','Lumière tamisée'],['hard-light','Lumière crue'],['difference','Différence'],['exclusion','Exclusion'],['hue','Teinte'],['saturation','Saturation'],['color','Couleur'],['luminosity','Luminosité']];
+const BLENDS=[['source-over','Normal'],['darken','Obscurcir'],['multiply','Produit'],['color-burn','Densité couleur +'],['lighten','Éclaircir'],['screen','Superposition'],['color-dodge','Densité couleur −'],['lighter','Addition'],['overlay','Incrustation'],['soft-light','Lumière tamisée'],['hard-light','Lumière crue'],['difference','Différence'],['exclusion','Exclusion'],['hue','Teinte'],['saturation','Saturation'],['color','Couleur'],['luminosity','Luminosité']];
 const S={doc:null,tool:'heal',zoom:1,panX:0,panY:0,pr:1,fitted:true,history:[],hi:-1,maxHist:30,color:'#f4efe6',docVer:0,
   compare:'off',splitX:0.5,holdBefore:false,showMask:false,
   opts:{selMode:'new',marquee:{shape:'rect',feather:0,ratio:'free'},lasso:{feather:0},wand:{tol:28,contiguous:true,all:true},crop:{ratio:'free'},
@@ -927,6 +928,10 @@ function fullMask(){const m=mk(S.doc.w,S.doc.h),g=cx(m);g.fillStyle='#fff';g.fil
 /* ================= stack rendering ================= */
 function markComp(){S.docVer++;S.contentDirty=true;requestRender();scheduleThumbs()}
 function markContent(){S.contentDirty=true;requestRender()}
+// panning: when a full redraw is slow, the last frame slides with the pointer and the photo is redrawn at a steady pace (and once the pointer stops)
+function panTo(nx,ny){const dx=nx-S.panX,dy=ny-S.panY;S.panX=nx;S.panY=ny;const now=performance.now();
+  if(S.workPos&&(S.contentMs||0)>24&&now-(S.panRedraw||0)<160){S.workPos.x+=Math.round(dx*S.pr);S.workPos.y+=Math.round(dy*S.pr);requestRender();clearTimeout(S.panT);S.panT=setTimeout(markContent,90);return}
+  S.panRedraw=now;markContent()}
 function layerSrc(L){if(L.preview)return L.preview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='pixel')return st.liveCanvas();return L.canvas}
 function maskSrc(L){if(L.maskPreview)return L.maskPreview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='mask')return st.liveCanvas();return L.mask}
 const scratch={};function scr(name,w,h){let c=scratch[name];if(!c||c.width!==w||c.height!==h){c=scratch[name]=mk(w,h)}return c}
@@ -974,7 +979,8 @@ function render(){rq=false;resizeView();const c=vctx,v=view;c.setTransform(1,0,0
   c.save();c.setTransform(...viewMatrix(0,0));c.beginPath();c.rect(0,0,d.w,d.h);c.setTransform(1,0,0,1,0,0);c.clip();c.fillStyle=checker;c.fillRect(0,0,v.width,v.height);c.restore();
   if(S.workPos){c.drawImage(work,S.workPos.x,S.workPos.y);if(S.compare==='split'&&!S.holdBefore){const sx=Math.round(S.splitX*v.width);c.save();c.beginPath();c.rect(0,0,sx,v.height);c.clip();c.drawImage(workB,S.workPos.x,S.workPos.y);c.restore()}}
   drawOverlays(c,pr);updateStatus();positionSplit()}
-function renderContent(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width,H=view.height,sc=S.zoom*pr;
+function renderContent(){const _t0=performance.now();try{renderContent0()}finally{S.contentMs=performance.now()-_t0}}
+function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width,H=view.height,sc=S.zoom*pr;
   const M=new DOMMatrix(viewMatrix(0,0));const pts=[[0,0],[d.w,0],[0,d.h],[d.w,d.h]].map(([x,y])=>{const p=M.transformPoint(new DOMPoint(x,y));return[p.x,p.y]});
   const bx0=Math.max(0,Math.floor(Math.min(...pts.map(p=>p[0])))),by0=Math.max(0,Math.floor(Math.min(...pts.map(p=>p[1])))),bx1=Math.min(W,Math.ceil(Math.max(...pts.map(p=>p[0])))),by1=Math.min(H,Math.ceil(Math.max(...pts.map(p=>p[1]))));
   if(bx1<=bx0||by1<=by0){S.workPos=null;return}const bw=bx1-bx0,bh=by1-by0;if(work.width!==bw||work.height!==bh){work.width=bw;work.height=bh}
@@ -1065,8 +1071,12 @@ function beginStroke(p,e){const d=S.doc,t=S.tool,A=AL();if(!A)return;const o=S.o
   if(t==='clone'){st.src=S.opts.clone.all?cloneC(flatSync()):L.canvas;st.dabC=mk(Math.ceil(o.size)+2,Math.ceil(o.size)+2);st.mask=stampFor(o.size,o.hardness,'#000')}
   else if(t==='heal'||t==='remove'){st.target='heal';st.live=false;st.stamp=stampFor(o.size,t==='remove'?0.9:o.hardness,'#ffffff');st.opacity=1}
   else st.stamp=stampFor(o.size,o.hardness,(t==='eraser'||target==='mask')?'#ffffff':S.color);
-  st.liveCanvas=()=>{if(!st.tmp)st.tmp=mk(d.w,d.h);const g=cx(st.tmp);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(0,0,d.w,d.h);const base=target==='mask'?L.mask:L.canvas;g.drawImage(base,0,0);
-    g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(maskedStroke(st),0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';return st.tmp};
+  // the layer as it will be once the stroke is applied; after the first frame only the area the new dabs touched is recomposed
+  st.liveCanvas=()=>{const base=target==='mask'?L.mask:L.canvas,full=!st.tmp;if(full)st.tmp=mk(d.w,d.h);const g=cx(st.tmp),R=full?{x0:0,y0:0,x1:d.w,y1:d.h}:st.dirty;st.dirty=null;if(!R)return st.tmp;
+    const x=Math.max(0,Math.floor(R.x0)),y=Math.max(0,Math.floor(R.y0)),w=Math.min(d.w,Math.ceil(R.x1))-x,h=Math.min(d.h,Math.ceil(R.y1))-y;if(w<=0||h<=0)return st.tmp;
+    g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(x,y,w,h);g.drawImage(base,x,y,w,h,x,y,w,h);
+    let src=st.canvas,sx=x,sy=y;if(d.sel&&st.target!=='heal'){const t=scr('lstroke',w,h),tg=cx(t);tg.globalCompositeOperation='source-over';tg.clearRect(0,0,w,h);tg.drawImage(st.canvas,x,y,w,h,0,0,w,h);tg.globalCompositeOperation='destination-in';tg.drawImage(d.sel,x,y,w,h,0,0,w,h);tg.globalCompositeOperation='source-over';src=t;sx=0;sy=0}
+    g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(src,sx,sy,w,h,x,y,w,h);g.globalAlpha=1;g.globalCompositeOperation='source-over';return st.tmp};
   S.stroke=st;if(e&&e.pointerType==='pen')st.pressure=e.pressure||1;dab(st,p);if(st.target==='heal')requestRender();else markComp()}
 function maskedStroke(st){const d=S.doc;if(!d.sel||st.target==='heal')return st.canvas;if(!st.m)st.m=mk(d.w,d.h);const g=cx(st.m);g.globalCompositeOperation='source-over';g.clearRect(0,0,d.w,d.h);g.drawImage(st.canvas,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);g.globalCompositeOperation='source-over';return st.m}
 function moveStroke(p,e){const st=S.stroke;if(!st)return;if(e&&e.pointerType==='pen')st.pressure=e.pressure||st.pressure;const o=S.opts[st.tool],sp=Math.max(1,o.size*(st.tool==='dodge'?0.2:(o.spacing||12)/100));const dx=p.x-st.last.x,dy=p.y-st.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;const n=Math.floor(dist/sp);
@@ -1184,7 +1194,7 @@ function onDown(e,p){const t=S.tool,alt=e.altKey;
   if(t==='clone'||(t==='heal'&&S.opts.heal.mode==='source')){if(alt||S.pickSource){S.cloneSrc={x:p.x,y:p.y};S.cloneOff=null;S.pickSource=false;renderPill();toast('Source définie');return}}
   if(['brush','eraser','clone','heal','dodge','remove'].includes(t)){beginStroke({x:p.x,y:p.y},e);S.drag={type:'stroke'}}}
 function onMove(e,p){const dr=S.drag;if(!dr)return;
-  if(dr.type==='pan'){S.fitted=false;S.panX=dr.px+p.cx-dr.sx;S.panY=dr.py+p.cy-dr.sy;markContent();return}
+  if(dr.type==='pan'){S.fitted=false;const nx=dr.px+p.cx-dr.sx,ny=dr.py+p.cy-dr.sy;panTo(nx,ny);return}
   if(dr.type==='pick'){pickColor(p);return}
   if(dr.type==='move'){dr.L.dx=Math.round(p.x-dr.sx);dr.L.dy=Math.round(p.y-dr.sy);markComp();return}
   if(dr.type==='marquee'){let x1=p.x,y1=p.y;const rt=S.opts.marquee.ratio;if(rt!=='free'){const[rw,rh]=rt.split(':').map(Number),w=Math.abs(x1-dr.x0),h=Math.abs(y1-dr.y0),s=Math.max(w/rw,h/rh);x1=dr.x0+Math.sign(x1-dr.x0||1)*s*rw;y1=dr.y0+Math.sign(y1-dr.y0||1)*s*rh}dr.x1=x1;dr.y1=y1;return}
@@ -1235,7 +1245,7 @@ async function textAt(p){const prev=$('#scrim');if(prev&&prev._cancel)prev._canc
   const draw=async()=>{const g=cx(L.canvas);g.clearRect(0,0,d.w,d.h);const f=`${o.italic?'italic ':''}${o.bold?'700':'400'} ${o.size}px "${o.font}"`;try{await document.fonts.load(f)}catch(e){}g.font=f;g.textBaseline='top';g.fillStyle=st.color;
     if(o.shadow){g.shadowColor='rgba(0,0,0,.45)';g.shadowBlur=o.size*0.12;g.shadowOffsetY=o.size*0.04}st.text.split('\n').forEach((ln,i)=>g.fillText(ln,p.x,p.y+i*o.size*1.15));g.shadowColor='transparent';L.name='Texte : '+(st.text.split('\n')[0].slice(0,18)||'…');markComp()};
   const fonts=['Geist','Newsreader','Playfair Display','Bebas Neue','Caveat','Geist Mono','Georgia','Arial'];
-  dialog({title:'Texte',light:true,body:`<label class="field">Texte<textarea id="tTxt" rows="3">${esc(st.text)}</textarea></label><div class="inline"><select id="tFont" aria-label="Police">${fonts.map(f=>`<option ${f===o.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${st.color}" aria-label="Couleur">
+  dialog({title:'Texte',light:true,body:`<label class="field">Texte<textarea id="tTxt" rows="3">${esc(st.text)}</textarea></label><div class="inline"><select id="tFont" aria-label="Police">${fonts.map(f=>`<option ${f===o.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${esc(st.color)}" aria-label="Couleur">
     <label class="inline"><input type="checkbox" id="tB" ${o.bold?'checked':''}>Gras</label><label class="inline"><input type="checkbox" id="tI" ${o.italic?'checked':''}>Italique</label><label class="inline"><input type="checkbox" id="tS" ${o.shadow?'checked':''}>Ombre</label></div>
     ${rangeRow('tSize','Taille',8,Math.max(200,Math.round(d.h/2)),1,o.size,' px')}<p class="muted">Ajustez ensuite la position avec l’outil Déplacement (V).</p>`,
     onOpen:el=>{const up=()=>{st.text=$('#tTxt',el).value;o.font=$('#tFont',el).value;st.color=$('#tCol',el).value;o.bold=$('#tB',el).checked;o.italic=$('#tI',el).checked;o.shadow=$('#tS',el).checked;o.size=+$('#tSize',el).value;$('#tSize-o',el).textContent=o.size+' px';draw()};el.addEventListener('input',up);el.addEventListener('change',up);draw();setTimeout(()=>{$('#tTxt',el).select();$('#tTxt',el).focus()},30)},
@@ -1350,7 +1360,7 @@ const IC={
   zoom:'<circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5l5 5M6 8.5h5M8.5 6v5"/>'};
 const TOOLS=[['move','Déplacement','V'],['marquee','Sélection rectangle / ellipse','M'],['lasso','Lasso','L'],['wand','Baguette magique','W'],0,['crop','Recadrage et redressement','C'],['eyedropper','Pipette','I'],0,
   ['heal','Correcteur','J'],['remove','Gomme magique (IA)','R'],['clone','Tampon de duplication','S'],['brush','Pinceau','B'],['eraser','Gomme','E'],['gradient','Dégradé','G'],['dodge','Densité, goutte d’eau, éponge','O'],['text','Texte','T'],0,['hand','Main','H'],['zoom','Zoom','Z']];
-function buildDock(){const t=$('#dock');t.innerHTML=TOOLS.map(x=>x?`<button class="ib" data-tool="${x[0]}" title="${x[1]} (${x[2]})" aria-label="${x[1]}"><svg viewBox="0 0 20 20">${IC[x[0]]}</svg></button>`:'<div class="sep"></div>').join('')+`<div class="sep"></div><div class="fg" title="Couleur"><input type="color" class="swatch" id="fg" value="${S.color}" aria-label="Couleur de premier plan"></div>`;
+function buildDock(){const t=$('#dock');t.innerHTML=TOOLS.map(x=>x?`<button class="ib" data-tool="${x[0]}" title="${x[1]} (${x[2]})" aria-label="${x[1]}"><svg viewBox="0 0 20 20">${IC[x[0]]}</svg></button>`:'<div class="sep"></div>').join('')+`<div class="sep"></div><div class="fg" title="Couleur"><input type="color" class="swatch" id="fg" value="${esc(S.color)}" aria-label="Couleur de premier plan"></div>`;
   t.addEventListener('click',e=>{const b=e.target.closest('[data-tool]');if(b)setTool(b.dataset.tool)});$('#fg').addEventListener('input',e=>{S.color=e.target.value;const oc=$('#optColor');if(oc)oc.value=S.color})}
 function setCursor(){const t=S.tool;view.style.cursor=t==='hand'?'grab':t==='zoom'?'zoom-in':['brush','eraser','clone','heal','dodge','remove'].includes(t)?'none':'crosshair'}
 function setTool(t){if(S.stroke)return;if(S.tool==='crop'&&t!=='crop'){S.crop=null;markContent()}S.tool=t;S.pickSource=false;$$('#dock [data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));if(t==='crop')initCrop();renderPill();
@@ -1364,11 +1374,11 @@ function renderPill(){const t=S.tool,o=S.opts,ob=$('#pill'),A=AL();const name=(T
   if(t==='lasso')h+=SEL+optRange('lasso.feather','Contour',0,100,1,' px');
   if(t==='wand')h+=SEL+optRange('wand.tol','Tolérance',0,128,1,'')+`<label><input type="checkbox" data-chk="wand.contiguous" ${o.wand.contiguous?'checked':''}>Contigus</label><label><input type="checkbox" data-chk="wand.all" ${o.wand.all?'checked':''}>Tous les calques</label><button class="btn sm" data-act="subject">Sujet (IA)</button>`;
   if(t==='crop'){const a=S.crop?S.crop.angle:0;h+=`<label>Format<select data-sel="crop.ratio">${cropRatios().map(([v,l])=>`<option value="${v}" ${o.crop.ratio===v?'selected':''}>${l}</option>`).join('')}</select></label><button class="btn sm" data-act="cropswap" title="Passer de paysage à portrait">⇄</button>${cropGridSel()}<label>Redresser<input type="range" id="cropAng" min="-45" max="45" step="0.1" value="${a}"><span class="val" id="cropAngV">${a.toFixed(1)}°</span></label><button class="btn sm" id="cropReset">Réinitialiser</button><button class="btn sm primary" id="cropApply">Appliquer</button>`}
-  if(t==='eyedropper')h+=`<span class="hint">Cliquez pour prélever une couleur.</span><input type="color" class="swatch" id="optColor" value="${S.color}" aria-label="Couleur">`;
+  if(t==='eyedropper')h+=`<span class="hint">Cliquez pour prélever une couleur.</span><input type="color" class="swatch" id="optColor" value="${esc(S.color)}" aria-label="Couleur">`;
   if(t==='heal')h+=seg('heal.mode',[['spot','Localisé'],['source','Avec source']])+optRange('heal.size','Taille',2,400,1,' px')+optRange('heal.hardness','Dureté',0,100,1,' %',100)+(o.heal.mode==='source'?srcBtn():`<span class="hint">Peignez sur une tache ou une poussière.</span>`);
   if(t==='remove')h+=optRange('remove.size','Taille',4,500,1,' px')+`<span class="hint">Peignez sur l’objet ou la personne à effacer, puis relâchez.</span>`;
   if(t==='clone')h+=optRange('clone.size','Taille',2,500,1,' px')+optRange('clone.hardness','Dureté',0,100,1,' %',100)+optRange('clone.opacity','Opacité',1,100,1,' %',100)+`<label><input type="checkbox" data-chk="clone.aligned" ${o.clone.aligned?'checked':''}>Aligné</label><label><input type="checkbox" data-chk="clone.all" ${o.clone.all?'checked':''}>Tous les calques</label>`+srcBtn();
-  if(t==='brush')h+=(onMask?`<span class="hint">Peint le masque : la zone peinte reçoit le réglage.</span>`:`<input type="color" class="swatch" id="optColor" value="${S.color}" aria-label="Couleur">`)+optRange('brush.size','Taille',1,600,1,' px')+optRange('brush.hardness','Dureté',0,100,1,' %',100)+optRange('brush.opacity','Opacité',1,100,1,' %',100)+(onMask?'':optRange('brush.flow','Flux',1,100,1,' %',100));
+  if(t==='brush')h+=(onMask?`<span class="hint">Peint le masque : la zone peinte reçoit le réglage.</span>`:`<input type="color" class="swatch" id="optColor" value="${esc(S.color)}" aria-label="Couleur">`)+optRange('brush.size','Taille',1,600,1,' px')+optRange('brush.hardness','Dureté',0,100,1,' %',100)+optRange('brush.opacity','Opacité',1,100,1,' %',100)+(onMask?'':optRange('brush.flow','Flux',1,100,1,' %',100));
   if(t==='eraser')h+=(onMask?`<span class="hint">Retire des zones du masque.</span>`:'')+optRange('eraser.size','Taille',1,600,1,' px')+optRange('eraser.hardness','Dureté',0,100,1,' %',100)+optRange('eraser.opacity','Opacité',1,100,1,' %',100);
   if(t==='gradient')h+=seg('gradient.shape',[['linear','Linéaire'],['radial','Radial'],['angular','Angulaire'],['reflect','Réfléchi']])+(onMask?`<span class="hint">${A.kind==='adjust'?'Tirez pour dessiner le masque du réglage.':'Tirez pour dessiner le masque du calque.'}</span>`:'');
   if(t==='dodge')h+=seg('dodge.mode',[['dodge','Éclaircir'],['burn','Assombrir'],['blur','Flouter'],['sharpen','Netteté'],['saturate','Saturer'],['desaturate','Désaturer']])+optRange('dodge.size','Taille',4,600,1,' px')+optRange('dodge.strength','Intensité',1,100,1,' %',100);
@@ -1505,6 +1515,8 @@ function toggleMask(){S.showMask=!S.showMask;renderTarget();requestRender()}
 
 /* ================= AI (runs locally in the browser) ================= */
 const AI={state:{seg:'idle',up:'idle'},subjectCache:null,_ort:null,_seg:null,_tf:null,_up:{}};
+/* tf.js assigns this global; without it, it falls back to Function(), which the desktop app's CSP blocks */
+if(!('regeneratorRuntime' in window))window.regeneratorRuntime=void 0;
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('script '+src));document.head.appendChild(s)})}
 AI.setState=(k,v,p)=>{AI.state[k]=v;AI.state[k+'P']=p;renderAIState()};
 /* ONNX Runtime: graphics card (WebGPU) when the device has one, else the processor (WASM, several threads when the page is isolated) */
@@ -1513,27 +1525,68 @@ const ORTX={_g:null,gpuP:()=>ORTX._g||(ORTX._g=(async()=>{try{if(PREF.get('aiGPU
 ORTX.bundle=async()=>asset((await ORTX.gpuP())?'ai/ort.webgpu.min.js':'ai/ort.wasm.min.js');
 // the WebGPU build of the runtime is 24 MB: stored in two pieces (hosting limit) and handed to ONNX Runtime as wasmBinary
 ORTX.binURLs=()=>[0,1].map(i=>new URL(asset(`ai/ortgpu/${i}.wasm`),location.href).href);
-ORTX.binary=async()=>{if(!(await ORTX.gpuP()))return null;if(!ORTX._bin)ORTX._bin=Promise.all(ORTX.binURLs().map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()}))).then(a=>{const n=a.reduce((t,b)=>t+b.byteLength,0),o=new Uint8Array(n);let k=0;for(const b of a){o.set(new Uint8Array(b),k);k+=b.byteLength}return o.buffer}).catch(e=>{ORTX._bin=null;throw e});return ORTX._bin};
+ORTX.binary=async()=>{if(await NAI.ok())return null;return ORTX.binaryForce()};
+ORTX.binaryForce=async()=>{if(!(await ORTX.gpuP()))return null;if(!ORTX._bin)ORTX._bin=Promise.all(ORTX.binURLs().map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()}))).then(a=>{const n=a.reduce((t,b)=>t+b.byteLength,0),o=new Uint8Array(n);let k=0;for(const b of a){o.set(new Uint8Array(b),k);k+=b.byteLength}return o.buffer}).catch(e=>{ORTX._bin=null;throw e});return ORTX._bin};
 ORTX.eps=async()=>(await ORTX.gpuP())?['webgpu','wasm']:['wasm'];
-ORTX.create=async(ort,buf,o)=>{const {cpuOnly,...opt}=o||{},eps=cpuOnly?['wasm']:await ORTX.eps(),cpu=()=>ort.InferenceSession.create(buf,{...opt,executionProviders:['wasm']});
+ORTX.create=async(ort,buf,o)=>{if(!(o&&o.cpuOnly)&&await NAI.ok()){try{return await NAI.session(buf)}catch(e){console.warn('IA native indisponible pour ce modèle, moteur du navigateur',e)}if(!ort.env.wasm.wasmBinary){const b=await ORTX.binaryForce();if(b)ort.env.wasm.wasmBinary=b}}
+  const {cpuOnly,...opt}=o||{},eps=cpuOnly?['wasm']:await ORTX.eps(),cpu=()=>ort.InferenceSession.create(buf,{...opt,executionProviders:['wasm']});
   if(eps[0]==='wasm'){const s=await cpu();s.__ep='wasm';return s}
   let s;try{s=await ort.InferenceSession.create(buf,{...opt,executionProviders:eps})}catch(e){console.warn('WebGPU indisponible pour ce modèle, retour au processeur',e);s=await cpu();s.__ep='wasm';return s}
   // some operators only fail when they run: the first failure moves this model to the processor for good
   const W={__ep:'webgpu',inputNames:s.inputNames,outputNames:s.outputNames,run:async(feeds,o)=>{if(W.__ep==='webgpu'){try{return await s.run(feeds,o)}catch(e){console.warn('WebGPU : échec à l’exécution, retour au processeur',e);W.__ep='wasm';try{s.release&&s.release()}catch(_){}s=await cpu()}}return s.run(feeds,o)}};
   return W};
 window.PrismORT=ORTX;
+/* native AI (desktop app): ONNX Runtime inside the app, on the graphics card (DirectML / Core ML) or every processor core.
+   Same shape as an ONNX Runtime web session: inputNames, outputNames, run(feeds) -> {name: {data, dims, type}}. */
+const NAI={st:null,seq:0};
+NAI.ok=async()=>{if(NAI.st)return NAI.st.ok;const D=window.PRISM_DESKTOP;if(!D||!D.invoke||PREF.get('aiNative',true)===false){NAI.st={ok:false};return false}
+  try{NAI.st=await D.invoke('ai_status')}catch(e){NAI.st={ok:false,error:String(e)}}if(!NAI.st.ok&&NAI.st.error)console.info('IA native :',NAI.st.error);return !!NAI.st.ok};
+NAI.load=async(buf,key,cpu)=>window.PRISM_DESKTOP.invoke('ai_load',buf instanceof Uint8Array?buf:new Uint8Array(buf),{headers:{'x-key':key,'x-cpu':cpu?'1':'0'}});
+NAI.TYPES={float32:Float32Array,uint8:Uint8Array,int32:Int32Array,int64:BigInt64Array};
+NAI.session=async(buf)=>{const key='m'+(++NAI.seq)+'-'+(buf.byteLength||buf.length);let info=await NAI.load(buf,key,false);
+  const W={native:true,__ep:info.ep,inputNames:info.inputs,outputNames:info.outputs,
+    run:async(feeds)=>{const names=Object.keys(feeds),specs=[],parts=[];let n=0;
+      for(const k of names){const t=feeds[k],d=t.data;specs.push({name:k,dtype:t.type,dims:t.dims.map(Number)});const u=new Uint8Array(d.buffer,d.byteOffset,d.byteLength);parts.push(u);n+=u.length}
+      const body=new Uint8Array(n);let o=0;for(const u of parts){body.set(u,o);o+=u.length}
+      const call=()=>window.PRISM_DESKTOP.invoke('ai_run',body,{headers:{'x-key':key,'x-inputs':JSON.stringify(specs)}});
+      let ab;try{ab=await call()}catch(e){if(W.__ep==='CPU')throw e;// the card failed on this model: the processor takes over for good
+        console.warn('IA native : carte graphique en échec, processeur',e);info=await NAI.load(buf,key,true);W.__ep=info.ep;ab=await call()}
+      const b=ab instanceof ArrayBuffer?ab:new Uint8Array(ab).buffer,dv=new DataView(b),hl=dv.getUint32(0,true),head=JSON.parse(new TextDecoder().decode(new Uint8Array(b,4,hl)));let at=4+hl;const out={};
+      for(const h of head){const T=NAI.TYPES[h.dtype]||Float32Array;out[h.name]={data:new T(b.slice(at,at+h.bytes)),dims:h.dims,type:h.dtype};at+=h.bytes}return out},
+    release:()=>window.PRISM_DESKTOP.invoke('ai_unload',{key}).catch(()=>{})};
+  console.info('IA native :',info.ep);return W};
+NAI.fromChunks=async(urls,onP)=>{let got=0;const parts=await Promise.all(urls.map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);const b=new Uint8Array(await r.arrayBuffer());got++;onP&&onP(got/urls.length);return b}));
+  const n=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(n);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}return NAI.session(buf)};
+window.PrismNAI=NAI;
 AI.ensureSeg=()=>AI._seg?Promise.resolve(AI._seg):(AI._segP||(AI._segP=AI._ensureSeg().finally(()=>{AI._segP=null})));
-AI._ensureSeg=async()=>{let failed=false;AI.setState('seg','load',0);try{
+/* chunked model files: ai/<dir>/meta.json lists the chunk sizes; the chunks are fetched in parallel and joined */
+AI.fetchModel=async(dir,label,onP)=>{const r0=await fetch(asset(dir+'meta.json'));if(!r0.ok)throw new Error('modèle '+r0.status);const meta=await r0.json(),sizes=meta.chunks,total=meta.total;
+  const buf=new Uint8Array(total),offs=sizes.map((_,i)=>sizes.slice(0,i).reduce((a,b)=>a+b,0));let got=0;
+  await Promise.all(sizes.map(async(n,i)=>{const r=await fetch(asset(`${dir}${i}.wasm`));if(!r.ok)throw new Error('modèle '+r.status);const rd=r.body&&r.body.getReader?r.body.getReader():null;
+    if(!rd){const b=new Uint8Array(await r.arrayBuffer());buf.set(b,offs[i]);got+=b.length;onP&&onP(got/total);return}
+    let o=offs[i];for(;;){const {done,value}=await rd.read();if(done)break;buf.set(value,o);o+=value.length;got+=value.length;onP&&onP(got/total)}
+    if(o-offs[i]!==n)throw new Error('modèle incomplet')}));
+  return{buf,meta}};
+AI.SEG_DIR='ai/isnet2/';
+AI._ensureSeg=async()=>{AI.setState('seg','load',0);try{
     if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');{const bin=await ORTX.binary();if(bin)ort.env.wasm.wasmBinary=bin}ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;
-    const n=11,parts=new Array(n);let done=0;await Promise.all([...Array(n).keys()].map(async i=>{let r;try{r=await fetch(asset(`ai/isnet/${i}.wasm`));if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer())}catch(e){failed=true;throw e}if(failed)return;done++;AI.setState('seg','load',done/n*0.9);busy(true,'Téléchargement du modèle de détourage (44 Mo, une seule fois)…',done/n*0.9)}));
-    const total=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(total);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
-    busy(true,'Préparation du modèle…',0.95);AI._seg=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all',cpuOnly:true});/* ISNet: MaxPool with ceil mode is not supported by the WebGPU runtime */AI.setState('seg','ready');return AI._seg}
-  catch(e){failed=true;console.error(e);AI.setState('seg','error');busy(false);toast('Le modèle de détourage n’a pas pu se charger : '+(e.message||e),5000);return null}};
-AI.subjectMask=async()=>{const d=S.doc;if(!d)return null;const key=d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();const C=AI.subjectCache;if(C&&C.w===d.w&&C.h===d.h&&C.key.length===key.length&&C.key.every((v,i)=>v===key[i]))return C.m;
-  const sess=await AI.ensureSeg();if(!sess)return null;busy(true,'Détection du sujet…',null);await tick();try{const R=1024,src=flatSync(),t=mk(R,R),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(src,0,0,R,R);const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);
-    for(let i=0;i<N;i++){f[i]=(a[i*4]-128)/256;f[i+N]=(a[i*4+1]-128)/256;f[i+2*N]=(a[i*4+2]-128)/256}const ort=window.ort;const out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',f,[1,3,R,R])});const o=out[sess.outputNames[0]].data;
-    let mn=1e9,mx=-1e9;for(let i=0;i<N;i++){if(o[i]<mn)mn=o[i];if(o[i]>mx)mx=o[i]}const sc=mx-mn>1e-6?1/(mx-mn):1;const m8=new Uint8ClampedArray(N);for(let i=0;i<N;i++)m8[i]=clamp((o[i]-mn)*sc*255,0,255);
-    const small=maskFromU8(m8,R,R,true),m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(small,0,0,d.w,d.h);AI.subjectCache={key,w:d.w,h:d.h,m};return m}
+    const {buf}=await AI.fetchModel(AI.SEG_DIR,'détourage',p=>{AI.setState('seg','load',p*0.9);busy(true,'Téléchargement du modèle de détourage (90 Mo, une seule fois)…',p*0.9)});
+    busy(true,'Préparation du modèle…',0.95);AI._seg=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all'});AI.setState('seg','ready');return AI._seg}
+  catch(e){console.error(e);AI.setState('seg','error');busy(false);toast('Le modèle de détourage n’a pas pu se charger : '+(e.message||e),5000);return null}};
+/* the subject as the model sees it (1024 × 1024 probabilities), or null when nothing stands out */
+AI.segRaw=async(src)=>{const sess=await AI.ensureSeg();if(!sess)return null;const R=1024,t=mk(R,R),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(src,0,0,R,R);const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);
+  for(let i=0;i<N;i++){f[i]=a[i*4]/255-0.5;f[i+N]=a[i*4+1]/255-0.5;f[i+2*N]=a[i*4+2]/255-0.5}
+  const ort=window.ort,out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',f,[1,3,R,R])}),o=out[sess.outputNames[0]].data;
+  let mx=0;for(let i=0;i<N;i++)if(o[i]>mx)mx=o[i];if(mx<0.25)return null;
+  // probabilities: stretched only when the model is unsure everywhere (a faint subject), never from the minimum (that turns background noise into mask)
+  const k=mx<0.9?1/mx:1,m8=new Uint8ClampedArray(N);for(let i=0;i<N;i++)m8[i]=o[i]*k*255;return{m8,R}};
+AI.subjectMask=async()=>{const d=S.doc;if(!d)return null;const key=d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();const C=AI.subjectCache;if(C&&C.w===d.w&&C.h===d.h&&C.key.length===key.length&&C.key.every((v,i)=>v===key[i])){if(!C.m)toast('Aucun sujet net dans cette photo',3500);return C.m}
+  if(!(await AI.ensureSeg()))return null;busy(true,'Détection du sujet…',null);await tick();try{const raw=await AI.segRaw(flatSync());if(S.doc!==d)return null;
+    let m=null;if(!raw)toast('Aucun sujet net dans cette photo',3500);
+    else{const small=maskFromU8(raw.m8,raw.R,raw.R,true),up=mk(d.w,d.h),ug=cx(up);ug.imageSmoothingQuality='high';ug.drawImage(small,0,0,d.w,d.h);m=up;
+      // the model works at 1024 px: its edge is snapped to the photo's own edges (guided filter) at up to 2048 px
+      const long=Math.max(d.w,d.h),ps=Math.min(1,2048/long);if(long>1100){try{busy(true,'Affinage du contour…',null);await tick();m=await refineMask(up,{radius:clamp(Math.round(long*ps/256),3,12),eps:0.0004,contrast:8,shift:0},ps)}catch(e){console.warn(e)}}}
+    AI.subjectCache={key,w:d.w,h:d.h,m};return m}
   catch(e){console.error(e);toast('Détection du sujet impossible : '+(e.message||e),5000);return null}finally{busy(false)}};
 AI.selectSubject=async()=>{const d=S.doc;const m=await AI.subjectMask();if(!m||S.doc!==d)return;combineSel(m,'new','Sélectionner le sujet');toast('Sujet sélectionné')};
 AI.removeBackground=async()=>{const L=pixelTarget();if(!L)return;const d0=S.doc;const m=await AI.subjectMask();if(!m||S.doc!==d0||!d0.layers.includes(L))return;L.mask=cloneC(m);L.editMask=true;S.doc.active=S.doc.layers.indexOf(L);markComp();pushHistory('Supprimer l’arrière-plan');syncAll();toast('Arrière-plan masqué. Peignez le masque pour corriger les bords. Exportez en PNG pour garder la transparence.',5000)};
@@ -1687,6 +1740,10 @@ async function openLocalProject(id){const m=await IDB.get('projects',id);if(!m){
   const c=Cloud.list.find(p=>p.id===id);if(m.sync&&c&&c.updatedAt>m.updatedAt&&Cloud.ok){return Cloud.open(id)}
   await loadManifest(m,t=>IDB.get('blobs',t.key));return true}
 
+
+/* leaving the page (closing the tab or the app, switching apps on a phone): the last edits are saved now rather than in 2.5 s */
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&SAVE.timer)flushSave().catch(e=>console.error(e))});
+addEventListener('pagehide',()=>{if(SAVE.timer)flushSave().catch(e=>console.error(e))});
 /* ================= cloud sync (claude.ai account: db + assets) ================= */
 const Cloud={ok:false,db:null,assets:null,uid:null,list:[],state:'off',unsub:null,usage:null,
   async init(){try{if(!(window.claude&&window.claude.use))return;const [db,assets,user]=await Promise.all(['db','assets','user'].map(n=>window.claude.use(n).catch(()=>null)));
@@ -1792,7 +1849,7 @@ async function importZip(file){const z=await readZip(file);
 
 /* ================= PSD (Photoshop) ================= */
 async function ensurePSD(){if(!window.agPsd)await loadScript(asset('psd/ag-psd.min.js'));return window.agPsd}
-const PSD_BLEND={'normal':'source-over','multiply':'multiply','screen':'screen','overlay':'overlay','darken':'darken','lighten':'lighten','color dodge':'color-dodge','color burn':'color-burn','hard light':'hard-light','soft light':'soft-light','difference':'difference','exclusion':'exclusion','hue':'hue','saturation':'saturation','color':'color','luminosity':'luminosity'};
+const PSD_BLEND={'normal':'source-over','multiply':'multiply','screen':'screen','overlay':'overlay','darken':'darken','lighten':'lighten','color dodge':'color-dodge','linear dodge':'lighter','color burn':'color-burn','hard light':'hard-light','soft light':'soft-light','difference':'difference','exclusion':'exclusion','hue':'hue','saturation':'saturation','color':'color','luminosity':'luminosity'};
 const BLEND_PSD=Object.fromEntries(Object.entries(PSD_BLEND).map(([a,b])=>[b,a]));
 function grayToAlpha(src,w,h,left,top,def){const m=mk(w,h),g=rx(m);if(def){g.fillStyle='#fff';g.fillRect(0,0,w,h)}if(src){const t=mk(src.width,src.height),tg=rx(t);tg.drawImage(src,0,0);const id=tg.getImageData(0,0,t.width,t.height),p=id.data;for(let i=0;i<p.length;i+=4){p[i+3]=p[i];p[i]=p[i+1]=p[i+2]=255}tg.putImageData(id,0,0);g.clearRect(left,top,t.width,t.height);g.drawImage(t,left,top)}return m}
 async function importPSD(file,name){busy(true,'Lecture du fichier Photoshop…',null);try{setCS('srgb');const ag=await ensurePSD();const buf=await file.arrayBuffer();const psd=ag.readPsd(buf,{skipThumbnail:true,useImageData:false});
@@ -2157,7 +2214,9 @@ async function rawDecode16(file,wb){busy(true,'Développement du fichier RAW (16
     const hist=[new Uint32Array(1024),new Uint32Array(1024),new Uint32Array(1024)];const step=Math.max(1,Math.floor(W*H/400000));let cnt=0;for(let i=0;i<W*H;i+=step){hist[0][data[i*3]>>6]++;hist[1][data[i*3+1]>>6]++;hist[2][data[i*3+2]>>6]++;cnt++}
     let white=0;for(let c=0;c<3;c++){let tot=0,v=1023;for(;v>0;v--){tot+=hist[c][v];if(tot>cnt*0.01)break}white=Math.max(white,(v+1)/1024)}
     const bits=[];const mk_=meta.camera_make||meta.make,md_=meta.camera_model||meta.model;if(mk_||md_)bits.push([mk_,md_].filter(Boolean).join(' ').trim());if(meta.iso_speed)bits.push('ISO '+Math.round(meta.iso_speed));if(meta.shutter)bits.push(meta.shutter>=1?meta.shutter+' s':'1/'+Math.round(1/meta.shutter)+' s');if(meta.aperture)bits.push('f/'+(+meta.aperture).toFixed(1));if(meta.focal_len)bits.push(Math.round(meta.focal_len)+' mm');
-    return{data,w:W,h:H,meta:bits.join(' · '),white:clamp(white,1/16,1)}}
+    /* what the lens profile needs: camera, lens, focal length, aperture (the lens name comes from the file's EXIF when it is TIFF-based) */
+    const info={make:mk_||'',model:md_||'',focal:+meta.focal_len||0,fn:+meta.aperture||0,lens:''};try{const T=tiffRead(buf),s=T&&exifSummary(T);if(s){info.lens=s.lens||'';if(!info.focal&&s.focal)info.focal=s.focal}}catch(e){}
+    return{data,w:W,h:H,meta:bits.join(' · '),white:clamp(white,1/16,1),info}}
   finally{try{raw&&raw.dispose&&raw.dispose()}catch(e){}busy(false)}}
 function rawProxy(R,maxS){const f=Math.max(1,Math.ceil(Math.max(R.w,R.h)/maxS));if(f===1)return R;const w=Math.floor(R.w/f),h=Math.floor(R.h/f),o=new Float32Array(w*h*3),D=R.data,k=1/(f*f);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){let r=0,g=0,b=0;for(let j=0;j<f;j++){let p=((y*f+j)*R.w+x*f)*3;for(let i=0;i<f;i++,p+=3){r+=D[p];g+=D[p+1];b+=D[p+2]}}const q=(y*w+x)*3;o[q]=r*k;o[q+1]=g*k;o[q+2]=b*k}return{data:o,w,h,white:R.white}}
@@ -2174,7 +2233,7 @@ function rawDevelop(R,set,wantHi){const W=R.w,H=R.h,D=R.data,n=W*H,space=set.spa
     o[q]=er+dz>=255?255:(er+dz)|0;o[q+1]=eg+dz>=255?255:(eg+dz)|0;o[q+2]=eb+dz>=255?255:(eb+dz)|0;o[q+3]=255}
   g.putImageData(id,0,0);if(HI)c._hi=HI;return c}
 /* replaces the 8-bit decoder: every RAW now goes through the 16-bit linear pipeline */
-decodeRaw=async function(file,set){set=set||RAW_DEF();const R=await rawDecode16(file,set.wb);busy(true,'Développement du fichier RAW (16 bits)…',null);await tick();try{const c=rawDevelop(R,set,true);c._raw=true;RAWC={file,set,R};return{c,meta:R.meta,set}}finally{busy(false)}};
+decodeRaw=async function(file,set){set=set||RAW_DEF();const R=await rawDecode16(file,set.wb);busy(true,'Développement du fichier RAW (16 bits)…',null);await tick();try{const c=rawDevelop(R,set,true);c._raw=true;RAWC={file,set,R};try{FMT.info.set(c,{meta:R.meta,sum:R.info})}catch(e){}return{c,meta:R.meta,set}}finally{busy(false)}};
 async function attachRaw(file,set){const d=S.doc;if(!d)return;const key='raw_'+uid8();d.raw={key,name:file.name,set:{...set},w:d.w,h:d.h,file};try{await IDB.put('blobs',key,file)}catch(e){console.warn(e)}}
 async function rawDialog(){const d=S.doc;if(!d||!d.raw){toast('Disponible pour les photos ouvertes depuis un fichier RAW');return}
   if(d.w!==d.raw.w||d.h!==d.raw.h){toast('Le RAW ne peut plus être redéveloppé après un recadrage, une rotation ou un redimensionnement. Annulez-les d’abord.',6000);return}
@@ -2271,7 +2330,8 @@ const renderStack8=renderStack;
 PREC.ms=0;PREC.t=null;PREC.refining=false;
 renderStack=function(tc,W,H,T,o){const d=S.doc;if(o.before||!d||!(precOK()||(o.want16&&docHasHi(d)))||W*H>36e6)return renderStack8(tc,W,H,T,o);
   const view=tc.canvas===work||tc.canvas===workB;
-  if(view&&PREC.ms>45&&!PREC.refining){renderStack8(tc,W,H,T,o);clearTimeout(PREC.t);PREC.t=setTimeout(()=>{if(!S.doc)return;PREC.refining=true;try{S.contentDirty=true;render()}finally{PREC.refining=false}},220);return}
+  if(view&&(PREC.ms>45||S.stroke||S.drag||S.sliding)&&!PREC.refining){renderStack8(tc,W,H,T,o);clearTimeout(PREC.t);
+    const refine=()=>{if(!S.doc)return;if(S.stroke||S.drag||S.sliding){PREC.t=setTimeout(refine,220);return}PREC.refining=true;try{S.contentDirty=true;render()}finally{PREC.refining=false}};PREC.t=setTimeout(refine,260);return}
   const t0=performance.now();try{renderStackF(tc,W,H,T,o)}catch(e){console.warn('précision 16 bits désactivée',e);PREC.fail=true;return renderStack8(tc,W,H,T,o)}if(view)PREC.ms=performance.now()-t0};
 function renderStackF(tc,W,H,T,o){const d=S.doc,upto=o.upto==null?d.layers.length:o.upto;let F=null,i0=0,empty=true;
   tc.setTransform(1,0,0,1,0,0);tc.globalAlpha=1;tc.globalCompositeOperation='source-over';tc.clearRect(0,0,W,H);
@@ -2304,7 +2364,7 @@ function _setSat(c,s,o){const mx=Math.max(c[0],c[1],c[2]),mn=Math.min(c[0],c[1],
 const _D=x=>x<=0.25?((16*x-12)*x+4)*x:Math.sqrt(x);
 const BSEP={multiply:(b,s)=>b*s,screen:(b,s)=>b+s-b*s,overlay:(b,s)=>b<=0.5?2*b*s:1-2*(1-b)*(1-s),darken:(b,s)=>b<s?b:s,lighten:(b,s)=>b>s?b:s,
   'color-dodge':(b,s)=>b===0?0:s>=1?1:Math.min(1,b/(1-s)),'color-burn':(b,s)=>b>=1?1:s<=0?0:1-Math.min(1,(1-b)/s),'hard-light':(b,s)=>s<=0.5?2*b*s:1-2*(1-b)*(1-s),
-  'soft-light':(b,s)=>s<=0.5?b-(1-2*s)*b*(1-b):b+(2*s-1)*(_D(b)-b),difference:(b,s)=>Math.abs(b-s),exclusion:(b,s)=>b+s-2*b*s};
+  'soft-light':(b,s)=>s<=0.5?b-(1-2*s)*b*(1-b):b+(2*s-1)*(_D(b)-b),difference:(b,s)=>Math.abs(b-s),exclusion:(b,s)=>b+s-2*b*s,lighter:(b,s)=>Math.min(1,b+s)};
 function blendFF(F,S2,mode,op){const sep=BSEP[mode],t1=[0,0,0],t2=[0,0,0],cb=[0,0,0],cs=[0,0,0],B=[0,0,0];
   for(let j=0;j<F.length;j+=4){const as=S2[j+3]*op;if(as<=0)continue;const ab=F[j+3];
     cs[0]=S2[j];cs[1]=S2[j+1];cs[2]=S2[j+2];
@@ -2624,7 +2684,7 @@ function sniff(u8,name){const s4=String.fromCharCode(...u8.subarray(0,4)),n=(nam
 /* loadImageFile now understands every format: returns an <img> or a canvas (canvas._hi for 16-bit sources) */
 const _loadImageFile=loadImageFile;
 loadImageFile=async function(file){const u8=new Uint8Array(await file.slice(0,Math.min(file.size,1<<20)).arrayBuffer()),kind=sniff(u8,file.name);
-  if(kind==='tiff'){busy(true,'Lecture du TIFF…',null);try{const im=await decodeTIFF(new Uint8Array(await file.arrayBuffer())),c=canvasFrom16(im);FMT.info.set(c,{space:im.space,meta:[im.sum.line,'TIFF'+(im.hi?' 16 bits':'')].filter(Boolean).join(' · '),exif:null});return c}finally{busy(false)}}
+  if(kind==='tiff'){busy(true,'Lecture du TIFF…',null);try{const im=await decodeTIFF(new Uint8Array(await file.arrayBuffer())),c=canvasFrom16(im);FMT.info.set(c,{space:im.space,meta:[im.sum.line,'TIFF'+(im.hi?' 16 bits':'')].filter(Boolean).join(' · '),exif:null,sum:im.sum});return c}finally{busy(false)}}
   if(kind==='pdf')return decodePDF(new Uint8Array(await file.arrayBuffer()));
   if(kind==='tga')return decodeTGA(new Uint8Array(await file.arrayBuffer()));
   if(kind==='svg')return decodeSVG(file);
@@ -2634,7 +2694,7 @@ loadImageFile=async function(file){const u8=new Uint8Array(await file.slice(0,Ma
   return im};
 /* setDoc picks up colour space, EXIF and camera line found while decoding */
 const _setDoc=setDoc;
-setDoc=function(src,name,opts={}){const inf=FMT.info.get(src);if(inf){opts={...opts};if(inf.space&&!opts.space)opts.space=inf.space;if(inf.meta&&!opts.meta)opts.meta=inf.meta}_setDoc(src,name,opts);if(S.doc)S.doc.exif=inf&&inf.exif||null};
+setDoc=function(src,name,opts={}){const inf=FMT.info.get(src);if(inf){opts={...opts};if(inf.space&&!opts.space)opts.space=inf.space;if(inf.meta&&!opts.meta)opts.meta=inf.meta}_setDoc(src,name,opts);if(S.doc)S.doc.shot=inf&&inf.sum||null;if(S.doc)S.doc.exif=inf&&inf.exif||null};
 
 /* ================= formats: encoders ================= */
 const be16=v=>[v>>8&255,v&255],le16=v=>[v&255,v>>8&255],le32=v=>[v&255,v>>8&255,v>>16&255,v>>>24&255];
@@ -3102,7 +3162,12 @@ function shortcutsDialog(){const tools=TOOLS.filter(Boolean).map(t=>`<tr><td>${e
   const gen=[['Rechercher une commande',MOD+'K'],['Ouvrir',MOD+'O'],['Photothèque',MOD+'⇧O'],['Enregistrer',MOD+'S'],['Exporter',MOD+'⇧E'],['Annuler / rétablir',MOD+'Z  /  '+MOD+'⇧Z'],['Couper / copier / coller',MOD+'X / C / V'],['Tout sélectionner / désélectionner',MOD+'A  /  '+MOD+'D'],['Intervertir la sélection',MOD+'⇧I'],['Nouveau calque',MOD+'⌥N'],['Dupliquer le calque',MOD+'J'],['Fusionner avec le calque inférieur',MOD+'E'],['Ajuster à l’écran / 100 %',MOD+'0  /  '+MOD+'1'],['Zoom avant / arrière',MOD+'+  /  '+MOD+'−'],['Comparer avant / après','Y'],['Voir l’original (maintenir)','\\'],['Afficher le masque','⇧M'],['Réglages automatiques',MOD+'⇧L'],['Menu clic droit au clavier','⇧F10'],['Aller au menu','F10'],['Déplacer la vue','Espace + glisser'],['Masque rapide','Q'],['Inverser couleur de premier plan / arrière-plan','X'],['Taille du pinceau / dureté','[ ]  /  ⇧[ ]'],['Pinceau : ligne droite','⇧ + clic'],['Baguette : régler la tolérance en direct','Glisser après le clic'],['Lasso polygonal : fermer','Double-clic / Entrée'],['Transformation libre : valider / annuler','Entrée / Échap'],['Sélectionner plusieurs calques','Ctrl + clic  /  Maj + clic'],['Remettre un curseur à zéro','Double-clic'],['Saisir une valeur','Clic sur le chiffre'],['Aperçu rapide (photothèque)','Espace']].map(([a,b])=>`<tr><td>${esc(a)}</td><td><kbd>${esc(b)}</kbd></td></tr>`).join('');
   const dl=dialog({title:'Raccourcis clavier',body:`<div class="keys"><table><caption>Général</caption>${gen}</table><table><caption>Outils</caption>${tools}</table></div>`,buttons:[{label:'Fermer',primary:true}]});dl.classList.add('wide')}
 function formatsDialog(){dialog({title:'Formats pris en charge',body:`<table class="fmts"><tr><th>Ouvrir</th><td>JPEG, HEIC / HEIF, PNG 8 et 16 bits, TIFF 8, 16 et 32 bits (LZW, ZIP, CMJN), WebP, AVIF, PSD / PSB, PDF, GIF, BMP, TGA, SVG, ICO et les RAW de tous les grands fabricants (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2…)</td></tr><tr><th>Exporter</th><td>JPEG (4:4:4), PNG 8 et 16 bits, TIFF 8 et 16 bits, WebP, AVIF 8 et 10 bits, PSD avec calques, PDF, GIF, BMP, TGA, ICO</td></tr><tr><th>Projet</th><td>.zip Prism (tous les calques, masques et réglages)</td></tr></table><p class="muted">Profils couleur et données de prise de vue (EXIF) conservés. Jusqu’à 120 Mpx sur ordinateur, 16,7 Mpx sur iPhone et iPad (limite de Safari).</p>`,buttons:[{label:'Fermer',primary:true}]})}
-function aboutDialog(){dialog({title:'À propos de Prism',body:`<div class="about">${PRISM_LOGO}<div><b>Prism</b><p class="muted">Retouche photo dans le navigateur : RAW 16 bits, calques et masques, réglages non destructifs, outils IA sur l’appareil, photothèque et export dans tous les formats courants.</p></div></div>`,buttons:[{label:'Fermer',primary:true}]})}
+function aboutDialog(){dialog({title:'À propos de Prism',body:`<div class="about">${PRISM_LOGO}<div><b>Prism</b><p class="muted">Retouche photo dans le navigateur : RAW 16 bits, calques et masques, réglages non destructifs, outils IA sur l’appareil, photothèque et export dans tous les formats courants.</p></div></div>
+  <details class="credits" style="margin-top:12px;font-size:12px"><summary style="cursor:pointer">Logiciels et modèles intégrés</summary><ul class="muted" style="margin:6px 0 0;padding-left:18px;line-height:1.55">
+  <li>ONNX Runtime (MIT), TensorFlow.js (Apache 2.0)</li><li>LibRaw (LGPL 2.1 / CDDL 1.0), Little CMS (MIT), libheif (LGPL 3), pdf.js (Apache 2.0), ag-psd (MIT), encodeur AVIF libavif/aom (BSD)</li>
+  <li>Détourage : ISNet, DIS (Apache 2.0) · Scènes : DeepLabv3+ ADE20K, TensorFlow Models (Apache 2.0) · Personnes : MediaPipe Selfie Multiclass (Apache 2.0)</li>
+  <li>Débruitage : SCUNet (Apache 2.0) · Suppression d’objet : LaMa (Apache 2.0) · Agrandissement : Real-ESRGAN (BSD 3 clauses)</li>
+  <li>Profils d’objectif : base lensfun (CC BY-SA 3.0, lensfun.github.io)</li></ul></details>`,buttons:[{label:'Fermer',primary:true}]})}
 document.addEventListener('keydown',e=>{const t=e.target;if(t.closest&&t.closest('input,textarea,select,[contenteditable]'))return;if(e.key==='?'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();shortcutsDialog()}
   if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&(e.key==='x'||e.key==='X')&&S.doc&&S.doc.sel){e.preventDefault();cutSel()}});
 /* dialogs keep focus inside, and their first field gets focus */
@@ -3275,7 +3340,7 @@ function camFromMeta(meta){const seg=String(meta||'').split(' · ')[0]||'';retur
 const _uel=updateExifLine;updateExifLine=function(){_uel();const e=$('#hexif');if(!e||e.hidden)return;const f=e.querySelector('span');if(f){const n=camNorm(f.textContent);if(n)f.textContent=n;else if(FMT_WORDS.test(f.textContent)){}}}
 
 /* ================= v8.2: 16-bit PSD export (own writer: ag-psd only writes 8 bits) ================= */
-const PSD_KEY={'source-over':'norm','darken':'dark','multiply':'mul ','color-burn':'idiv','lighten':'lite','screen':'scrn','color-dodge':'div ','overlay':'over','soft-light':'sLit','hard-light':'hLit','difference':'diff','exclusion':'smud','hue':'hue ','saturation':'sat ','color':'colr','luminosity':'lum '};
+const PSD_KEY={'source-over':'norm','darken':'dark','multiply':'mul ','color-burn':'idiv','lighten':'lite','screen':'scrn','color-dodge':'div ','overlay':'over','soft-light':'sLit','hard-light':'hLit','difference':'diff','exclusion':'smud','hue':'hue ','saturation':'sat ','color':'colr','luminosity':'lum ','lighter':'lddg'};
 async function encodePSD16(d,onP){const W=d.w,H=d.h,N=W*H,chunks=[];const prog=(p,m)=>onP&&onP(p,m);
   const hdr=n=>{const b=new Uint8Array(n);return{b,v:new DataView(b.buffer),p:0}};
   const asc=s=>{const o=[];for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);o.push(c<128&&c>=32?c:63)}return o};
@@ -3507,11 +3572,11 @@ async function textEdit(L,isNew){const d=S.doc,o=S.opts.text,orig={txt:L.txt,can
   const upd=async el=>{ctl(el);L.txt=t;L.name=keepName(L,nameOfText(t),/^Texte( :|$)/);await loadFont(t);if(fin)return;livePreview(L)};
   const maxW=Math.max(200,d.w);
   dialog({title:isNew?'Nouveau texte':'Modifier le texte',light:true,body:`<label class="field">Texte<textarea id="tTxt" rows="3">${esc(t.text)}</textarea></label>
-    <div class="inline" style="gap:8px;flex-wrap:wrap"><select id="tFont" aria-label="Police">${FONTS.map(f=>`<option ${f===t.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${t.color}" aria-label="Couleur du texte">
+    <div class="inline" style="gap:8px;flex-wrap:wrap"><select id="tFont" aria-label="Police">${FONTS.map(f=>`<option ${f===t.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${esc(t.color)}" aria-label="Couleur du texte">
     <span class="seg-mini"><button type="button" id="tB" class="${t.bold?'on':''}" aria-label="Gras"><b>G</b></button><button type="button" id="tI" class="${t.italic?'on':''}" aria-label="Italique"><i>I</i></button></span>
     <span class="seg-mini" role="group" aria-label="Alignement">${[['left','Gauche'],['center','Centré'],['right','Droite']].map(([v,l])=>`<button type="button" data-al="${v}" class="${t.align===v?'on':''}">${l}</button>`).join('')}</span></div>
     ${rRow('tSize','Taille',8,Math.max(300,Math.round(d.h/2)),1,t.size,' px')}${rRow('tLh','Interligne',60,250,1,Math.round(t.lh*100),'')}${rRow('tTr','Espacement des lettres',-10,60,1,t.track,' px')}${rRow('tBox','Largeur du bloc (0 = libre)',0,maxW,10,t.boxW,' px')}
-    <div class="dlg-grid"><label>Contour : épaisseur${rRow('tSw','',0,40,1,t.sw,' px')}</label><label>Couleur du contour<input type="color" class="swatch" id="tSc" value="${t.sc}"></label></div>
+    <div class="dlg-grid"><label>Contour : épaisseur${rRow('tSw','',0,40,1,t.sw,' px')}</label><label>Couleur du contour<input type="color" class="swatch" id="tSc" value="${esc(t.sc)}"></label></div>
     <p class="muted">Ombre, lueur et contour extérieur : Calque > Styles de calque. Déplacez le texte avec l’outil Déplacement (V). Pour le modifier plus tard, cliquez dessus avec l’outil Texte (T).</p>`,
     onOpen:el=>{const go=()=>upd(el);el.addEventListener('input',go);el.addEventListener('change',go);
       ['tB','tI'].forEach(id=>$('#'+id,el).addEventListener('click',e=>{e.currentTarget.classList.toggle('on');go()}));
@@ -3557,8 +3622,8 @@ const _onUp13=onUp;onUp=function(e){const dr=S.drag;
   const tb=$('#dock [data-tool="text"]'),b=document.createElement('button');b.className=tb.className;b.dataset.tool='shape';b.title='Formes (U)';b.setAttribute('aria-label','Formes');b.innerHTML=`<svg viewBox="0 0 20 20">${IC.shape}</svg>`;tb.after(b);TOOL_HELP.shape='Dessine un rectangle, une ellipse, une ligne, une flèche, un polygone ou une étoile. Maj garde les proportions.'}
 const _renderPill13=renderPill;renderPill=function(){_renderPill13();if(S.tool!=='shape')return;const o=S.opts.shape,ob=$('#pill'),A=AL(),line=o.type==='line'||o.type==='arrow';
   ob.insertAdjacentHTML('beforeend',`<label>Forme<select id="shT">${SHAPES.map(([v,l])=>`<option value="${v}" ${o.type===v?'selected':''}>${l}</option>`).join('')}</select></label>
-   ${line?'':`<label><input type="checkbox" id="shUF" ${o.useFill?'checked':''}> Remplissage</label>`}<input type="color" class="swatch" id="shF" value="${o.fill}" aria-label="${line?'Couleur du trait':'Couleur de remplissage'}">
-   ${line?'':`<label><input type="checkbox" id="shUS" ${o.useStroke?'checked':''}> Contour</label><input type="color" class="swatch" id="shS" value="${o.stroke}" aria-label="Couleur du contour">`}
+   ${line?'':`<label><input type="checkbox" id="shUF" ${o.useFill?'checked':''}> Remplissage</label>`}<input type="color" class="swatch" id="shF" value="${esc(o.fill)}" aria-label="${line?'Couleur du trait':'Couleur de remplissage'}">
+   ${line?'':`<label><input type="checkbox" id="shUS" ${o.useStroke?'checked':''}> Contour</label><input type="color" class="swatch" id="shS" value="${esc(o.stroke)}" aria-label="Couleur du contour">`}
    <label>Épaisseur<input type="range" id="shW" min="1" max="80" value="${o.sw}"><span class="val">${o.sw}</span></label>
    ${o.type==='round'?`<label>Arrondi<input type="range" id="shR" min="0" max="300" value="${o.r}"><span class="val">${o.r}</span></label>`:''}${o.type==='poly'||o.type==='star'?`<label>Branches<input type="range" id="shN" min="3" max="12" value="${o.n}"><span class="val">${o.n}</span></label>`:''}
    ${MEDIT(A)&&A.shp?'<button class="btn sm" id="shEdit">Modifier la forme sélectionnée…</button>':'<span class="hint">Glissez sur la photo pour dessiner.</span>'}`);
@@ -3570,7 +3635,7 @@ function shapeEdit(L){if(!L||!L.shp)return;const d=S.doc,orig=L.shp;let s={...L.
   const rd=el=>{const g=id=>$('#'+id,el);s={...s,type:g('seT').value,x:+g('seX').value,y:+g('seY').value,w:+g('seW').value,h:+g('seH').value,fill:g('seUF').checked?g('seF').value:null,stroke:g('seUS').checked?g('seS').value:null,sw:+g('seSw').value,r:+g('seR').value,n:+g('seN').value};if(s.type==='line'||s.type==='arrow'){s.fill=null;s.stroke=g('seS').value}};
   dialog({title:'Modifier la forme',light:true,body:`<div class="dlg-grid"><label>Forme<select id="seT">${SHAPES.map(([v,l])=>`<option value="${v}" ${s.type===v?'selected':''}>${l}</option>`).join('')}</select></label><span></span>
    <label>X<input type="number" id="seX" value="${s.x}"></label><label>Y<input type="number" id="seY" value="${s.y}"></label><label>Largeur<input type="number" id="seW" value="${s.w}"></label><label>Hauteur<input type="number" id="seH" value="${s.h}"></label>
-   <label><span><input type="checkbox" id="seUF" ${s.fill?'checked':''}> Remplissage</span><input type="color" class="swatch" id="seF" value="${s.fill||S.opts.shape.fill}"></label><label><span><input type="checkbox" id="seUS" ${s.stroke?'checked':''}> Contour ou trait</span><input type="color" class="swatch" id="seS" value="${s.stroke||'#ffffff'}"></label>
+   <label><span><input type="checkbox" id="seUF" ${s.fill?'checked':''}> Remplissage</span><input type="color" class="swatch" id="seF" value="${esc(s.fill||S.opts.shape.fill)}"></label><label><span><input type="checkbox" id="seUS" ${s.stroke?'checked':''}> Contour ou trait</span><input type="color" class="swatch" id="seS" value="${esc(s.stroke||'#ffffff')}"></label>
    <label>Épaisseur<input type="number" id="seSw" min="0" value="${s.sw}"></label><label>Arrondi<input type="number" id="seR" min="0" value="${s.r}"></label><label>Branches<input type="number" id="seN" min="3" max="24" value="${s.n}"></label></div>`,
    onOpen:el=>{const go=()=>{rd(el);L.shp=s;L.name=keepName(L,shapeName(s),/^Forme( :|$)/);if(!fin)livePreview(L)};el.addEventListener('input',go);el.addEventListener('change',go)},
    buttons:[{label:'Annuler',onClick:()=>{fin=true;L.shp=orig;L.name=shapeName(orig);delete L.preview;PV.delete(L.id);markComp();syncAll()}},{label:'Appliquer',primary:true,onClick:()=>{fin=true;if(S.doc!==d||!d.layers.includes(L))return;rd(document);L.shp=s;L.name=keepName(L,shapeName(s),/^Forme( :|$)/);finalizeMeta(L);markComp();pushHistory('Modifier la forme');syncAll()}}]})}
@@ -3593,7 +3658,7 @@ const shpBox=s=>{if(s.type==='compound'||s.type==='arrow')return shpBoxTS(s);con
 const _layerSrc13=layerSrc;layerSrc=function(L){const s=_layerSrc13(L);if(L.kind==='pixel'&&fxOn(L.fx)&&s===L.canvas)return fxBake(L);return s};
 function fxDialog(L){if(!L||L.kind!=='pixel'){toast('Choisissez un calque de pixels, de texte ou de forme');return}const d=S.doc,orig=L.fx;let f=Object.assign(FXD(),clone(L.fx||{}));f.shadow=Object.assign(FXD().shadow,f.shadow);f.stroke=Object.assign(FXD().stroke,f.stroke);f.glow=Object.assign(FXD().glow,f.glow);
   const rd=el=>{const g=id=>$('#'+id,el);f={shadow:{on:g('fsO').checked,color:g('fsC').value,op:+g('fsA').value/100,blur:+g('fsB').value,dx:+g('fsX').value,dy:+g('fsY').value},stroke:{on:g('fkO').checked,color:g('fkC').value,w:+g('fkW').value},glow:{on:g('fgO').checked,color:g('fgC').value,op:+g('fgA').value/100,blur:+g('fgB').value}};[['fsA','%'],['fsB',' px'],['fsX',' px'],['fsY',' px'],['fkW',' px'],['fgA','%'],['fgB',' px']].forEach(([id,u])=>{const o=$('#'+id+'-o',el);if(o)o.textContent=g(id).value+u})};
-  const sec=(p,title,on,col,rows)=>`<fieldset style="border:1px solid var(--line,#8884);border-radius:10px;padding:8px 12px;margin:8px 0"><legend><label><input type="checkbox" id="${p}O" ${on?'checked':''}> ${title}</label></legend><div class="inline"><input type="color" class="swatch" id="${p}C" value="${col}" aria-label="Couleur"></div>${rows}</fieldset>`;
+  const sec=(p,title,on,col,rows)=>`<fieldset style="border:1px solid var(--line,#8884);border-radius:10px;padding:8px 12px;margin:8px 0"><legend><label><input type="checkbox" id="${p}O" ${on?'checked':''}> ${title}</label></legend><div class="inline"><input type="color" class="swatch" id="${p}C" value="${esc(col)}" aria-label="Couleur"></div>${rows}</fieldset>`;
   dialog({title:'Styles de calque',light:true,body:`<p class="muted">Effets modifiables à tout moment, appliqués au calque « ${esc(L.name)} ».</p>
    ${sec('fs','Ombre portée',f.shadow.on,f.shadow.color,rRow('fsA','Opacité',0,100,1,Math.round(f.shadow.op*100),'%')+rRow('fsB','Flou',0,120,1,f.shadow.blur,' px')+rRow('fsX','Décalage horizontal',-100,100,1,f.shadow.dx,' px')+rRow('fsY','Décalage vertical',-100,100,1,f.shadow.dy,' px'))}
    ${sec('fk','Contour extérieur',f.stroke.on,f.stroke.color,rRow('fkW','Épaisseur',1,40,1,f.stroke.w,' px'))}
@@ -3799,8 +3864,8 @@ Cloud.remove=async function(id){const r=this.col.doc(id),s=await r.get().catch((
     if(r&&r.device!==DEVICE&&r.updatedAt>(d.updatedAt||0)+500&&r.updatedAt!==this._warned&&clean){this._warned=r.updatedAt;toast(`Mis à jour depuis ${r.deviceName||'votre autre appareil'}`,4000);this.open(d.pid);return}}return prev()}})();
 
 /* ================= v9: large photos on iPhone and iPad ================= */
-if(IS_IOS){(async()=>{try{let ok=0;for(const n of [20e6,26e6]){const w=Math.round(Math.sqrt(n*1.5)),h=Math.round(n/w),c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(w-3,h-3,3,3);const p=g.getImageData(w-2,h-2,1,1).data;if(p[0]===255&&p[3]===255)ok=n;else break;c.width=c.height=1}
-  if(ok>MAX_PX){MAX_PX=ok;S.maxHistBoost=1}}catch(e){}})()}
+if(IS_IOS){(async()=>{try{let ok=0;for(const n of [20e6,26e6]){const w=Math.round(Math.sqrt(n*1.5)),h=Math.round(n/w),c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(w-3,h-3,3,3);const p=g.getImageData(w-2,h-2,1,1).data;const good=p[0]===255&&p[3]===255;c.width=c.height=1;if(good)ok=n;else break}
+  if(ok>MAX_PX)MAX_PX=ok}catch(e){}})()}
 
 /* ================= v9: plain-language messages, memory guard ================= */
 const FRIENDLY=[
@@ -3836,6 +3901,12 @@ function memEstimate(){const d=S.doc;if(!d)return 0;const px=d.w*d.h;let b=0;for
 const memBudget=()=>IS_IOS?5e8:Math.min(3e9,(navigator.deviceMemory||4)*4e8);
 const _pushHistory16=pushHistory;pushHistory=function(){const r=_pushHistory16.apply(this,arguments);try{const d=S.doc;if(d&&!d._memWarned){const e=memEstimate(),bud=memBudget();if(e>bud*0.8){d._memWarned=true;toast(`Cette photo de ${(d.w*d.h/1e6).toFixed(0)} Mpx avec ${d.layers.length} calques occupe environ ${(e/1e9).toFixed(1).replace('.',',')} Go de mémoire. Fusionnez quelques calques (${MOD}E) pour garder de la fluidité.`,8000)}}}catch(e){}return r};
 
+
+/* an error nothing caught: it is said once in plain words (at most every 30 s) instead of failing silently */
+{let last=0;const IGN=/ResizeObserver|annulé|AbortError|Script error\.?$/i;
+ const say=e=>{const m=String(e&&(e.message||e.reason&&e.reason.message||e.reason)||e||'');if(!m||IGN.test(m))return;console.error('Prism :',e.error||e.reason||e);const t=Date.now();if(t-last<30000)return;last=t;
+   try{toast('Un problème inattendu est survenu ('+m.slice(0,120)+'). Votre travail reste enregistré ; si cela se répète, rechargez Prism.',6000)}catch(_){}};
+ addEventListener('error',e=>{if(e.target&&e.target!==window)return;say(e)});addEventListener('unhandledrejection',e=>say(e))}
 /* ================= v10: library organisation (albums, smart albums, folders, dates, flags, grouping) ================= */
 Object.assign(LIB,{album:'',folder:'',date:'',flag:'',smart:'',size:PREF.get('lbSize',170),group:PREF.get('lbGroup',true)});
 const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -4061,7 +4132,7 @@ async function preflight(el){const d=S.doc;if(!d||!el)return;const box=document.
   const w$=[],ok=[];const ph=hi/n*100,pl=lo/n*100;if(ph>1)w$.push(`${fmt1(ph)} % de la photo est brûlée (blanc pur, détails perdus)`);else ok.push('hautes lumières préservées');if(pl>3)w$.push(`${fmt1(pl)} % est noir bouché`);else ok.push('ombres préservées');
   if(Math.max(d.w,d.h)<1600)w$.push('petite image : elle sera floue à l’impression ou sur grand écran');
   if(d.space&&d.space!=='srgb')w$.push(`espace couleur ${d.space} : choisissez JPEG ou WebP seulement pour le web, certains navigateurs l’affichent mal`);
-  box.innerHTML=(w$.length?w$.map(x=>`<div style="color:var(--warn)">⚠ ${x}</div>`).join(''):'')+(ok.length?`<div>✓ ${ok.join(', ')}</div>`:'')+(ph>1||pl>3?`<div style="margin-top:6px"><button class="btn sm" id="exFix">Corriger automatiquement</button></div>`:'');
+  box.innerHTML=(w$.length?w$.map(x=>`<div style="color:var(--warn)">⚠ ${esc(x)}</div>`).join(''):'')+(ok.length?`<div>✓ ${ok.join(', ')}</div>`:'')+(ph>1||pl>3?`<div style="margin-top:6px"><button class="btn sm" id="exFix">Corriger automatiquement</button></div>`:'');
   const fx=box.querySelector('#exFix');if(fx)fx.onclick=()=>{const L=newAdjust('Récupération export');const dv=DEV0();if(ph>1){dv.highlights=-Math.min(60,20+ph*4);dv.whites=-Math.min(40,10+ph*3)}if(pl>3){dv.shadows=Math.min(50,15+pl*2);dv.blacks=Math.min(30,8+pl*2)}L.dev=dv;closeDialog();insertLayer(L,'Récupération export',true);toast('Calque « Récupération export » ajouté. Relancez l’export pour vérifier.')}}catch(e){console.warn('preflight',e);box.remove()}}
 const _ed=exportDialog;exportDialog=async function(){const r=await _ed.apply(this,arguments);try{preflight(document.querySelector('#scrim'))}catch(e){console.warn('pf0',e)}return r};
 })();
@@ -4188,7 +4259,7 @@ function gradEditor(){const prev=JSON.parse(JSON.stringify(GO.stops));let sel=0;
 PILL_ACT.gradEdit=gradEditor;
 const _pe2=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe2.apply(this,arguments)||'';
  if(t==='gradient'){const onMask=(()=>{const A=AL();return A&&(A.kind==='adjust'||(A.mask&&A.editMask))})();
-  if(!onMask)h+=`<label>Couleurs<select data-sel="gradient.preset" id="gdPill">${Object.keys(GN).map(k=>`<option value="${k}" ${GO.preset===k?'selected':''}>${GN[k]}</option>`).join('')}</select></label><button class="btn sm" data-act="gradEdit" title="Modifier les couleurs du dégradé">Modifier…</button><label>Arrière-plan<input type="color" class="swatch" id="optBg" value="${S.bg}" aria-label="Couleur d’arrière-plan"></label>`;
+  if(!onMask)h+=`<label>Couleurs<select data-sel="gradient.preset" id="gdPill">${Object.keys(GN).map(k=>`<option value="${k}" ${GO.preset===k?'selected':''}>${GN[k]}</option>`).join('')}</select></label><button class="btn sm" data-act="gradEdit" title="Modifier les couleurs du dégradé">Modifier…</button><label>Arrière-plan<input type="color" class="swatch" id="optBg" value="${esc(S.bg)}" aria-label="Couleur d’arrière-plan"></label>`;
   h+=`<label><input type="checkbox" data-chk="gradient.reverse" ${GO.reverse?'checked':''}>Inverser</label>`}
  return h};
 document.addEventListener('input',e=>{if(e.target&&e.target.id==='optBg'){S.bg=e.target.value;PREF.set('bgColor',S.bg)}});
@@ -4211,16 +4282,43 @@ const _sf=stampFor;stampFor=function(size,hard,color){const t=S.tool;if(t!=='bru
  else{g.fillStyle='#000';g.beginPath();g.arc(s/2,s/2,s/2,0,7);g.fill()}
  g.restore();if(hard<.95&&!String(tip).startsWith('c:')&&'filter'in g&&tip!=='chalk'&&tip!=='splat'){const t2=mk(s,s),g2=cx(t2);g2.filter=`blur(${Math.round((1-hard)*s*.12)}px)`;g2.drawImage(c,0,0);g.clearRect(0,0,s,s);g.drawImage(t2,0,0)}
  g.globalCompositeOperation='source-in';g.fillStyle=col;g.fillRect(0,0,s,s);return c};
+/* Photoshop brushes (.abr, versions 1, 2, 6 and later): the sampled tips, as grey levels (255 = paint). Computed round tips are skipped. */
+function parseABR(u8){const v=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),out=[];let p=0,px=0;const room=(w,h)=>out.length<12&&(px+=w*h)<=64e6;const u16=()=>{const x=v.getUint16(p);p+=2;return x},u32=()=>{const x=v.getUint32(p);p+=4;return x},i32=()=>{const x=v.getInt32(p);p+=4;return x};
+  const sample=(w,h,depth,comp)=>{const bpp=depth>>3,n=w*h*bpp,raw=new Uint8Array(n);
+    if(!comp){if(p+n>u8.length)throw new Error('pointe tronquée');raw.set(u8.subarray(p,p+n));p+=n}
+    else{if(p+2*h>u8.length)throw new Error('pointe tronquée');const rows=[];for(let y=0;y<h;y++)rows.push(u16());let o=0;for(const len of rows){const end=p+len;while(p<end&&o<n){const c=(u8[p++]<<24)>>24;if(c>=0){for(let k=0;k<=c&&o<n;k++)raw[o++]=u8[p++]}else if(c!==-128){const b=u8[p++];for(let k=0;k<1-c&&o<n;k++)raw[o++]=b}}p=end}}
+    if(bpp===1)return raw;const g=new Uint8Array(w*h);for(let i=0;i<w*h;i++)g[i]=raw[i*2];return g};
+  const ver=u16();
+  if(ver===1||ver===2){const count=u16();for(let i=0;i<count;i++){const type=u16(),size=u32(),next=p+size;
+      if(type===2){p+=4;p+=2;let name='';if(ver===2){const L=u32();for(let k=0;k<L;k++){const c=u16();if(c)name+=String.fromCharCode(c)}}p+=1+8;const t=i32(),l=i32(),b=i32(),r=i32(),depth=u16(),comp=u8[p++];
+        const w=r-l,h=b-t;if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)&&room(w,h))out.push({name,w,h,data:sample(w,h,depth,comp)})}
+      p=next}return out}
+  if(ver<6||ver>10)throw new Error('version '+ver);const sub=u16();
+  while(p+12<=u8.length){if(String.fromCharCode(u8[p],u8[p+1],u8[p+2],u8[p+3])!=='8BIM')break;const key=String.fromCharCode(u8[p+4],u8[p+5],u8[p+6],u8[p+7]);p+=8;const len=u32(),end=p+len;
+    if(key==='samp'){while(p+4<end){let size=u32();while(size%4)size++;const next=p+size;p+=sub===1?47:301;const t=i32(),l=i32(),b=i32(),r=i32(),depth=u16(),comp=u8[p++],w=r-l,h=b-t;
+        if(w>0&&h>0&&w*h<=16e6&&(depth===8||depth===16)&&room(w,h)){try{out.push({name:'',w,h,data:sample(w,h,depth,comp)})}catch(e){}}p=next}}
+    p=end+(len&1?1:0)}
+  return out}
+window.PrismABR=parseABR;
+/* an ABR tip as a black image whose opacity is the tip, ready for importTip */
+async function abrTipFile(t,i,base){const c=mk(t.w,t.h),g=cx(c),im=g.createImageData(t.w,t.h);for(let k=0;k<t.w*t.h;k++)im.data[k*4+3]=t.data[k];g.putImageData(im,0,0);
+  const b=await new Promise(r=>c.toBlob(r,'image/png'));return new File([b],(t.name||base+' '+(i+1))+'.png',{type:'image/png'})}
 function importTip(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const N=128,c=mk(N,N),g=cx(c);const sc=Math.min(N/im.width,N/im.height);g.drawImage(im,(N-im.width*sc)/2,(N-im.height*sc)/2,im.width*sc,im.height*sc);const a=rx(c).getImageData(0,0,N,N),d=a.data;let hasAlpha=false;for(let i=3;i<d.length;i+=4)if(d[i]<250){hasAlpha=true;break}
-  for(let i=0;i<d.length;i+=4){const al=hasAlpha?d[i+3]:255-(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);d[i]=d[i+1]=d[i+2]=0;d[i+3]=al}g.putImageData(a,0,0);res(c.toDataURL('image/png'))};im.onerror=()=>res(null);im.src=URL.createObjectURL(file)})}
+  for(let i=0;i<d.length;i+=4){const al=hasAlpha?d[i+3]:255-(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]);d[i]=d[i+1]=d[i+2]=0;d[i+3]=al}g.putImageData(a,0,0);done(c.toDataURL('image/png'))};const u=URL.createObjectURL(file),done=r=>{URL.revokeObjectURL(u);res(r)};im.onerror=()=>done(null);im.src=u})}
 function traitDialog(){const t=S.tool==='eraser'?'eraser':S.tool==='clone'?'clone':'brush',o=S.opts[t];
- const tipOpts=Object.keys(TIPS).map(k=>`<option value="${k}" ${o.tip===k?'selected':''}>${TIPS[k]}</option>`).join('')+CUSTOM.map((c,i)=>`<option value="c:${i}" ${o.tip==='c:'+i?'selected':''}>${c.name}</option>`).join('');
- dialog({title:t==='eraser'?'Gomme : réglages du trait':t==='clone'?'Tampon : réglages du trait':'Pinceau : réglages du trait',body:`${t==='clone'?'':`<label class="field">Forme de la pointe<select id="trTip">${tipOpts}</select></label><div class="row"><button class="btn sm" id="trImp">Importer une pointe (image)…</button><span class="muted" style="font-size:12px">Les zones sombres ou opaques de l’image deviennent la forme du pinceau.</span></div>`}
+ const tipOpts=Object.keys(TIPS).map(k=>`<option value="${k}" ${o.tip===k?'selected':''}>${TIPS[k]}</option>`).join('')+CUSTOM.map((c,i)=>`<option value="c:${i}" ${o.tip==='c:'+i?'selected':''}>${esc(c.name)}</option>`).join('');
+ dialog({title:t==='eraser'?'Gomme : réglages du trait':t==='clone'?'Tampon : réglages du trait':'Pinceau : réglages du trait',body:`${t==='clone'?'':`<label class="field">Forme de la pointe<select id="trTip">${tipOpts}</select></label><div class="row"><button class="btn sm" id="trImp">Importer une pointe (image ou .abr)…</button><span class="muted" style="font-size:12px">Les zones sombres ou opaques de l’image deviennent la forme du pinceau.</span></div>`}
  ${rangeRow('trSp','Espacement',1,200,1,o.spacing||12,' %')}${t==='clone'?'':rangeRow('trAng','Angle de la pointe',-180,180,1,o.angle||0,'°')+rangeRow('trRd','Aplatissement',8,100,1,o.round||100,' %')}${rangeRow('trSm','Lissage du trait',0,100,1,o.smooth||0,' %')}
  ${t==='clone'?'':`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="trPr" ${o.pressSize!==false?'checked':''}>Le stylet fait varier la taille (pression)</label>`}`,
  onOpen:el=>{const bind=(id,k,f=1)=>{const r=$('#'+id,el);if(!r)return;r.oninput=()=>{o[k]=+r.value*f;$('#'+id+'-o',el).textContent=r.value+(id==='trAng'?'°':' %');if(k==='spacing')PREF.set('spacing_'+t,o.spacing)}};bind('trSp','spacing');bind('trAng','angle');bind('trRd','round');bind('trSm','smooth');
   const pr=$('#trPr',el);if(pr)pr.onchange=()=>{o.pressSize=pr.checked};const tp=$('#trTip',el);if(tp)tp.onchange=()=>{o.tip=tp.value;PREF.set('tip_'+t,o.tip);if(/^(chalk|splat)$/.test(o.tip)||o.tip.startsWith('c:')){o.spacing=o.tip.startsWith('c:')?25:20;$('#trSp',el).value=o.spacing;$('#trSp-o',el).textContent=o.spacing+' %'}};
-  const im=$('#trImp',el);if(im)im.onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=async()=>{const file=f.files[0];if(!file)return;const url=await importTip(file);if(!url){toast('Image illisible.');return}CUSTOM=[...CUSTOM,{id:Date.now(),name:(file.name||'Pointe').replace(/\.[a-z0-9]+$/i,'').slice(0,24),url}].slice(-12);PREF.set('brushTips',CUSTOM);const i=CUSTOM.length-1;o.tip='c:'+i;PREF.set('tip_'+t,o.tip);closeDialog();traitDialog();toast('Pointe ajoutée au pinceau.')};f.click()}},
+  const im=$('#trImp',el);if(im)im.onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='image/*,.abr';f.onchange=async()=>{const file=f.files[0];if(!file)return;
+    if(/\.abr$/i.test(file.name)){let tips=[];try{tips=parseABR(new Uint8Array(await file.arrayBuffer()))}catch(e){console.error(e)}
+      if(!tips.length){toast('Aucune pointe utilisable dans ce fichier de pinceaux (seules les pointes dessinées sont reprises).',5000);return}
+      const base=file.name.replace(/\.abr$/i,'').slice(0,18),add=[];for(let i=0;i<tips.length&&add.length<12;i++){const url=await importTip(await abrTipFile(tips[i],i,base));if(url)add.push({id:Date.now()+i,name:(tips[i].name||base+' '+(i+1)).slice(0,24),url})}
+      CUSTOM=[...CUSTOM,...add].slice(-12);PREF.set('brushTips',CUSTOM);o.tip='c:'+(CUSTOM.length-add.length);PREF.set('tip_'+t,o.tip);closeDialog();traitDialog();
+      toast(add.length+' pointe'+(add.length>1?'s':'')+' Photoshop ajoutée'+(add.length>1?'s':'')+(tips.length>add.length?' (les 12 premières)':'')+'.',4000);return}
+    const url=await importTip(file);if(!url){toast('Image illisible.');return}CUSTOM=[...CUSTOM,{id:Date.now(),name:(file.name||'Pointe').replace(/\.[a-z0-9]+$/i,'').slice(0,24),url}].slice(-12);PREF.set('brushTips',CUSTOM);const i=CUSTOM.length-1;o.tip='c:'+i;PREF.set('tip_'+t,o.tip);closeDialog();traitDialog();toast('Pointe ajoutée au pinceau.')};f.click()}},
  buttons:[{label:'Fermer',primary:true,onClick:()=>{renderPill()}}]})}
 PILL_ACT.trait=traitDialog;
 const _pe3=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe3.apply(this,arguments)||'';if(t==='brush'||t==='eraser'||t==='clone')h+=`<button class="btn sm" data-act="trait" title="Pointe, espacement, angle, lissage, pression du stylet">Trait…</button>`;return h};
@@ -4268,7 +4366,7 @@ function rangeMask(full){const d=S.doc,f=flatSync();let W=d.w,H=d.h,c=f;if(!full
 function rangeDialog(){const d=S.doc;if(!d){toast('Ouvrez une photo d’abord.');return}
  const upd=el=>{S.rangePrev=rangeMask(false);requestRender()};
  dialog({title:'Plage de couleurs',light:true,body:`<label class="field">Sélectionner<select id="rgK"><option value="color">Une couleur</option><option value="high">Les hautes lumières</option><option value="mid">Les tons moyens</option><option value="shadows">Les ombres</option></select></label>
- <div id="rgCol" class="row" style="display:flex;gap:8px;align-items:center"><input type="color" id="rgC" value="${RNG.color}" style="width:44px;height:28px"><button class="btn sm" id="rgPick">Prélever sur la photo</button></div>
+ <div id="rgCol" class="row" style="display:flex;gap:8px;align-items:center"><input type="color" id="rgC" value="${esc(RNG.color)}" style="width:44px;height:28px"><button class="btn sm" id="rgPick">Prélever sur la photo</button></div>
  ${rangeRow('rgT','Étendue',0,100,1,RNG.tol,' %')}${rangeRow('rgF','Flou des bords',0,100,1,RNG.fuzz,' %')}
  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rgI" ${RNG.inv?'checked':''}>Inverser</label><div class="muted" style="font-size:12px">Cliquez sur la photo pour prélever la couleur. La zone choisie apparaît en rouge ; « Appliquer » en fait une sélection.</div>`,
  onOpen:el=>{const K=$('#rgK',el);K.value=RNG.kind;const vis=()=>{$('#rgCol',el).style.display=K.value==='color'?'flex':'none'};vis();
@@ -4323,7 +4421,7 @@ const _dov=drawOverlays;drawOverlays=function(c,pr){_dov.apply(this,arguments);t
 const _pe=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe.apply(this,arguments)||'';
  if(t==='lasso')h=seg('lasso.mode',[['free','Libre'],['poly','Polygonal'],['magnetic','Magnétique']])+h+(o.lasso.mode!=='free'?`<span class="hint">Cliquez pour poser les points. Double-clic ou Entrée pour fermer, Retour arrière pour annuler le dernier point.</span>`:'');
  if(t==='wand')h+=`<span class="hint">Après le clic, glissez à gauche ou à droite pour régler la tolérance en direct.</span><button class="btn sm" data-act="range">Plage de couleurs…</button>`;
- if(t==='bucket')h=optRange('bucket.tol','Tolérance',0,128,1,'')+`<label><input type="checkbox" data-chk="bucket.contiguous" ${o.bucket.contiguous?'checked':''}>Contigus</label><label><input type="checkbox" data-chk="bucket.all" ${o.bucket.all?'checked':''}>Tous les calques</label>`+optRange('bucket.opacity','Opacité',1,100,1,' %',100)+`<input type="color" class="swatch" id="optColor" value="${S.color}" aria-label="Couleur de remplissage">`+h;
+ if(t==='bucket')h=optRange('bucket.tol','Tolérance',0,128,1,'')+`<label><input type="checkbox" data-chk="bucket.contiguous" ${o.bucket.contiguous?'checked':''}>Contigus</label><label><input type="checkbox" data-chk="bucket.all" ${o.bucket.all?'checked':''}>Tous les calques</label>`+optRange('bucket.opacity','Opacité',1,100,1,' %',100)+`<input type="color" class="swatch" id="optColor" value="${esc(S.color)}" aria-label="Couleur de remplissage">`+h;
  return h};
 PILL_ACT.range=rangeDialog;
 document.addEventListener('change',e=>{const k=e.target&&e.target.dataset&&e.target.dataset.chk;if(k&&k.startsWith('bucket.'))PREF.set('bucketOpts',OB.bucket)});
@@ -4818,7 +4916,7 @@ function combineDialog(){const d=S.doc;if(!d)return;
 const _se=shapeEdit;
 shapeEdit=function(L){
   if(L&&L.shp&&L.shp.type==='compound'){const orig=L.shp;let fin=false;
-    dialog({title:'Modifier la forme combinée',light:true,body:`<div class="dlg-grid"><label>Remplissage<input type="color" class="swatch" id="ccF" value="${orig.fill&&orig.fill[0]==='#'?orig.fill:'#ffffff'}"></label></div>`,
+    dialog({title:'Modifier la forme combinée',light:true,body:`<div class="dlg-grid"><label>Remplissage<input type="color" class="swatch" id="ccF" value="${esc(orig.fill&&orig.fill[0]==='#'?orig.fill:'#ffffff')}"></label></div>`,
       onOpen:el=>{$('#ccF',el).oninput=e=>{L.shp={...orig,fill:e.target.value};L.preview=pvCanvas(L);drawShapeTo(L.preview,L.shp);markComp()}},
       buttons:[{label:'Annuler',onClick:()=>{L.shp=orig;delete L.preview;PV.delete(L.id);markComp()}},{label:'Appliquer',primary:true,onClick:()=>{const v=$('#ccF').value;L.shp={...orig,fill:v};finalizeMeta(L);markComp();pushHistory('Modifier la forme');syncAll()}}]});return}
   return _se(L)};
@@ -4850,7 +4948,7 @@ Object.defineProperty(S,'doc',{configurable:true,enumerable:true,get(){return _d
   if(nt)unpark(nt);else tabs.push({doc:nd});
   draw()}});
 tabs.push(..._doc?[{doc:_doc}]:[]);
-function dirty(d){return !d.saved}
+
 async function activate(t){
   if(!t||t.doc===S.doc)return;
   if(S.drag)try{cancelDrag()}catch(e){}
@@ -4880,7 +4978,7 @@ closeDoc=function(){const i=curIdx(),nx=tabs[i+1]||tabs[i-1];
   if(tabs.length>1&&i>=0&&nx){closeTab(tabs[i]);return}
   _cd()};
 /* traitements par lot : documents temporaires hors onglets */
-['runBatch','importToLibrary'].forEach(n=>{try{const f=eval(n);if(typeof f!=='function')return;const w=async function(...a){mute++;try{return await f.apply(this,a)}finally{mute--;draw()}};eval(n+'=w')}catch(e){console.warn('tabs:',n,e)}});
+['runBatch','importToLibrary'].forEach(n=>{const f=window[n];if(typeof f!=='function'){console.warn('tabs:',n);return}window[n]=async function(...a){mute++;try{return await f.apply(this,a)}finally{mute--;draw()}}});
 
 /* barre d'onglets */
 const bar=document.createElement('div');bar.id='tabbar';bar.setAttribute('role','tablist');bar.setAttribute('aria-label','Photos ouvertes');
@@ -4942,7 +5040,7 @@ applyMasked=function(L,result,label){
     _am(L,result,label);L.fout=L.canvas;return}
   if(L){delete L.fbase;delete L.filters;delete L.fout}
   return _am(L,result,label)};
-function paramsOf(F,p){return F.params.map(q=>({q,v:p[q[0]]}))}
+
 function editEffect(L,i,after){
   const d=S.doc,list=L.filters,f=list[i],F=FILTERS[f.id];if(!F)return;
   const prefix=chain(L.fbase,list,i),p={...f.p};let tmr=null,fin=false;
@@ -5341,13 +5439,13 @@ function indexedDialog(){if(!S.doc)return;
 /* ---------- ICC export ---------- */
 async function iccExport(o){busy(true,'Conversion de couleurs…',null);await tick();
   try{const m=await CMS.load();const hp=CMS.open(o.bytes);if(!hp)throw new Error('profil ICC illisible');
-    const cs=String.fromCharCode(...o.bytes.subarray(16,20));if(cs!=='RGB ')throw new Error('profil '+cs.trim()+' : seuls les profils RVB sont pris en charge ici');
-    const T=CMS.ns.TYPE_RGBA_8,io=CS==='display-p3'?CMS.p3:CMS.srgb,fl=(o.bpc?0x2000:0)|0x4000;
+    const cs=String.fromCharCode(...o.bytes.subarray(16,20));if(cs==='CMYK')return await iccExportCMYK(o,m,hp);if(cs!=='RGB ')throw new Error('profil '+cs.trim()+' : seuls les profils RVB et CMJN sont pris en charge');
+    const T=CMS.ns.TYPE_RGBA_8,io=CS==='display-p3'?CMS.p3:CMS.srgb,fl=o.bpc?0x2000:0;
     const xf=m.cmsCreateTransform(io,T,hp,T,o.intent,fl);if(!xf)throw new Error('transformation impossible avec ce profil');
-    let c=await renderDoc(1);if(o.fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}
-    const g=cx(c),id=g.getImageData(0,0,c.width,c.height),n=c.width*c.height,CH=1<<20;
+    let c,g,id;try{c=await renderDoc(1);if(o.fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}
+    g=cx(c);id=g.getImageData(0,0,c.width,c.height);const n=c.width*c.height,CH=1<<20;
     for(let s=0;s<n;s+=CH){const k=Math.min(CH,n-s),part=id.data.subarray(s*4,(s+k)*4),out=m.cmsDoTransform(xf,part,k);for(let i=3;i<out.length;i+=4)out[i]=part[i];id.data.set(out,s*4);await tick()}
-    m.cmsDeleteTransform(xf);g.putImageData(id,0,0);
+    }finally{m.cmsDeleteTransform(xf)}g.putImageData(id,0,0);
     let blob=await new Promise(r=>c.toBlob(r,'image/'+o.fmt,o.q));
     let ex=null;try{ex=S.doc.exif?exifForExport(S.doc.exif,c.width,c.height):null}catch(e){}if(o.fmt==='jpeg')blob=await window.PrismFx.jpegMetaICC(blob,ex,o.bytes);
     else{const u=new Uint8Array(await blob.arrayBuffer()),v=new DataView(u.buffer),ih=8+12+v.getUint32(8),nm=new TextEncoder().encode((o.name||'profil').slice(0,40)),z=await zlib(o.bytes),ch=new Uint8Array(nm.length+2+z.length);ch.set(nm);ch.set(z,nm.length+2);
@@ -5356,8 +5454,22 @@ async function iccExport(o){busy(true,'Conversion de couleurs…',null);await ti
       blob=await pngWithExif(new Blob(parts,{type:'image/png'}),ex)}
     busy(false);await saveFile(blob,(S.doc.name||'image').replace(/\.[a-z0-9]+$/i,'')+'-'+(o.name||'icc').replace(/[^\w-]+/g,'_')+'.'+(o.fmt==='jpeg'?'jpg':'png'))
   }catch(e){busy(false);console.error(e);toast('Export impossible : '+(e.message||e),5000)}}
+/* CMYK (CMJN) for print: the photo is flattened on white, converted with the printer's profile and written as a CMYK TIFF carrying that profile */
+async function iccExportCMYK(o,m,hp){const io=CS==='display-p3'?CMS.p3:CMS.srgb,xf=m.cmsCreateTransform(io,CMS.ns.TYPE_RGB_8,hp,CMS.ns.TYPE_CMYK_8,o.intent,o.bpc?0x2000:0);if(!xf)throw new Error('transformation impossible avec ce profil');
+  let cmyk,W,H;try{const c0=await renderDoc(1);W=c0.width;H=c0.height;const c=mk(W,H),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(c0,0,0);
+  const a=g.getImageData(0,0,W,H).data,n=W*H,CH=1<<20,rgb=new Uint8Array(Math.min(CH,n)*3);cmyk=new Uint8Array(n*4);
+  for(let s=0;s<n;s+=CH){const k=Math.min(CH,n-s);for(let i=0;i<k;i++){const j=(s+i)*4;rgb[i*3]=a[j];rgb[i*3+1]=a[j+1];rgb[i*3+2]=a[j+2]}
+    const out=m.cmsDoTransform(xf,rgb.subarray(0,k*3),k);cmyk.set(out.subarray(0,k*4),s*4);busy(true,'Conversion en CMJN…',s/n);await tick()}
+  }finally{m.cmsDeleteTransform(xf)}const blob=await encodeTIFFCMYK(cmyk,W,H,o.bytes);busy(false);
+  await saveFile(blob,(S.doc.name||'image').replace(/\.[a-z0-9]+$/i,'')+'-'+(o.name||'cmjn').replace(/[^\w-]+/g,'_')+'.tif')}
+async function encodeTIFFCMYK(pix,w,h,icc){const comp=await zlib(pix),tags=[],T=(id,type,count,val)=>tags.push({id,type,count,val});
+  const nT=12,ifd=8,ifdLen=2+nT*12+4,bpsOff=ifd+ifdLen,iccOff=bpsOff+8,dataOff=iccOff+icc.length+(icc.length&1);
+  T(256,4,1,w);T(257,4,1,h);T(258,3,4,bpsOff);T(259,3,1,8);T(262,3,1,5);T(273,4,1,dataOff);T(277,3,1,4);T(278,4,1,h);T(279,4,1,comp.length);T(284,3,1,1);T(332,3,1,1);T(34675,7,icc.length,iccOff);
+  const head=new Uint8Array(dataOff),v=new DataView(head.buffer);head[0]=73;head[1]=73;v.setUint16(2,42,true);v.setUint32(4,ifd,true);v.setUint16(ifd,nT,true);
+  tags.forEach((t,i)=>{const o=ifd+2+i*12;v.setUint16(o,t.id,true);v.setUint16(o+2,t.type,true);v.setUint32(o+4,t.count,true);if(t.type===3&&t.count===1)v.setUint16(o+8,t.val,true);else v.setUint32(o+8,t.val,true)});v.setUint32(ifd+2+nT*12,0,true);
+  for(let c=0;c<4;c++)v.setUint16(bpsOff+c*2,8,true);head.set(icc,iccOff);return new Blob([head,comp],{type:'image/tiff'})}
 async function iccDialog(){if(!S.doc)return;let bytes=null,name='';if(await proofLoadSaved()){bytes=PROOF.bytes;name=PROOF.name}
-  dialog({title:'Exporter avec un profil ICC',light:true,body:`<p class="muted" style="margin:0 0 8px">Convertit les couleurs vers n’importe quel profil RVB (écran, labo photo, espace de travail) et l’intègre au fichier. Le profil reste sur cet appareil.</p>
+  dialog({title:'Exporter avec un profil ICC',light:true,body:`<p class="muted" style="margin:0 0 8px">Convertit les couleurs vers un profil RVB (écran, labo photo) ou CMJN (imprimeur) et l’intègre au fichier. Avec un profil CMJN, le fichier est un TIFF CMJN prêt pour l’impression. Le profil reste sur cet appareil.</p>
   <div class="inline"><button class="btn sm" id="icPick">Choisir un profil ICC…</button><span id="icName" class="muted">${name?esc(name):'Aucun profil'}</span></div>
   <label class="field">Format<select id="icF"><option value="jpeg">JPEG</option><option value="png">PNG</option></select></label>
   <label class="field">Intention<select id="icI"><option value="0">Perceptuelle</option><option value="1" selected>Colorimétrie relative</option><option value="2">Saturation</option><option value="3">Colorimétrie absolue</option></select></label>
@@ -6237,17 +6349,32 @@ function boxBlur(a,w,h,r){const t=new Float32Array(a.length),o=new Float32Array(
   return o}
 
 async function fuseExposures(files){busy(true,'Fusion des expositions…',0);await tick();
-  try{const imgs=[];for(const f of files)imgs.push(await loadScaled(f,3200));const W=imgs[0].width,H=imgs[0].height;let moved=0;
+  try{const imgs=[];const cap=(navigator.deviceMemory||8)>=8&&!IS_IOS?5000:3200;for(const f of files)imgs.push(await loadScaled(f,cap));const W=imgs[0].width,H=imgs[0].height;let moved=0;
     for(let k=1;k<imgs.length;k++){const sh=alignShift(imgs[0],imgs[k]);if(Math.abs(sh.x)>=.5||Math.abs(sh.y)>=.5){const t2=mk(W,H);const g=cx(t2);g.imageSmoothingQuality='high';g.drawImage(sameSize(imgs[0],imgs[k]),sh.x,sh.y);imgs[k]=t2;moved++}else imgs[k]=sameSize(imgs[0],imgs[k]);busy(true,'Alignement des photos…',k/imgs.length/2);await tick()}
-    const datas=imgs.map(c=>cx(c).getImageData(0,0,W,H).data);
-    const n=W*H,ws=[];let k=0;
-    for(const d of datas){const w=new Float32Array(n),gray=new Float32Array(n);
+    const datas=imgs.map(c=>cx(c).getImageData(0,0,W,H).data),n=W*H,N=datas.length;
+    /* Mertens exposure fusion: per-pixel weights (contrast × saturation × well-exposedness), blended through Laplacian pyramids so that no halo appears */
+    const ws=[];for(let k=0;k<N;k++){const d=datas[k],w=new Float32Array(n),gray=new Float32Array(n);
       for(let i=0;i<n;i++){const r=d[i*4]/255,g=d[i*4+1]/255,b=d[i*4+2]/255;gray[i]=.299*r+.587*g+.114*b;const mean=(r+g+b)/3,sat=Math.sqrt(((r-mean)**2+(g-mean)**2+(b-mean)**2)/3);
-        const ex=Math.exp(-((r-.5)**2+(g-.5)**2+(b-.5)**2)/(2*.2*.2));w[i]=d[i*4+3]===0?1e-9:(sat+.02)*ex+1e-6}
-      for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,lap=Math.abs(4*gray[i]-gray[i-1]-gray[i+1]-gray[i-W]-gray[i+W]);w[i]*=(lap+.01)}
-      ws.push(boxBlur(w,W,H,Math.max(3,Math.round(Math.min(W,H)/80))));busy(true,'Fusion des expositions…',.5+(++k)/(datas.length*2));await tick()}
+        w[i]=d[i*4+3]===0?0:(sat+.03)*Math.exp(-((r-.5)**2+(g-.5)**2+(b-.5)**2)/(2*.2*.2))}
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,l=gray[x>0?i-1:i],r=gray[x<W-1?i+1:i],u=gray[y>0?i-W:i],dn=gray[y<H-1?i+W:i];w[i]=w[i]*(Math.abs(4*gray[i]-l-r-u-dn)+.02)+1e-12}
+      ws.push(w);busy(true,'Fusion des expositions…',.5+(k+1)/N*.15);await tick()}
+    for(let i=0;i<n;i++){let s=0;for(let k=0;k<N;k++)s+=ws[k][i];for(let k=0;k<N;k++)ws[k][i]/=s}
+    const blur5=(a,w,h)=>{const t=new Float32Array(w*h),o=new Float32Array(w*h),K=[1/16,4/16,6/16,4/16,1/16];
+      for(let y=0;y<h;y++){const r=y*w;for(let x=0;x<w;x++){let s=0;for(let k=-2;k<=2;k++){let xx=x+k;xx=xx<0?-xx:xx>=w?2*w-2-xx:xx;s+=a[r+Math.max(0,Math.min(w-1,xx))]*K[k+2]}t[r+x]=s}}
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0;for(let k=-2;k<=2;k++){let yy=y+k;yy=yy<0?-yy:yy>=h?2*h-2-yy:yy;s+=t[Math.max(0,Math.min(h-1,yy))*w+x]*K[k+2]}o[y*w+x]=s}return o};
+    const down=(a,w,h)=>{const b=blur5(a,w,h),w2=(w+1)>>1,h2=(h+1)>>1,o=new Float32Array(w2*h2);for(let y=0;y<h2;y++)for(let x=0;x<w2;x++)o[y*w2+x]=b[(2*y)*w+2*x];return o};
+    const up=(a,w2,h2,w,h)=>{const o=new Float32Array(w*h);for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2)o[y*w+x]=a[(y>>1)*w2+(x>>1)]*4;return blur5(o,w,h)};
+    const dims=[[W,H]];while(dims.length<12){const [w,h]=dims[dims.length-1];if(Math.min(w,h)<16)break;dims.push([(w+1)>>1,(h+1)>>1])}const LV=dims.length;
+    const res=[0,1,2].map(()=>dims.map(([w,h])=>new Float32Array(w*h)));
+    for(let k=0;k<N;k++){let wp=ws[k];const wpyr=[wp];for(let l=1;l<LV;l++){wp=down(wp,dims[l-1][0],dims[l-1][1]);wpyr.push(wp)}ws[k]=null;
+      for(let c=0;c<3;c++){let g=new Float32Array(n);const d=datas[k];for(let i=0;i<n;i++)g[i]=d[i*4+c]/255;
+        for(let l=0;l<LV;l++){const [w,h]=dims[l],R=res[c][l],Wl=wpyr[l];if(l===LV-1){for(let i=0;i<w*h;i++)R[i]+=Wl[i]*g[i];break}
+          const g2=down(g,w,h),u=up(g2,dims[l+1][0],dims[l+1][1],w,h);for(let i=0;i<w*h;i++)R[i]+=Wl[i]*(g[i]-u[i]);g=g2}}
+      busy(true,'Fusion des expositions…',.65+(k+1)/N*.3);await tick()}
     const out=mk(W,H),og=cx(out),oi=og.createImageData(W,H),od=oi.data;
-    for(let i=0;i<n;i++){let s=0;for(let j=0;j<ws.length;j++)s+=ws[j][i];let r=0,g=0,b=0;for(let j=0;j<ws.length;j++){const a=ws[j][i]/s;r+=datas[j][i*4]*a;g+=datas[j][i*4+1]*a;b+=datas[j][i*4+2]*a}od[i*4]=r;od[i*4+1]=g;od[i*4+2]=b;od[i*4+3]=255}
+    for(let c=0;c<3;c++){let a=res[c][LV-1];for(let l=LV-2;l>=0;l--){const [w,h]=dims[l],u=up(a,dims[l+1][0],dims[l+1][1],w,h),R=res[c][l];for(let i=0;i<w*h;i++)u[i]+=R[i];a=u}
+      for(let i=0;i<n;i++)od[i*4+c]=Math.max(0,Math.min(255,a[i]*255))}
+    for(let i=0;i<n;i++)od[i*4+3]=255;
     og.putImageData(oi,0,0);busy(false);setDoc(out,'fusion-expositions.jpg',{});toast('Expositions fusionnées'+(moved?' (alignement corrigé sur '+moved+' photo'+(moved>1?'s':'')+')':'')+'. Un petit décalage est corrigé, pas une rotation.',6000)
   }catch(e){busy(false);console.error(e);toast('Fusion impossible : '+(e.message||e),5000)}}
 async function fusionDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fuseExposures(fs)}
@@ -7936,7 +8063,7 @@ optTool.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&optToo
 const more=document.createElement('div');more.id='w47more';more.hidden=true;
 const moreBtn=document.createElement('button');moreBtn.type='button';moreBtn.id='w47moreBtn';moreBtn.hidden=true;moreBtn.setAttribute('aria-haspopup','true');moreBtn.setAttribute('aria-expanded','false');
 const OV={busy:false,open:false};
-const isPinned=n=>n.id==='cropApply'||n.id==='cropReset'||(n.matches&&n.matches('[data-act=apply],[data-act=reset]'));
+const isPinned=n=>n.id==='cropApply'||n.id==='cropReset'||(n.matches&&n.matches('[data-act=apply],[data-act=reset],[data-pin]'));
 const isKeep=n=>n.id==='srcBtn';
 const isCtl=n=>n.nodeType===1&&n!==more&&n!==moreBtn&&!n.classList.contains('tname')&&!n.classList.contains('hint')&&!n.classList.contains('kbhint');
 function closeMore(){OV.open=false;more.hidden=true;moreBtn.setAttribute('aria-expanded','false');moreBtn.classList.remove('on')}
@@ -8898,7 +9025,7 @@ const loadRG=async()=>{
   if(RG.m)return RG.m;
   if(!window.tf)await loadScript(asset('ai/tf.min.js'));const tf=window.tf;
   try{await tf.setBackend('webgl')}catch(e){}await tf.ready();
-  const [meta,buf]=await Promise.all([fetch(asset('ai/realesr/meta.json')).then(r=>r.json()),fetch(asset('ai/realesr/weights.wasm')).then(r=>r.arrayBuffer())]);
+  const [meta,buf]=await Promise.all([fetch(asset('ai/realesr/meta.json')).then(r=>{if(!r.ok)throw new Error('modèle '+r.status);return r.json()}),fetch(asset('ai/realesr/weights.wasm')).then(r=>{if(!r.ok)throw new Error('modèle '+r.status);return r.arrayBuffer()})]);
   const f=new Float32Array(buf);let off=0;const W={};
   for(const [k,sh] of meta){const n=sh.reduce((a,b)=>a*b,1);W[k]=[f.subarray(off,off+n),sh];off+=n}
   const conv=i=>{const [d,sh]=W[`body.${i}.weight`],[b]=W[`body.${i}.bias`],[O,I,kh,kw]=sh;
@@ -8941,7 +9068,7 @@ upscaleCanvas=async function(src,scale,model,onP){
 }
 
 
-window.PRISM_VERSION="0.4.0";
+window.PRISM_VERSION="0.5.0";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {
@@ -8962,9 +9089,14 @@ self.onmessage=async e=>{const m=e.data;
   catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
 DN.abs=u=>new URL(u,location.href).href;
 DN.load=()=>DN.sess?Promise.resolve(DN.sess):(DN.loadP||(DN.loadP=DN._load().finally(()=>{DN.loadP=null})));
+/* application de bureau : le moteur IA natif (carte graphique DirectML / Core ML) passe avant le moteur web */
+DN._native=async()=>{const N=window.PrismNAI;if(!N||!(await N.ok()))return null;try{
+    const s=await N.fromChunks([...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),v=>busy(true,'Chargement du modèle de débruitage…',v*0.9));
+    DN.nat=s;DN.sess=s;DN.threads=navigator.hardwareConcurrency||1;DN.lastEp='native-'+s.__ep;return s}catch(e){console.warn('IA native, débruitage :',e);return null}};
 DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);
-  let w;try{w=new Worker(URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'})))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
+  {const s=await DN._native();if(s){DN.loadRes=null;res(s);return}}
+  let w;try{w=new Worker(DN.wurl||(DN.wurl=URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'}))))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
   const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   w.onmessage=e=>{const m=e.data;
     if(m.t==='prog'){DN.busyCancel(true);busy(true,m.prep?'Préparation du modèle…':'Téléchargement du modèle de débruitage (43 Mo, une seule fois)…',m.v);DN.busyCancel(true)}
@@ -8974,7 +9106,7 @@ DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
 DN.pend=new Map();DN.rid=0;
 DN._onmsg=e=>{const m=e.data,p=DN.pend.get(m.id);if(!p)return;DN.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
-DN.tile=(f,dims)=>new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
+DN.tile=(f,dims)=>DN.nat?DN.nat.run({[DN.nat.inputNames[0]]:{data:f,dims,type:'float32'}}).then(o=>o[DN.nat.outputNames[0]].data):new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
 /* annulation immédiate : on arrête le worker (le modèle sera rechargé au prochain usage) */
 DN.kill=()=>{if(DN.loadRes){DN.loadRes(null);DN.loadRes=null}if(DN.w){DN.w.terminate();DN.w=null;DN.sess=null}DN.pend.forEach(p=>p.rej(new Error('annulé')));DN.pend.clear()};
 /* indice miroir (bords de l'image) */
@@ -9045,6 +9177,106 @@ DN.ask=(d,L,img,den)=>{const W=img.width,H=img.height,orig=L.canvas;let k=1,tmr=
 {const _fi=MENU2.filter.items;
  MENU2.filter.items=function(){const a=_fi.apply(this,arguments),it=MI('Débruitage IA…',{icon:'filter',dis:S.doc?false:NODOC,fn:DN.start});
   return a.map(x=>x&&x.label==='Netteté et bruit'&&typeof x.sub==='function'?{...x,sub:()=>[...x.sub(),it]}:x)}}
+window.PrismDN=DN;
+
+}
+
+/* ===== feat: feat/aiseg.js ===== */
+{
+/* ===== 0.5: AI masks by category.
+   A scene model (DeepLabv3+ Xception trained on ADE20K: 150 kinds of things) gives the sky, people, vegetation, water, mountains,
+   buildings and ground; a people model (MediaPipe selfie multiclass) splits the people it finds into face, skin, hair and clothes.
+   Both run on a small copy of the photo; the masks are then snapped to the photo's own edges (guided filter). ===== */
+
+const SEG={sess:{},P:{},scene:null,parts:null};
+SEG.GROUPS={sky:[3],people:[13],vegetation:[5,10,18,30,67,73],water:[22,27,61,105,110,114,129],mountains:[17,35,69],
+  buildings:[1,2,9,15,26,43,49,52,62,79,80,85,87,107],ground:[4,7,12,14,47,53,54,55,92,95,122]};
+SEG.PARTS={hair:[1],skin:[2,3],face:[3],clothes:[4,5]};
+SEG.LABEL={subj:'Sujet',sky:'Ciel',people:'Personnes',bg:'Arrière-plan',vegetation:'Végétation',water:'Eau',mountains:'Montagnes',buildings:'Bâtiments',ground:'Sol',face:'Visage',skin:'Peau',hair:'Cheveux',clothes:'Vêtements'};
+
+async function ortReady(){if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');{const bin=await ORTX.binary();if(bin)ort.env.wasm.wasmBinary=bin}
+  ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;return ort}
+function session(dir,label,mb){if(SEG.sess[dir])return Promise.resolve(SEG.sess[dir]);if(SEG.P[dir])return SEG.P[dir];
+  return SEG.P[dir]=(async()=>{try{const ort=await ortReady();
+      const {buf}=await AI.fetchModel(dir,label,p=>busy(true,`Téléchargement du modèle ${label} (${mb} Mo, une seule fois)…`,p*0.95));
+      busy(true,'Préparation du modèle…',0.97);const s=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all'});SEG.sess[dir]=s;return s}
+    catch(e){console.error(e);toast(`Le modèle ${label} n’a pas pu se charger : `+(e.message||e),5000);return null}
+    finally{SEG.P[dir]=null}})()}
+const docKey=d=>d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();
+const sameKey=(a,b)=>a.length===b.length&&a.every((v,i)=>v===b[i]);
+
+// scene probabilities on a 129 × 129 grid (the photo letterboxed into 513 × 513, as the model was trained)
+async function scene(){const d=S.doc;if(!d)return null;const key=docKey(d),C=SEG.scene;if(C&&C.d===d&&sameKey(C.key,key))return C;
+  const sess=await session('ai/ade1/','des scènes',82);if(!sess||S.doc!==d)return null;
+  busy(true,'Analyse de la scène…',null);await tick();
+  try{const R=513,k=R/Math.max(d.w,d.h),w=Math.max(1,Math.round(d.w*k)),h=Math.max(1,Math.round(d.h*k)),t=mk(R,R),g=rx(t);g.fillStyle='rgb(128,128,128)';g.fillRect(0,0,R,R);g.imageSmoothingQuality='high';g.drawImage(flatSync(),0,0,w,h);
+    const a=g.getImageData(0,0,R,R).data,x=new Uint8Array(R*R*3);for(let i=0,j=0;i<a.length;i+=4){x[j++]=a[i];x[j++]=a[i+1];x[j++]=a[i+2]}
+    const ort=window.ort,out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('uint8',x,[1,R,R,3])}),L=out[sess.outputNames[0]].data,G=129,K=151;
+    const gw=Math.min(G,Math.ceil(w*(G-1)/(R-1))+1),gh=Math.min(G,Math.ceil(h*(G-1)/(R-1))+1),P=new Float32Array(gw*gh*K);
+    for(let y=0;y<gh;y++)for(let x0=0;x0<gw;x0++){const o=(y*G+x0)*K,q=(y*gw+x0)*K;let mx=-1e9;for(let c=0;c<K;c++)if(L[o+c]>mx)mx=L[o+c];let s=0;for(let c=0;c<K;c++){const e=Math.exp(L[o+c]-mx);P[q+c]=e;s+=e}for(let c=0;c<K;c++)P[q+c]/=s}
+    if(S.doc!==d)return null;return SEG.scene={d,key,P,gw,gh,K}}
+  catch(e){console.error(e);toast('Analyse de la scène impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
+function groupGrid(sc,classes){const n=sc.gw*sc.gh,o=new Float32Array(n);for(let i=0;i<n;i++){let s=0;for(const c of classes)s+=sc.P[i*sc.K+c];o[i]=s>1?1:s}return o}
+// probability grid -> W × H values (bilinear), grid point (gw-1, gh-1) on the far edge of the letterboxed photo
+function gridTo(grid,gw,gh,W,H){const o=new Float32Array(W*H);for(let y=0;y<H;y++){const fy=Math.min(gh-1,y/(H-1||1)*(gh-1)),y0=Math.floor(fy),y1=Math.min(gh-1,y0+1),ty=fy-y0;
+    for(let x=0;x<W;x++){const fx=Math.min(gw-1,x/(W-1||1)*(gw-1)),x0=Math.floor(fx),x1=Math.min(gw-1,x0+1),tx=fx-x0;
+      o[y*W+x]=(grid[y0*gw+x0]*(1-tx)+grid[y0*gw+x1]*tx)*(1-ty)+(grid[y1*gw+x0]*(1-tx)+grid[y1*gw+x1]*tx)*ty}}return o}
+function u8Mask(v,W,H){const c=mk(W,H),g=cx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=v[i]*255}g.putImageData(im,0,0);return c}
+// coarse probabilities -> full-size mask snapped to the photo's edges
+async function snap(prob,W,H,coarse){const d=S.doc,long=Math.max(d.w,d.h),ps=Math.min(1,2048/long),small=u8Mask(prob,W,H),up=mk(d.w,d.h),ug=cx(up);ug.imageSmoothingQuality='high';ug.drawImage(small,0,0,d.w,d.h);
+  try{busy(true,'Affinage du contour…',null);await tick();return await refineMask(up,{radius:clamp(Math.round(long*ps/coarse),3,24),eps:0.0006,contrast:15,shift:0},ps)}catch(e){console.warn(e);return up}finally{busy(false)}}
+const covered=m=>{if(!m)return false;const b=maskBBox(m);return !!b};
+
+async function sceneMask(kind){const d=S.doc,sc=await scene();if(!sc||S.doc!==d)return null;const gr=groupGrid(sc,SEG.GROUPS[kind]);let mx=0;for(const v of gr)if(v>mx)mx=v;if(mx<0.4)return null;
+  return snap(gr,sc.gw,sc.gh,160)}
+// people parts: the people model looks at a square crop around the people the scene model found (or the subject)
+async function partsMask(kind){const d=S.doc;let box=null;const sc=await scene();if(S.doc!==d)return null;
+  if(sc){const gr=groupGrid(sc,SEG.GROUPS.people);let x0=1e9,y0=1e9,x1=-1,y1=-1;for(let y=0;y<sc.gh;y++)for(let x=0;x<sc.gw;x++)if(gr[y*sc.gw+x]>0.5){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+    if(x1>=0){const sx=d.w/(sc.gw-1||1),sy=d.h/(sc.gh-1||1);box={x0:(x0-1)*sx,y0:(y0-1)*sy,x1:(x1+1)*sx,y1:(y1+1)*sy}}}
+  if(!box){// the scene model saw no one: a portrait close-up often reads as a single subject
+    const m=await AI.subjectMask(d);if(!m||S.doc!==d)return null;const W=m.width,H=m.height,a=rx(m).getImageData(0,0,W,H).data;let x0=W,y0=H,x1=-1,y1=-1;
+    for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2)if(a[(y*W+x)*4+3]>128){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+    if(x1<0)return null;const fx=d.w/W,fy=d.h/H;box={x0:x0*fx,y0:y0*fy,x1:(x1+2)*fx,y1:(y1+2)*fy}}
+  const sess=await session('ai/people1/','des personnes',8);if(!sess||S.doc!==d)return null;
+  busy(true,'Analyse des personnes…',null);await tick();
+  try{const R=256,flat=flatSync();
+    const run=async(bx,by,side)=>{const t=mk(R,R),g=rx(t);g.fillStyle='#000';g.fillRect(0,0,R,R);g.imageSmoothingQuality='high';g.drawImage(flat,bx,by,side,side,0,0,R,R);
+      const a=g.getImageData(0,0,R,R).data,x=new Float32Array(R*R*3);for(let i=0,j=0;i<a.length;i+=4){x[j++]=a[i]/255;x[j++]=a[i+1]/255;x[j++]=a[i+2]/255}
+      const ort=window.ort,out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',x,[1,R,R,3])});return out[sess.outputNames[0]].data};
+    const cxm=(box.x0+box.x1)/2,cym=(box.y0+box.y1)/2;let side=Math.max(box.x1-box.x0,box.y1-box.y0)*1.08,bx=cxm-side/2,by=cym-side/2,o=await run(bx,by,side);
+    // a small head in a full-length shot: a second look, closer, around the face
+    if(kind==='face'||kind==='hair'){let x0=R,y0=R,x1=-1,y1=-1;for(let y=0;y<R;y++)for(let x=0;x<R;x++)if(o[(y*R+x)*6+3]+o[(y*R+x)*6+1]>0.5){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+      if(x1>=0&&Math.max(x1-x0,y1-y0)<R*0.3){const k=side/R,fc=bx+(x0+x1)/2*k,fy=by+(y0+y1)/2*k,s2=Math.max(x1-x0,y1-y0)*k*2.6;bx=fc-s2/2;by=fy-s2/2;side=s2;o=await run(bx,by,side)}}
+    const cls=SEG.PARTS[kind],pr=new Float32Array(R*R);let mx=0;for(let i=0;i<R*R;i++){let s=0;for(const c of cls)s+=o[i*6+c];pr[i]=s;if(s>mx)mx=s}if(mx<0.4)return null;
+    if(S.doc!==d)return null;
+    // crop -> document
+    const small=u8Mask(pr,R,R),full=mk(d.w,d.h),fg=cx(full);fg.imageSmoothingQuality='high';fg.drawImage(small,bx,by,side,side);
+    const long=Math.max(d.w,d.h),ps=Math.min(1,2048/long);busy(true,'Affinage du contour…',null);await tick();
+    try{return await refineMask(full,{radius:clamp(Math.round(side*ps/256),2,16),eps:0.0006,contrast:15,shift:0},ps)}catch(e){console.warn(e);return full}}
+  catch(e){console.error(e);toast('Analyse des personnes impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
+
+// one entry point for every kind; null (with a message) when the photo has none
+AI.categoryMask=async kind=>{let m=null;
+  if(kind==='subj')m=await AI.subjectMask();
+  else if(kind==='bg'){const s=await AI.subjectMask();if(s){m=fullMask();const g=cx(m);g.globalCompositeOperation='destination-out';g.drawImage(s,0,0)}}
+  else if(kind==='sky')m=await AI.skyMask();
+  else if(SEG.GROUPS[kind])m=await sceneMask(kind);
+  else if(SEG.PARTS[kind])m=await partsMask(kind);
+  if(m&&!covered(m))m=null;
+  if(!m&&kind!=='subj')toast(`${SEG.LABEL[kind]||kind} : rien de net trouvé dans cette photo`,4000);
+  return m};
+AI.categories=()=>['subj','sky','people','bg','vegetation','water','mountains','buildings','ground','face','skin','hair','clothes'];
+AI.categoryLabel=k=>SEG.LABEL[k]||k;
+AI.scene=scene;AI.ortSession=session;
+
+// the sky selection keeps its colour analysis for the fine detail and takes the scene model's word on what is sky
+AI.skyPrior=async(W,H)=>{const sc=await scene();if(!sc)return null;return gridTo(groupGrid(sc,SEG.GROUPS.sky),sc.gw,sc.gh,W,H)};
+
+// Sélection > Sélectionner (IA) : every kind
+{const mi=MENU2.select.items;MENU2.select.items=()=>{const a=mi();if(a.some(x=>x&&x.label==='Sélectionner par catégorie (IA)'))return a;
+  let i=a.findIndex(x=>x&&x.label==='Sélectionner le ciel');if(i<0)i=a.findIndex(x=>x&&x.label&&/Sélectionner le sujet/.test(x.label));
+  const sub=()=>AI.categories().filter(k=>k!=='subj'&&k!=='sky').map(k=>MI(SEG.LABEL[k],{fn:async()=>{const d=S.doc;const m=await AI.categoryMask(k);if(!m||S.doc!==d)return;combineSel(m,'new','Sélectionner : '+SEG.LABEL[k]);toast('Sélection : '+SEG.LABEL[k])}}));
+  a.splice(i<0?a.length:i+1,0,MI('Sélectionner par catégorie (IA)',{icon:'subject',sub,dis:docDis()}));return a}}
 
 }
 
@@ -9290,6 +9522,7 @@ const tileSize=()=>(navigator.deviceMemory||8)>=8?64:48;
 let CANCEL=false;
 const fmtT=s=>s<90?Math.max(1,Math.round(s))+' s':s<5400?Math.round(s/60)+' min':(s/3600).toFixed(1).replace('.',',')+' h';
 async function benchRate(model){
+  if(model.onnx)return UPX.rate(model);
   if(X4.rate)return X4.rate;const tf=window.tf;
   const run=async n=>{const x=tf.randomUniform([1,n,n,3],0,255),t0=performance.now(),y=model.predict(x);await y.data();y.dispose();x.dispose();return performance.now()-t0};
   await run(8);const t=await run(16);X4.rate=t/256;return X4.rate}
@@ -9327,7 +9560,7 @@ AI.upscale=async function(scale,quality){
   try{
     let m;
     AI.setState('up','load',0);busy(true,'Chargement du modèle haute qualité…',0.05);
-    try{m=await loadX4(p=>busy(true,'Chargement du modèle haute qualité…',p))}catch(e){console.error(e);AI.setState('up','error');busy(false);toast('Le modèle haute qualité n’a pas pu se charger : '+(e.message||e),5000);return}
+    try{m=(await UPX.load('x4p'))||await loadX4(p=>busy(true,'Chargement du modèle haute qualité…',p))}catch(e){console.error(e);AI.setState('up','error');busy(false);toast('Le modèle haute qualité n’a pas pu se charger : '+(e.message||e),5000);return}
     AI.setState('up','ready');
     busy(true,'Estimation de la durée…',null);await tick();
     const rate=await benchRate(m),px=d.layers.filter(l=>l.kind==='pixel').length*d.w*d.h,est=rate*px/1000;
@@ -9362,6 +9595,37 @@ function upDialog(){
 window.__x4p.dialog=upDialog;
 const _mi=MENU2.image.items;
 MENU2.image.items=()=>{const a=_mi();const it=a.find(x=>x&&x.label&&/^Agrandir ×2 avec l’IA/.test(x.label));if(it)it.fn=upDialog;return a};
+
+/* ONNX engine: the same two Real-ESRGAN networks as ONNX graphs (ai/up-compact1, ai/up-x4p1), run by the app's native engine
+   (graphics card through DirectML / Core ML) or by WebGPU in the browser. Without either, TensorFlow.js (WebGL) above stays in use. */
+const UPX={m:{},P:{},DIR:{fast:['ai/up-compact1/','d’agrandissement',3],x4p:['ai/up-x4p1/','haute qualité',34]}};
+UPX.ok=async()=>{if(PREF.get('upOnnx',true)===false)return false;const N=window.PrismNAI;return !!((N&&await N.ok())||await PrismORT.gpuP())};
+UPX.load=async kind=>{if(!(await UPX.ok()))return null;if(UPX.m[kind])return UPX.m[kind];
+  const [dir,label,mb]=UPX.DIR[kind],s=await AI.ortSession(dir,label,mb);busy(false);if(!s)return null;
+  return UPX.m[kind]={onnx:true,native:4,x4p:kind==='x4p',sess:s,T:kind==='x4p'?128:256,P:16}};
+UPX.tile=async(m,c)=>{const w=c.width,h=c.height,a=cx(c).getImageData(0,0,w,h).data,n=w*h,f=new Float32Array(3*n);
+  for(let i=0;i<n;i++){f[i]=a[i*4]/255;f[i+n]=a[i*4+1]/255;f[i+2*n]=a[i*4+2]/255}
+  const s=m.sess,ort=window.ort,x=ort?new ort.Tensor('float32',f,[1,3,h,w]):{data:f,dims:[1,3,h,w],type:'float32'};
+  const y=(await s.run({[s.inputNames[0]]:x}))[s.outputNames[0]].data,W=w*4,H=h*4,N=W*H,im=new ImageData(W,H),o=im.data;
+  for(let i=0;i<N;i++){o[i*4]=y[i]*255;o[i*4+1]=y[i+N]*255;o[i*4+2]=y[i+2*N]*255;o[i*4+3]=255}return im};
+/* time per source pixel, from one tile (warms the engine up too) */
+UPX.rate=async m=>{if(m.rate)return m.rate;const c=mk(m.T,m.T);cx(c).fillStyle='#888';cx(c).fillRect(0,0,m.T,m.T);await UPX.tile(m,c);const t0=performance.now();await UPX.tile(m,c);return m.rate=(performance.now()-t0)/(m.T*m.T)};
+UPX.canvas=async(src,scale,m,onP)=>{const W=src.width,H=src.height,N=4,T=m.T,P=m.P,out=mk(W*scale,H*scale),og=cx(out);og.imageSmoothingEnabled=true;og.imageSmoothingQuality='high';
+  const nx=Math.ceil(W/T),ny=Math.ceil(H/T),tot=nx*ny,t0=performance.now();let k=0;
+  for(let ty=0;ty<ny;ty++)for(let tx=0;tx<nx;tx++){if(CANCEL)throw new Error('annulé');
+    const x0=tx*T,y0=ty*T,tw=Math.min(T,W-x0),th=Math.min(T,H-y0),px0=Math.max(0,x0-P),py0=Math.max(0,y0-P),px1=Math.min(W,x0+tw+P),py1=Math.min(H,y0+th+P),pw=px1-px0,ph=py1-py0;
+    const tc=scr('upin',pw,ph),tg=cx(tc);tg.clearRect(0,0,pw,ph);tg.drawImage(src,px0,py0,pw,ph,0,0,pw,ph);
+    const im=await UPX.tile(m,tc),oc=scr('upout',pw*N,ph*N);cx(oc).putImageData(im,0,0);
+    og.drawImage(oc,(x0-px0)*N,(y0-py0)*N,tw*N,th*N,x0*scale,y0*scale,tw*scale,th*scale);
+    k++;const el=(performance.now()-t0)/1000;onP&&onP(k/tot,el/k*(tot-k));await tick()}
+  const a=resample(src,W*scale,H*scale);og.globalCompositeOperation='destination-in';og.drawImage(a,0,0);return out};
+{const _uc=upscaleCanvas;upscaleCanvas=async function(src,scale,model,onP){if(model&&model.onnx)return UPX.canvas(src,scale,model,(p,eta)=>{AI._eta=eta;onP&&onP(p)});return _uc.apply(this,arguments)}}
+/* "Rapide" goes to the ONNX engine too, and can be cancelled with Échap like "Qualité maximale" */
+{const _eu=AI.ensureUp;AI.ensureUp=async function(scale){if(!AI._max){const m=await UPX.load('fast');if(m)return m}return _eu.apply(this,arguments)}}
+{const _u=AI.upscale;AI.upscale=async function(scale,quality){if(quality==='max')return _u.apply(this,arguments);if(AI._fBusy||AI._xBusy)return;AI._fBusy=true;CANCEL=false;
+  const onKey=e=>{if(e.key==='Escape'){CANCEL=true;e.stopPropagation()}};addEventListener('keydown',onKey,true);
+  try{await _u.apply(this,arguments);if(CANCEL)toast('Agrandissement annulé')}catch(e){if(!CANCEL)throw e;toast('Agrandissement annulé')}finally{AI._fBusy=false;CANCEL=false;removeEventListener('keydown',onKey,true);busy(false)}}}
+window.__x4p.onnx=UPX;
 }
 
 }
@@ -9393,8 +9657,13 @@ LM.avail=()=>{if(window.LAMA_DISABLE)return Promise.resolve(false);return LM.ava
     r=await fetch(u,{cache:'no-store'});if(!r.ok)return false;const m=JSON.parse(await r.text());if(!(m&&m.chunks>0))return false;LM.meta=m;return true}catch(e){return false}})())};
 LM.load=()=>LM.w?Promise.resolve(LM.w):(LM.loadP||(LM.loadP=LM._load().finally(()=>{LM.loadP=null})));
 LM._load=()=>new Promise(async res=>{LM.loadRes=res;
+  /* sans les infos du modèle, le chargement restait bloqué pour toujours */
+  if(!LM.meta&&!(await LM.avail())){res(null);return}
   busy(true,'Chargement du moteur IA…',0.02);LM.busyCancel(true);
-  let w;try{w=new Worker(URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'})))}catch(e){console.warn('lama',e);res(null);return}
+  /* application de bureau : moteur IA natif (carte graphique) d'abord */
+  {const N=window.PrismNAI;if(N&&await N.ok()){try{const s=await N.fromChunks([...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),v=>{busy(true,'Chargement du modèle de suppression…',v*0.9);LM.busyCancel(true)});
+      if(LM.loadRes!==res){s.release();return}LM.nat=s;LM.w=s;LM.ep='native-'+s.__ep;LM.threads=navigator.hardwareConcurrency||1;LM.loadRes=null;res(s);return}catch(e){console.warn('IA native, suppression :',e)}}}
+  let w;try{w=new Worker(LM.wurl||(LM.wurl=URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'}))))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   const fail=msg=>{console.warn('lama',msg);try{w.terminate()}catch(e){}LM.loadRes=null;res(null)};
   w.onmessage=e=>{const m=e.data;
@@ -9404,7 +9673,7 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   w.onerror=e=>fail(e.message||'worker');
   w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
 LM._onmsg=e=>{const m=e.data,p=LM.pend.get(m.id);if(!p)return;LM.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
-LM.infer=(img,mask,h,w)=>new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
+LM.infer=(img,mask,h,w)=>LM.nat?LM.nat.run({img:{data:img,dims:[1,3,h,w],type:'float32'},mask:{data:mask,dims:[1,1,h,w],type:'float32'}}).then(o=>new Float32Array(o[LM.nat.outputNames[0]].data)):new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
 /* annulation : pendant le chargement on arrête le worker ; pendant le calcul on abandonne le résultat (le modèle reste en mémoire pour la prochaine fois) */
 LM.cancel=()=>{LM.abort=true;if(LM.loadRes){const r=LM.loadRes;LM.loadRes=null;try{LM.loadW&&LM.loadW.terminate()}catch(e){}LM.loadW=null;r(null)}};
 LM.busyCancel=on=>{const b=document.querySelector('#busy>div');if(!b)return;let e=b.querySelector('.lm-cancel');if(on&&!e){e=document.createElement('button');e.className='btn sm lm-cancel';e.textContent='Annuler';e.style.marginTop='10px';e.onclick=()=>{e.disabled=true;e.textContent='Annulation…';LM.cancel()};b.appendChild(e)}else if(!on&&e)e.remove()};
@@ -9445,7 +9714,7 @@ LM.fill=async(L,maskC,bx)=>{const d=S.doc,W=L.canvas.width,H=L.canvas.height,P=L
   if(!o||LM.abort)return null;
   const dt=performance.now()-t0;LM.tpp=LM.tpp==null?dt/n:LM.tpp*.5+dt/n*.5;LM.last={ms:Math.round(dt),w:rw,h:rh,f:P.f};
   const res=mk(rw,rh),rg=cx(res),ri=rg.createImageData(rw,rh);
-  for(let i=0;i<n;i++){const k=i*4;if(hole[i]===1){ri.data[k]=Math.max(0,Math.min(255,o[i]*255+.5));ri.data[k+1]=Math.max(0,Math.min(255,o[i+n]*255+.5));ri.data[k+2]=Math.max(0,Math.min(255,o[i+2*n]*255+.5));ri.data[k+3]=255}}
+  for(let i=0;i<n;i++){const k=i*4;if(hole[i]===1){ri.data[k]=Math.max(0,Math.min(255,o[i]*255));ri.data[k+1]=Math.max(0,Math.min(255,o[i+n]*255));ri.data[k+2]=Math.max(0,Math.min(255,o[i+2*n]*255));ri.data[k+3]=255}}
   rg.putImageData(ri,0,0);return{res,plan:P}};
 /* brique commune : applique le résultat à L (même historique et même gestion de sélection que l'ancienne gomme) */
 LM.removeObject=async function(L,maskC,bx,clip,prev){const d=S.doc,doc0=d,h0=S.history[S.hi];
@@ -9498,8 +9767,10 @@ const PAR=[
  ['pv','Verticale',-100,100,1,0,''],
  ['ph','Horizontale',-100,100,1,0,'']];
 const DEF={};PAR.forEach(q=>DEF[q[0]]=q[5]);
+/* lens profile (lensfun), not shown as sliders: distortion polynomial in R=lfs·r (r: half-diagonal units), red/blue scale, vignetting k1..k3 in lvs·r */
+Object.assign(DEF,{lfs:0,l0:1,l1:0,l2:0,l3:0,l4:0,ltr:0,ltb:0,lvs:0,lv1:0,lv2:0,lv3:0});
 const NP=p=>{const o={};for(const k in DEF){const v=p&&p[k];o[k]=(typeof v==='number'&&isFinite(v))?v:DEF[k]}return o};
-const idle=p=>!p.dist&&!p.dist2&&!p.vig&&!p.car&&!p.cab&&!p.fr&&!p.pv&&!p.ph;
+const idle=p=>!p.dist&&!p.dist2&&!p.vig&&!p.car&&!p.cab&&!p.fr&&!p.pv&&!p.ph&&!p.lfs&&!p.lvs&&!p.ltr&&!p.ltb;
 const CLAMP=(v,a,b)=>v<a?a:v>b?b:v;
 
 /* ---------------- modèle géométrique (partagé par le GPU, le CPU et le calcul du zoom) ---------------- */
@@ -9507,7 +9778,8 @@ function model(w,h,p){
  const m={w,h,H:Math.hypot(w,h)/2,f:1.5,z:1};
  m.thx=CLAMP(p.pv/100,-1,1)*0.44;m.thy=CLAMP(p.ph/100,-1,1)*0.44;   /* 25° au maximum : le zoom de remplissage reste raisonnable */
  m.a=p.dist/100*0.35;m.b=p.dist2/100*0.35;
- m.kr=p.car*5e-5;m.kb=p.cab*5e-5;
+ m.kr=(1+p.car*5e-5)*(1+p.ltr)-1;m.kb=(1+p.cab*5e-5)*(1+p.ltb)-1;
+ m.ls=p.lfs;m.lc=[p.l0,p.l1,p.l2,p.l3,p.l4];m.lv=[p.lvs,p.lv1,p.lv2,p.lv3];
  m.fill=p.fill?1:0;
  m.va=p.vig/100;m.vmid=p.vmid/100;m.vhw=0.05+0.55*p.vfea/100;
  m.fr=p.fr/100;m.rad=Math.max(1,p.frw*Math.max(w,h)/2400);
@@ -9516,8 +9788,11 @@ function geo(m,u,v,o){   /* (u,v) normalisés par la demi-diagonale, sortie : po
  let x=u,y=v,z=m.f;
  if(m.thx){const c=Math.cos(m.thx),s=Math.sin(m.thx),y1=y*c-z*s,z1=y*s+z*c;y=y1;z=z1}
  if(m.thy){const c=Math.cos(m.thy),s=Math.sin(m.thy),x1=x*c+z*s,z1=-x*s+z*c;x=x1;z=z1}
- const k=m.f/Math.max(z,0.05),x2=x*k,y2=y*k,r2=x2*x2+y2*y2,fac=Math.max(1-m.a*r2-m.b*r2*r2,0.15);
+ const k=m.f/Math.max(z,0.05),x2=x*k,y2=y*k,r2=x2*x2+y2*y2,fac=Math.max(1-m.a*r2-m.b*r2*r2,0.15)*lfFac(m,r2);
  o[0]=x2*fac;o[1]=y2*fac}
+function lfFac(m,r2){if(!m.ls)return 1;const R=m.ls*Math.sqrt(r2),c=m.lc;return Math.max(c[0]+R*(c[1]+R*(c[2]+R*(c[3]+R*c[4]))),0.15)}
+/* profile vignetting: the lens darkens by V(r) in linear light; the photo is gamma-encoded, so the gain is V^(-1/2.2) */
+function lfVig(m,rs){const v=m.lv;if(!v[0])return 1;const r2=(rs*v[0])**2,V=1+r2*(v[1]+r2*(v[2]+r2*v[3]));return V>0.05?Math.pow(V,-1/2.2):1}
 function fitZoom(m){
  if(!m.fill)return 1;const o=[0,0],K=[0,m.kr,m.kb],w=m.w,h=m.h,H=m.H,N=48,pts=[];
  for(let i=0;i<=N;i++){const t=i/N;pts.push([(-w/2+t*w)/H,-h/2/H],[(-w/2+t*w)/H,h/2/H],[-w/2/H,(-h/2+t*h)/H],[w/2/H,(-h/2+t*h)/H])}
@@ -9534,7 +9809,7 @@ const VS=`#version 300 es
 in vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
 const FS1=`#version 300 es
 precision highp float;precision highp int;precision highp sampler2D;
-uniform sampler2D uSrc;uniform vec2 uSize,uRot,uDist,uCA;uniform vec3 uVig;uniform float uH,uZ,uF;uniform int uQ,uFill;
+uniform sampler2D uSrc;uniform vec2 uSize,uRot,uDist,uCA;uniform vec3 uVig;uniform float uH,uZ,uF;uniform int uQ,uFill;uniform vec2 uLs;uniform vec4 uLc,uLv;
 out vec4 o;
 vec4 tf(ivec2 p){p=clamp(p,ivec2(0),ivec2(uSize)-ivec2(1));vec4 t=texelFetch(uSrc,p,0);return vec4(t.rgb*t.a,t.a);}
 vec4 cr(float t){float t2=t*t,t3=t2*t;return vec4(-.5*t3+t2-.5*t,1.5*t3-2.5*t2+1.,-1.5*t3+2.*t2+.5*t,.5*t3-.5*t2);}
@@ -9549,7 +9824,8 @@ void main(){
  if(uRot.x!=0.){float c=cos(uRot.x),s=sin(uRot.x);d=vec3(d.x,d.y*c-d.z*s,d.y*s+d.z*c);}
  if(uRot.y!=0.){float c=cos(uRot.y),s=sin(uRot.y);d=vec3(d.x*c+d.z*s,d.y,-d.x*s+d.z*c);}
  vec2 u2=d.xy*(uF/max(d.z,.05));float r2=dot(u2,u2);
- vec2 q=u2*max(1.-uDist.x*r2-uDist.y*r2*r2,.15);
+ float fl=1.;if(uLs.x!=0.){float R=uLs.x*sqrt(r2);fl=max(uLs.y+R*(uLc.x+R*(uLc.y+R*(uLc.z+R*uLc.w))),.15);}
+ vec2 q=u2*max(1.-uDist.x*r2-uDist.y*r2*r2,.15)*fl;
  vec2 spG=uSize*.5+q*uH-.5;vec4 sg=samp(spG),sr=sg,sb=sg;
  if(uCA.x!=0.)sr=samp(uSize*.5+q*(1.+uCA.x)*uH-.5);
  if(uCA.y!=0.)sb=samp(uSize*.5+q*(1.+uCA.y)*uH-.5);
@@ -9557,6 +9833,7 @@ void main(){
  vec3 c=vec3(sr.r/max(sr.a,1e-4),sg.g/max(sg.a,1e-4),sb.b/max(sb.a,1e-4));
  if(sg.a<1e-4)c=vec3(0.);
  if(uVig.x!=0.){float t=smoothstep(uVig.y-uVig.z,uVig.y+uVig.z,length(q));float g=uVig.x>0.?1./(1.-.8*uVig.x*t):1.+uVig.x*t;c*=g;}
+ if(uLv.x!=0.){float r2v=pow(length(q)*uLv.x,2.);float V=1.+r2v*(uLv.y+r2v*(uLv.z+r2v*uLv.w));if(V>.05)c*=pow(V,-1./2.2);}
  o=vec4(clamp(c,0.,1.),a);}`;
 const FS2=`#version 300 es
 precision highp float;precision highp int;precision highp sampler2D;
@@ -9607,7 +9884,7 @@ function* glRender(src,p,Q){
   gl.useProgram(G.p1);gl.bindVertexArray(G.vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tS);
   const U=n=>gl.getUniformLocation(G.p1,n);
   gl.uniform1i(U('uSrc'),0);gl.uniform2f(U('uSize'),w,h);gl.uniform2f(U('uRot'),m.thx,m.thy);gl.uniform2f(U('uDist'),m.a,m.b);gl.uniform2f(U('uCA'),m.kr,m.kb);
-  gl.uniform3f(U('uVig'),m.va,m.vmid,m.vhw);gl.uniform1f(U('uH'),m.H);gl.uniform1f(U('uZ'),m.z);gl.uniform1f(U('uF'),m.f);gl.uniform1i(U('uQ'),Q?1:0);gl.uniform1i(U('uFill'),m.fill);
+  gl.uniform3f(U('uVig'),m.va,m.vmid,m.vhw);gl.uniform1f(U('uH'),m.H);gl.uniform1f(U('uZ'),m.z);gl.uniform1f(U('uF'),m.f);gl.uniform1i(U('uQ'),Q?1:0);gl.uniform1i(U('uFill'),m.fill);gl.uniform2f(U('uLs'),m.ls,m.lc[0]);gl.uniform4f(U('uLc'),m.lc[1],m.lc[2],m.lc[3],m.lc[4]);gl.uniform4f(U('uLv'),m.lv[0],m.lv[1],m.lv[2],m.lv[3]);
   gl.bindFramebuffer(gl.FRAMEBUFFER,fA);
   yield* strips();
   let last=fA;
@@ -9643,6 +9920,7 @@ function* cpuRender(src,p,Q){
    const j=(y*w+x)*4;if(r2[1]<1e-4){buf[j]=buf[j+1]=buf[j+2]=buf[j+3]=0;continue}
    let R=r1[0]/Math.max(r1[1],1e-4),G=r2[0]/r2[1],B=r3[0]/Math.max(r3[1],1e-4);
    if(m.va){const t=sstep(m.vmid-m.vhw,m.vmid+m.vhw,Math.hypot(qx,qy)),g=m.va>0?1/(1-.8*m.va*t):1+m.va*t;R*=g;G*=g;B*=g}
+   if(m.lv[0]){const g=lfVig(m,Math.hypot(qx,qy));R*=g;G*=g;B*=g}
    buf[j]=CLAMP(R,0,1)*255+.5;buf[j+1]=CLAMP(G,0,1)*255+.5;buf[j+2]=CLAMP(B,0,1)*255+.5;buf[j+3]=CLAMP(a,0,1)*255+.5}
   acc+=w;if(acc>1.5e5){acc=0;yield y/h*.7}}
  let fin=buf;
@@ -9695,10 +9973,39 @@ function autoCA(src){
  const sl=k=>CLAMP(Math.round(k/5e-5*10)/10,-100,100);
  return{car:sl(r.k),cab:sl(b.k),kr:r.k,kb:b.k,conf:{r:[r.before,r.after],b:[b.before,b.after]}}}
 
+/* ---------------- profils d'objectif (base lensfun) ---------------- */
+const LF={db:null,P:null};
+LF.load=()=>LF.db?Promise.resolve(LF.db):(LF.P||(LF.P=fetch(asset('lens/lensfun.json')).then(r=>{if(!r.ok)throw new Error('profils '+r.status);return r.json()}).then(j=>{j.lenses.forEach(l=>{l.full=(l.m&&!l.n.toLowerCase().startsWith(l.m.toLowerCase().split(' ')[0])?l.m+' ':'')+l.n;l.tok=LF.tok(l.n)});return LF.db=j}).finally(()=>{LF.P=null})));
+/* words of a lens name: "EF24-70mm f/2.8L II USM" -> ef, 24-70mm, 2.8l, ii, usm */
+LF.tok=s=>String(s||'').toLowerCase().replace(/f\/|1:/g,' ').replace(/(\d)\s+mm\b/g,'$1mm').replace(/([a-z])(\d)/g,'$1 $2').replace(/[^a-z0-9.\-+]+/g,' ').split(' ').filter(t=>t&&t!=='-');
+/* what the photo says: camera, lens, focal length, aperture */
+LF.shot=d=>{let s=d.shot;if(!s&&d.exif)try{s=exifSummary(tiffRead(d.exif))}catch(e){}return s?{make:s.make||'',model:s.model||'',lens:s.lens||'',focal:+s.focal||0,fn:+s.fn||0}:null};
+LF.camera=(db,sh)=>{if(!sh||!sh.model)return null;const mk=sh.make.toLowerCase().split(' ')[0],md=sh.model.toLowerCase().replace(/\s+/g,' ');
+  return db.cams.find(c=>c[1].toLowerCase()===md&&c[0].toLowerCase().startsWith(mk))||db.cams.find(c=>md.endsWith(c[1].toLowerCase().replace(/^\S+\s/,''))&&c[0].toLowerCase().startsWith(mk))||null};
+LF.find=(db,sh)=>{if(!sh)return null;const cam=LF.camera(db,sh);
+  if(sh.lens){const et=new Set(LF.tok(sh.lens+' '+sh.make));let best=null,bs=0,bh=0;
+    for(const l of db.lenses){if(!l.tok.length)continue;let hit=0,num=true;for(const t of l.tok){if(et.has(t))hit++;else if(/\d/.test(t))num=false}
+      const sc=num?hit/l.tok.length:0;if(sc>bs||(sc===bs&&sc>0&&(hit>bh||(hit===bh&&cam&&l.mt.includes(cam[2])&&!best.mt.includes(cam[2]))))){bs=sc;bh=hit;best=l}}
+    if(bs>=0.75)return{lens:best,cam,how:'auto'}}
+  /* fixed-lens cameras: the lens carries the camera's own mount */
+  if(cam){const l=db.lenses.find(x=>x.mt.includes(cam[2])&&db.cams.filter(c=>c[2]===cam[2]).length<=3);if(l)return{lens:l,cam,how:'auto'}}
+  return{lens:null,cam,how:'none'}};
+const lerp=(a,b,t)=>a+(b-a)*t;
+const bracket=(arr,x,key)=>{if(!arr.length)return null;let lo=arr[0],hi=arr[arr.length-1];for(const e of arr){if(key(e)<=x)lo=e;if(key(e)>=x){hi=e;break}}const a=key(lo),b=key(hi);return[lo,hi,b>a?CLAMP((x-a)/(b-a),0,1):0]};
+const dcoef=e=>{if(e[1]===3){const d=1-e[2];return[1,0,e[2]/d,0,0]}if(e[1]===5)return[1,0,e[2],0,e[3]];const d=1-e[2]-e[3]-e[4];return[1,e[4]/d,e[3]/d,e[2]/d,0]};
+/* the slider-less parameters for one lens at one focal length and aperture */
+LF.params=(l,focal,fn,camCrop)=>{const o={lfs:0,l0:1,l1:0,l2:0,l3:0,l4:0,ltr:0,ltb:0,lvs:0,lv1:0,lv2:0,lv3:0},kc=l.c/(camCrop||l.c),F=focal||(l.d||l.t||l.v||[[0]])[0][0];
+  if(l.d){const [a,b,t]=bracket(l.d,F,e=>e[0]),ca=dcoef(a),cb=dcoef(b),c=ca.map((v,i)=>lerp(v,cb[i],t));o.lfs=Math.sqrt(1+l.a*l.a)*kc;[o.l0,o.l1,o.l2,o.l3,o.l4]=c}
+  if(l.t){const [a,b,t]=bracket(l.t,F,e=>e[0]);o.ltr=lerp(a[1],b[1],t)-1;o.ltb=lerp(a[2],b[2],t)-1}
+  if(l.v){const fs=[...new Set(l.v.map(e=>e[0]))].sort((x,y)=>x-y),at=f=>{const rows=l.v.filter(e=>e[0]===f),far=Math.max(...rows.map(e=>e[2])),R=rows.filter(e=>e[2]===far).sort((x,y)=>x[1]-y[1]);
+      const [a,b,t]=bracket(R,fn||R[0][1],e=>e[1]);return[3,4,5].map(i=>lerp(a[i],b[i],t))};
+    const [fa,fb,t]=bracket(fs,F,x=>x),va=at(fa),vb=at(fb);o.lvs=kc;[o.lv1,o.lv2,o.lv3]=va.map((v,i)=>lerp(v,vb[i],t))}
+  return o};
+
 /* ---------------- interface ---------------- */
 let pendingSrc=null,inMine=false;
 function styleOnce(){if(document.getElementById('lensCSS'))return;const st=document.createElement('style');st.id='lensCSS';
- st.textContent='.lensH{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);margin:14px 0 2px}.lensH:first-child{margin-top:0}.lensDlg{max-height:calc(100vh - 120px)!important}.lensA{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:2px 0 0;font-size:11.5px;color:var(--fg-3)}';
+ st.textContent='.lensP{display:grid;gap:6px;margin:4px 0 6px}.lensPr{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:12px}.lensPr input:not([type=checkbox]){height:28px;border:1px solid var(--line-2);border-radius:8px;background:var(--field);color:var(--fg);padding:0 8px}.lensPr #lfQ{flex:1;min-width:180px}.lensPr select{width:100%}.lensH{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);margin:14px 0 2px}.lensH:first-child{margin-top:0}.lensDlg{max-height:calc(100vh - 120px)!important}.lensA{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:2px 0 0;font-size:11.5px;color:var(--fg-3)}';
  document.body.appendChild(st)}
 function setVal(dl,id,v){const r=dl.querySelector('#f-'+id);if(!r)return;r.value=v;r.dispatchEvent(new Event('input',{bubbles:true}))}
 function decorate(dl,srcFn){
@@ -9718,6 +10025,17 @@ function decorate(dl,srcFn){
    decorate(dl,f||(()=>{const L=pixelTarget();if(!L)return null;return(L.fbase&&L.filters&&L.fout===L.canvas)?L.fbase:L.canvas}))}}catch(e){console.error(e)}
   return dl}}
 
+/* profile row: found from the photo's EXIF (camera + lens), or searched by name; focal length and aperture pick the calibration */
+function profileUI(el,d,p,prev){const on=$('#lfOn',el),nm=$('#lfName',el),q=$('#lfQ',el),sel=$('#lfSel',el),fI=$('#lfF',el),aI=$('#lfA',el);let lens=null,cam=null;
+  const put=()=>{const o=on.checked&&lens?LF.params(lens,+fI.value,+aI.value,cam&&cam[3]):LF.params({c:1,a:1.5},0,0,1);for(const k in o)p[k]=o[k];if(!on.checked||!lens){p.lfs=0;p.lvs=0;p.ltr=0;p.ltb=0}prev()};
+  const pick=l=>{lens=l;nm.textContent=l?l.full+(l.d?'':' (sans distorsion)')+(l.v?'':' (sans vignettage)'):'Aucun profil';on.disabled=!l;if(l&&!fI.value){const f=(l.d||l.t||l.v)[0][0];fI.value=f}put()};
+  on.onchange=put;fI.oninput=put;aI.oninput=put;
+  LF.load().then(db=>{const sh=LF.shot(d);if(sh){if(sh.focal)fI.value=Math.round(sh.focal);if(sh.fn)aI.value=(+sh.fn).toFixed(1)}
+    const r=LF.find(db,sh);cam=r&&r.cam;if(r&&r.lens){on.checked=true;pick(r.lens)}else{on.checked=false;pick(null);nm.textContent=sh&&sh.lens?'« '+sh.lens+' » : pas de profil, cherchez un objectif proche':'Objectif inconnu : cherchez-le par son nom'}
+    q.oninput=()=>{const t=LF.tok(q.value);if(!t.length){sel.hidden=true;return}const hits=db.lenses.filter(l=>{const s=(l.full).toLowerCase();return t.every(w=>s.includes(w))}).slice(0,40);
+      sel.innerHTML=hits.map((l,i)=>`<option value="${db.lenses.indexOf(l)}">${esc(l.full)}</option>`).join('')||'<option disabled>Aucun objectif</option>';sel.size=Math.min(6,Math.max(2,hits.length));sel.hidden=false};
+    sel.onchange=()=>{const l=db.lenses[+sel.value];if(!l)return;on.checked=true;fI.value='';pick(l);sel.hidden=true;q.value=''}})
+  .catch(e=>{console.error(e);nm.textContent='Profils indisponibles';on.disabled=true})}
 function lensDialog(){
  const d=S.doc;if(!d)return;
  if(maskTarget()){toast('La correction de l’objectif s’applique à la photo, pas au masque : choisissez le calque de photo');return}
@@ -9736,8 +10054,11 @@ function lensDialog(){
     L.preview=r;markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},60)};
  pendingSrc=()=>orig;
  dialog({title:NAME,light:true,
-  body:PAR.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
-  onOpen:el=>{PAR.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}})},
+  body:`<div class="lensH">Profil de l’objectif</div><div class="lensP"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="lfOn"><span id="lfName" class="muted">Recherche du profil…</span></label>
+    <div class="lensPr"><input id="lfQ" placeholder="Chercher un objectif (${'base lensfun'})" autocomplete="off"><select id="lfSel" hidden></select></div>
+    <div class="lensPr"><label>Focale <input id="lfF" type="number" min="1" max="2000" step="1" style="width:70px"> mm</label><label>Ouverture f/ <input id="lfA" type="number" min="0.7" max="64" step="0.1" style="width:60px"></label></div></div>`+
+   PAR.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+  onOpen:el=>{PAR.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});profileUI(el,d,p,prev)},
   buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
    {label:'Appliquer',primary:true,onClick:()=>{clear();if(idle(p)){toast('Aucune correction à appliquer');markComp();return}applyLens(d,L,orig,{...p})}}]})}
 async function applyLens(d,L,orig,p){
@@ -9757,7 +10078,7 @@ FILTERS.lens={name:NAME,params:PAR,run:(s,p)=>{const q=NP(p);F_lp(q);return runS
  MENU2.filter.items=()=>{const a=_fi(),it=MI(NAME+'…',{icon:'filter',dis:S.doc?false:NODOC,fn:lensDialog});
   const i=a.findIndex(x=>x&&/^Effets/.test(x.label||''));if(i<0)return[...a,SEP,it];
   const at=(i>0&&a[i-1]===SEP)?i-1:i;a.splice(at,0,it);return a}}
-window.PrismLens={NAME,DEF,NP,model,runSync,runAsync,cpuRender,glRender,autoCA,lensDialog,glOK:()=>!!glInit()};
+window.PrismLens={NAME,DEF,NP,model,runSync,runAsync,cpuRender,glRender,autoCA,lensDialog,glOK:()=>!!glInit(),profiles:{load:LF.load,find:LF.find,params:LF.params,shot:LF.shot}};
 })();
 
 }
@@ -9926,6 +10247,8 @@ function parseXmp(text,fname){
   set('Texture','texture');set('Clarity2012','clarity');set('Dehaze','dehaze');set('Vibrance','vibrance');set('Saturation','saturation');
   {const t=f('Temperature');if(t!=null){dv.temp=clamp(Math.abs(t)<=100?t:(t-5500)/50,-100,100);done.add('Temperature')}}
   set('Tint','tint',100/150);
+  /* JPEG/TIFF presets carry relative values (-100..100) under other names */
+  if(!done.has('Temperature'))set('IncrementalTemperature','temp');if(!done.has('Tint'))set('IncrementalTint','tint');
   if(/^true$/i.test(String(kv.get('ConvertToGrayscale')))){dv.saturation=-100;done.add('ConvertToGrayscale')}else if(kv.has('ConvertToGrayscale'))done.add('ConvertToGrayscale');
   set('Sharpness','sharpen',1,0,150);set('SharpenRadius','sharpRadius',1,0.5,3);set('LuminanceSmoothing','noise',1,0,100);
   const curve=(key,ch)=>{const v=kv.get(key);if(!Array.isArray(v))return;const pts=v.map(s=>s.split(/[,\s]+/).map(Number)).filter(p=>p.length>=2&&isFinite(p[0])&&isFinite(p[1])).map(p=>[clamp(p[0]/255,0,1),clamp(p[1]/255,0,1)]).sort((a,b)=>a[0]-b[0]);
@@ -10130,7 +10453,6 @@ function mkImg(c,name){return{c,w:c.width,h:c.height,name,gc:{},gx:{}}}
 function cachedGray(im,kind,w,h){const k=kind+w;return im.gx[k]||(im.gx[k]=kind==='bp'?grayBP(im.c,w,h):grayF(im.c,w,h))}
 function grayF(c,w,h){const t=mk(w,h),g=cx(t);g.imageSmoothingQuality='high';g.drawImage(c,0,0,w,h);const d=rx(t).getImageData(0,0,w,h).data,a=new Float32Array(w*h);
   for(let i=0;i<a.length;i++)a[i]=d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114;t.width=t.height=1;return a}
-function grayNorm(c,w,h){const a=grayF(c,w,h);let m=0;for(let i=0;i<a.length;i++)m+=a[i];m/=a.length;let v=0;for(let i=0;i<a.length;i++){const e=a[i]-m;v+=e*e}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]=(a[i]-m)/sd;return a}
 /* gris passe-bande normalisé : insensible à l'exposition, au vignettage et aux dégradés lents */
 function grayBP(c,w,h){const a=grayF(c,w,h),bl=boxBlurF(a,w,h,Math.max(3,Math.round(w/24)));let v=0;for(let i=0;i<a.length;i++){a[i]-=bl[i];v+=a[i]*a[i]}const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]/=sd;return a}
 function gray8At(im,sc){const w=Math.max(8,Math.round(im.w*sc)),k=w+'x'+sc;if(im.gc[k])return im.gc[k];
@@ -10682,6 +11004,50 @@ if(window.PrismF){PN.oldStitch=window.PrismF.stitch;window.PrismF.stitch=stitchF
 
 }
 
+/* ===== feat: feat/print.js ===== */
+{
+/* ================= Imprimer : la photo seule, au format de papier choisi ================= */
+/* The page lays out one sheet (#printSheet) and hides everything else for printing; the desktop app opens the system
+   print dialog itself (print_page), the browser through window.print(). */
+const PAPERS=[['a4','A4',210,297],['a3','A3',297,420],['a5','A5',148,210],['letter','Lettre US',215.9,279.4],['10x15','10 × 15 cm',100,150],['13x18','13 × 18 cm',130,180],['20x30','20 × 30 cm',200,300]];
+const PR={el:null,url:null};
+function sheetSize(o,d){const P=PAPERS.find(x=>x[0]===o.paper)||PAPERS[0];let w=P[2],h=P[3];if((d.w>d.h)!==(w>h))[w,h]=[h,w];return{w,h}}
+/* size of the photo on the page (mm) and the resolution it prints at */
+function layout(o,d){const pg=sheetSize(o,d),aw=pg.w-2*o.margin,ah=pg.h-2*o.margin,k=o.fit==='fill'?Math.max(aw/d.w,ah/d.h):Math.min(aw/d.w,ah/d.h);
+  return{pg,iw:d.w*k,ih:d.h*k,aw,ah,dpi:Math.round(25.4/k)}}
+function cleanup(){if(PR.el){PR.el.remove();PR.el=null}if(PR.url){URL.revokeObjectURL(PR.url);PR.url=null}}
+async function doPrint(o){const d=S.doc;if(!d)return;busy(true,'Préparation de l’impression…',null);await tick();
+  try{cleanup();const c=await renderDoc(1),w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);
+    const blob=await new Promise(r=>w.toBlob(r,'image/jpeg',0.95));PR.url=URL.createObjectURL(blob);
+    const L=layout(o,d),el=document.createElement('div');el.id='printSheet';
+    el.innerHTML=`<style>@page{size:${L.pg.w}mm ${L.pg.h}mm;margin:0}@media print{html,body{background:#fff!important;margin:0!important}body>*:not(#printSheet){display:none!important}#printSheet{display:block!important}}
+      #printSheet{display:none;width:${L.pg.w}mm;height:${L.pg.h}mm;overflow:hidden;position:relative;break-after:avoid}
+      #printSheet .pa{position:absolute;left:${o.margin}mm;top:${o.margin}mm;width:${L.aw}mm;height:${L.ah}mm;overflow:hidden;display:flex;align-items:center;justify-content:center}
+      #printSheet img{width:${L.iw}mm;height:${L.ih}mm;flex:none;max-width:none}</style><div class="pa"><img alt=""></div>`;
+    const img=el.querySelector('img');await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('image'));img.src=PR.url});
+    document.body.appendChild(el);PR.el=el;busy(false);
+    addEventListener('afterprint',cleanup,{once:true});
+    const D=window.PRISM_DESKTOP;if(D&&D.invoke)await D.invoke('print_page');else window.print();
+    setTimeout(()=>{if(PR.el===el&&!matchMedia('print').matches)cleanup()},60000)}
+  catch(e){busy(false);cleanup();console.error(e);toast('Impression impossible : '+(e.message||e),5000)}}
+function printDialog(){const d=S.doc;if(!d)return;const o={paper:PREF.get('prPaper','a4'),margin:+PREF.get('prMargin',10),fit:PREF.get('prFit','fit')};
+  const sel=(id,opts,v)=>`<select id="${id}">${opts.map(([k,t])=>`<option value="${k}"${String(k)===String(v)?' selected':''}>${t}</option>`).join('')}</select>`;
+  dialog({title:'Imprimer',light:true,body:`<label class="field">Papier${sel('prP',PAPERS.map(p=>[p[0],p[1]]),o.paper)}</label>
+    <label class="field">Marges${sel('prM',[[0,'Aucune'],[5,'5 mm'],[10,'10 mm'],[15,'15 mm'],[20,'20 mm']],o.margin)}</label>
+    <label class="field">Photo${sel('prF',[['fit','Entière dans la page'],['fill','Remplir la page (bords coupés)']],o.fit)}</label>
+    <p class="muted" id="prInfo" style="margin:8px 0 0;font-size:12px"></p>`,
+    buttons:[{label:'Annuler'},{label:'Imprimer…',primary:true,onClick:el=>{const v={paper:$('#prP',el).value,margin:+$('#prM',el).value,fit:$('#prF',el).value};PREF.set('prPaper',v.paper);PREF.set('prMargin',v.margin);PREF.set('prFit',v.fit);setTimeout(()=>doPrint(v),30)}}],
+    onOpen:el=>{const upd=()=>{const L=layout({paper:$('#prP',el).value,margin:+$('#prM',el).value,fit:$('#prF',el).value},d);
+        $('#prInfo',el).textContent=`Photo imprimée à ${(L.iw/10).toFixed(1).replace('.',',')} × ${(L.ih/10).toFixed(1).replace('.',',')} cm, ${L.dpi} pixels par pouce${L.dpi<150?' : un peu juste, l’agrandissement IA aidera':''}.`};
+      el.querySelectorAll('select').forEach(s=>s.onchange=upd);upd()}})}
+const _fim=MENU2.file.items;
+MENU2.file.items=function(){const a=_fim.apply(this,arguments),it=MI('Imprimer…',{icon:'export',kbd:MOD+'P',fn:printDialog,dis:S.doc?false:NODOC});
+  const k=a.findIndex(x=>x&&x.label==='Exporter…');a.splice(k<0?a.length:k+1,0,it);return a};
+addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='p'&&S.doc&&!e.target.closest('input,textarea,[contenteditable]')){e.preventDefault();printDialog()}},true);
+window.PrismPrint={dialog:printDialog,layout};
+
+}
+
 /* ===== feat: feat/sky.js ===== */
 {
 /* ================= Sélectionner le ciel : segmentation classique, sans modèle ================= */
@@ -10778,11 +11144,15 @@ SKY.mask=async(onP)=>{const d=S.doc;if(!d)return null;
   onP&&onP(.05);await tick();
   const t0=performance.now();
   const res=SKY.analyze(g1.getImageData(0,0,W,H).data,W,H);SKY.last={...res.info,cov:res.cov,msAnalyze:Math.round(performance.now()-t0)};
+  // with the scene model: it decides what is sky; the colour analysis above only settles the uncertain band along the horizon
+  if(AI.skyPrior){let P=null;try{P=await AI.skyPrior(W,H)}catch(e){console.warn(e)}if(S.doc!==d)return null;
+    if(P){const n=W*H,m=new Uint8Array(n),Hm=res.mask;let cov=0;for(let i=0;i<n;i++){const p=P[i];const v=p>0.8?255:p<0.2?0:(Hm&&Hm[i]?Math.max(p,0.6)*255:Math.min(p,0.4)*255);m[i]=v;cov+=v}
+      res.mask=cov>n*255*0.002?m:null;res.soft=true;SKY.last.model=true}}
   if(!res.mask)return null;
   onP&&onP(.35);await tick();
   // masque grossier -> canvas alpha, puis remontée à ~1600 px
   const ps=Math.min(1,1600/long),RW=Math.max(1,Math.round(d.w*ps)),RH=Math.max(1,Math.round(d.h*ps));
-  const mc=mk(W,H),mg=rx(mc),im=mg.createImageData(W,H),md=im.data;for(let i=0;i<W*H;i++){md[i*4]=md[i*4+1]=md[i*4+2]=255;md[i*4+3]=res.mask[i]?255:0}mg.putImageData(im,0,0);
+  const mc=mk(W,H),mg=rx(mc),im=mg.createImageData(W,H),md=im.data;for(let i=0;i<W*H;i++){md[i*4]=md[i*4+1]=md[i*4+2]=255;md[i*4+3]=res.soft?res.mask[i]:(res.mask[i]?255:0)}mg.putImageData(im,0,0);
   const up=mk(RW,RH),ug=rx(up);ug.imageSmoothingQuality='high';ug.drawImage(mc,0,0,RW,RH);
   const gc=mk(RW,RH),gg=rx(gc);gg.imageSmoothingQuality='high';gg.drawImage(flat,0,0,RW,RH);
   const n=RW*RH,gd=gg.getImageData(0,0,RW,RH).data,ud=ug.getImageData(0,0,RW,RH);
@@ -11030,9 +11400,7 @@ async function masks(onP){const d=S.doc;let subj=null,sky=null;
   onP&&onP(.35,'Recherche du ciel…');
   try{if(AI.skyMask)sky=await AI.skyMask(p=>onP&&onP(.35+.3*p,'Recherche du ciel…'))}catch(e){console.warn(e)}if(S.doc!==d)return null;
   if(covOf(sky)<0.03)sky=null;
-  if(subj&&typeof refineMask==='function'){onP&&onP(.7,'Affinage du contour du sujet…');
-    const long=Math.max(d.w,d.h),ps=Math.min(1,2000/long);
-    try{const r=await refineMask(subj,{radius:clamp(Math.round(long*ps/400),2,12),eps:.0006,contrast:12,shift:0},ps,p=>onP&&onP(.7+.25*p,'Affinage du contour du sujet…'));if(r){const up=mk(d.w,d.h),g=rx(up);g.imageSmoothingQuality='high';g.drawImage(r,0,0,d.w,d.h);subj=up}}catch(e){console.warn(e)}}
+  // the subject mask comes back already snapped to the photo's edges
   if(subj)subj=mainBlobs(subj);
   if(subj&&sky)sky=minus(sky,subj);
   let bg=null;if(subj){bg=invOf(subj);if(sky)bg=minus(bg,sky)}
@@ -11093,14 +11461,13 @@ AIM.retouch=aiMaskRetouch;
 const OPS=[['new','Remplacer'],['add','Ajouter'],['sub','Retirer'],['and','Croiser']];
 async function applyAIMask(kind,op){const d=S.doc,A=d&&d.layers[d.active];if(!A){toast('Ouvrez d’abord une photo');return}
   if(A.kind==='adjust'&&!A.mask&&op!=='new'){op='new'}
-  const h0=S.history[S.hi];let M=null;try{busy(true,'Masque IA…',null);await tick();M=await masks((p,m)=>busy(true,m||'Masque IA…',p))}finally{busy(false)}
-  if(!M||S.doc!==d||S.history[S.hi]!==h0)return;
-  const m=kind==='subj'?M.subj:kind==='sky'?M.sky:M.bg;if(!m){toast(kind==='sky'?'Aucun ciel trouvé dans cette photo':'Aucun sujet net trouvé dans cette photo',4500);return}
+  const h0=S.history[S.hi];let m=null;try{busy(true,'Masque IA…',null);await tick();m=await AI.categoryMask(kind)}finally{busy(false)}
+  if(!m||S.doc!==d||S.history[S.hi]!==h0)return;
   let out;const cur=A.mask;
   if(op==='new'||!cur)out=cloneC(m);
   else{out=cloneC(cur);const g=cx(out);g.globalCompositeOperation=op==='add'?'source-over':op==='sub'?'destination-out':'destination-in';g.drawImage(m,0,0);g.globalCompositeOperation='source-over'}
   if(A.kind==='adjust'&&!A.mask&&d.layers.filter(l=>l.kind==='adjust'&&!l.mask).length<=1){// never mask the only global adjustment: make a new local one
-    const L=newAdjust({subj:'Sujet (IA)',sky:'Ciel (IA)',bg:'Arrière-plan (IA)'}[kind],out);insertLayer(L,'Masque IA',true);switchTab('develop');toast('Nouveau réglage local créé sur ce masque');return}
+    const L=newAdjust(AI.categoryLabel(kind)+' (IA)',out);insertLayer(L,'Masque IA',true);switchTab('develop');toast('Nouveau réglage local créé sur ce masque');return}
   A.mask=out;markComp();if(typeof markContent==='function')markContent();pushHistory('Masque IA');syncAll();toast('Masque mis à jour')}
 AIM.apply=applyAIMask;window.PrismAIMask=AIM;
 
@@ -11108,8 +11475,9 @@ AIM.apply=applyAIMask;window.PrismAIMask=AIM;
 {const st=document.createElement('style');st.textContent='.aim-row{display:grid;gap:6px;margin:2px 0 10px}.aim-row .aim-t{font-size:11.5px;color:var(--fg-2)}.aim-row .aim-b{display:flex;gap:6px;flex-wrap:wrap}.aim-row select{font:inherit;font-size:12px}';document.body.appendChild(st)}
 function injectRow(){const root=document.querySelector('#zmSec .zm-root');if(!root||root.querySelector('.aim-row'))return;
   const r=document.createElement('div');r.className='aim-row';
-  r.innerHTML=`<span class="aim-t">Masque IA</span><div class="aim-b"><button type="button" class="btn sm" data-aim="subj">Sujet</button><button type="button" class="btn sm" data-aim="sky">Ciel</button><button type="button" class="btn sm" data-aim="bg">Arrière-plan</button><select class="aim-op" aria-label="Combinaison">${OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>`;
+  r.innerHTML=`<span class="aim-t">Masque IA</span><div class="aim-b"><button type="button" class="btn sm" data-aim="subj">Sujet</button><button type="button" class="btn sm" data-aim="sky">Ciel</button><button type="button" class="btn sm" data-aim="people">Personnes</button><button type="button" class="btn sm" data-aim="bg">Arrière-plan</button><select class="aim-more" aria-label="Autres masques IA"><option value="">Autre…</option>${AI.categories().filter(k=>!['subj','sky','people','bg'].includes(k)).map(k=>`<option value="${k}">${AI.categoryLabel(k)}</option>`).join('')}</select><select class="aim-op" aria-label="Combinaison">${OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>`;
   r.addEventListener('click',e=>{const b=e.target.closest('[data-aim]');if(!b)return;e.preventDefault();e.stopPropagation();applyAIMask(b.dataset.aim,r.querySelector('.aim-op').value)});
+  r.addEventListener('change',e=>{const t=e.target.closest('.aim-more');if(!t||!t.value)return;const k=t.value;t.value='';applyAIMask(k,r.querySelector('.aim-op').value)});
   root.insertBefore(r,root.firstChild)}
 {const body=document.getElementById('devBody');if(body)new MutationObserver(()=>injectRow()).observe(body,{childList:true,subtree:true})}
 
@@ -11122,7 +11490,7 @@ function injectCard(){const p=document.getElementById('pane-ai');if(!p||p.queryS
 // menus
 const _miAM=MENU2.image.items;MENU2.image.items=()=>{const a=_miAM();if(!a.some(x=>x&&x.label==='Retouche IA avec masques'))a.push(MI('Retouche IA avec masques',{icon:'subject',fn:aiMaskRetouch,dis:docDis()}));return a};
 const _mlAM=MENU2.layer.items;MENU2.layer.items=()=>{const a=_mlAM();if(a.some(x=>x&&x.label==='Masque IA'))return a;
-  const sub=()=>[['subj','Sujet'],['sky','Ciel'],['bg','Arrière-plan']].flatMap(([k,l],i)=>[...(i?[SEP]:[]),...OPS.map(([o,ol])=>MI(l+' : '+ol.toLowerCase(),{fn:()=>applyAIMask(k,o)}))]);
+  const sub=()=>AI.categories().map(k=>MI(AI.categoryLabel(k),{sub:()=>OPS.map(([o,ol])=>MI(ol,{fn:()=>applyAIMask(k,o)}))}));
   a.push(SEP,MI('Masque IA',{icon:'subject',sub,dis:docDis()}));return a};
 
 }
@@ -11206,13 +11574,13 @@ pixelDab=function(st,p){
 
 /* ===== feat: feat/zz_dexp.js ===== */
 {
-/* ===== 0.4: Double exposition, like the multiple exposure mode of a Fujifilm camera (Additif, Moyenne, Clair, Sombre, plus Écran)
-   or done by the AI in one click (Silhouette: the second photo fills the subject, the background goes white).
-   Non-destructive: the second photo is a layer (blend mode + opacity, mask for the silhouette), adjustable live in the dialog. ===== */
+/* ===== Double exposition: a second photo laid over the first and worked directly on the canvas, like the free transform.
+   Drag to move it, drag a corner to resize it; the options bar holds the modes of a Fujifilm camera (Addition, Moyenne, Éclaircir,
+   Obscurcir) plus Superposition, and Silhouette IA: the second photo fills the subject, the background goes light, the face stays readable.
+   Entrée applies, Échap cancels. The result is ordinary layers (the photo with its mode and mask, and the light background). ===== */
 
-const DX={};
-{const st=document.createElement('style');st.textContent='@media (min-width:701px){.scrim.light .dlg.dx-dlg{right:10px;top:92px;width:360px;max-height:calc(100dvh - 110px);overflow:auto}}';document.body.appendChild(st)}
-const DX_MODES=[['screen','Écran','Le rendu film classique : seules les lumières s’additionnent'],['average','Moyenne','Les deux photos à parts égales (Fujifilm : Moyenne)'],['add','Additif','Les deux expositions s’additionnent, comme sur pellicule (Fujifilm : Additif)'],['lighten','Clair','Garde le plus clair des deux (Fujifilm : Clair)'],['darken','Sombre','Garde le plus sombre des deux (Fujifilm : Sombre)'],['silhouette','Silhouette (IA)','La seconde photo remplit le sujet, le fond devient clair']];
+const DX={s:null};
+const DX_MODES=[['screen','Superposition','Le rendu film classique : les lumières de la seconde photo s’ajoutent'],['average','Moyenne','Les deux photos à parts égales (Fujifilm : Moyenne)'],['lighter','Addition','Les deux expositions s’additionnent, comme sur pellicule (Fujifilm : Additif)'],['lighten','Éclaircir','Garde le plus clair des deux (Fujifilm : Clair)'],['darken','Obscurcir','Garde le plus sombre des deux (Fujifilm : Sombre)'],['silhouette','Silhouette IA','La seconde photo remplit le sujet, le fond devient clair']];
 const pick1=()=>new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='image/*,.heic,.heif,.tif,.tiff,'+RAW_ACCEPT;i.onchange=()=>res(i.files[0]||null);i.oncancel=()=>res(null);i.click()});
 const pick2=()=>new Promise(res=>{const i=document.createElement('input');i.type='file';i.multiple=true;i.accept='image/*,.heic,.heif,.tif,.tiff,'+RAW_ACCEPT;i.onchange=()=>res([...i.files]);i.oncancel=()=>res([]);i.click()});
 async function decode(f){let bm=null;if(!RAW_EXT.test(f.name||'')&&!/\.(heic|heif|tiff?)$/i.test(f.name||'')){try{bm=await createImageBitmap(f)}catch(e){}}
@@ -11220,80 +11588,140 @@ async function decode(f){let bm=null;if(!RAW_EXT.test(f.name||'')&&!/\.(heic|hei
   const c=mk(Math.max(1,Math.round(src.width*s)),Math.max(1,Math.round(src.height*s)));const g=rx(c);g.imageSmoothingQuality='high';g.drawImage(src,0,0,c.width,c.height);bm&&bm.close&&bm.close();return c}
 function grayOf(c){const o=mk(c.width,c.height),g=rx(o);g.drawImage(c,0,0);for(let y0=0;y0<c.height;y0+=512){const h=Math.min(512,c.height-y0),im=g.getImageData(0,y0,c.width,h),a=im.data;for(let i=0;i<a.length;i+=4){const l=0.2126*a[i]+0.7152*a[i+1]+0.0722*a[i+2];a[i]=a[i+1]=a[i+2]=l}g.putImageData(im,0,y0)}return o}
 
-// draws the second photo into a document-size canvas: "cover" fit, then zoom, offset (in % of the document) and mirror
-function drawB(st){const d=S.doc,c=st.Lb.canvas.width===d.w&&st.Lb.canvas.height===d.h?st.Lb.canvas:mk(d.w,d.h),g=cx(c),src=st.bw?(st.gray||(st.gray=grayOf(st.src))):st.src;
-  g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(0,0,d.w,d.h);
-  const box=st.mode==='silhouette'&&st.bb?st.bb:{x0:0,y0:0,x1:d.w,y1:d.h},bw=box.x1-box.x0,bh=box.y1-box.y0;
-  const k=Math.max(bw/src.width,bh/src.height)*st.zoom,w=src.width*k,h=src.height*k,cxp=(box.x0+box.x1)/2+st.ox/100*d.w,cyp=(box.y0+box.y1)/2+st.oy/100*d.h;
-  g.imageSmoothingQuality='high';g.save();g.translate(cxp,cyp);if(st.flip)g.scale(-1,1);g.drawImage(src,-w/2,-h/2,w,h);g.restore();
-  if(st.mode==='add'){// additive: baked against the photo below, the layer is then shown normally
-    const base=st.flat;g.globalCompositeOperation='lighter';g.drawImage(base,0,0);g.globalCompositeOperation='source-over'}
-  st.Lb.canvas=c}
-function applyMode(st){const L=st.Lb,m=st.mode;
-  L.blend=m==='screen'||m==='silhouette'?'screen':m==='lighten'?'lighten':m==='darken'?'darken':'source-over';
+// placement of the second photo: centre (document pixels) and scale relative to "covers the whole document"
+const k0=st=>Math.max(st.d.w/st.src.width,st.d.h/st.src.height);
+const rectOf=st=>{const k=k0(st)*st.s,w=st.src.width*k,h=st.src.height*k;return{x0:st.cx-w/2,y0:st.cy-h/2,x1:st.cx+w/2,y1:st.cy+h/2,w,h}};
+let raf=0;
+function draw(){const st=DX.s;if(!st||raf)return;raf=requestAnimationFrame(()=>{raf=0;drawNow()})}
+function drawNow(){const st=DX.s;if(!st)return;const d=st.d,c=st.c,g=cx(c),r=rectOf(st),src=st.bw?(st.gray||(st.gray=grayOf(st.src))):st.src;
+  g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(0,0,d.w,d.h);g.imageSmoothingQuality='high';
+  g.save();g.translate(st.cx,st.cy);if(st.flip)g.scale(-1,1);g.drawImage(src,-r.w/2,-r.h/2,r.w,r.h);g.restore();
+  st.Lb.canvas=c;markComp()}
+// the subject mask, faded towards the top of the subject so the face stays readable (the "keep" slider)
+function silMask(st){const d=st.d,b=st.bb,m=cloneC(st.subj);if(st.keep>0){const top=st.head!=null?st.head:b.y0,g=cx(m),gr=g.createLinearGradient(0,top,0,top+(b.y1-top)*0.5);
+    gr.addColorStop(0,`rgba(0,0,0,${st.keep/100})`);gr.addColorStop(1,'rgba(0,0,0,0)');g.globalCompositeOperation='destination-out';g.fillStyle=gr;g.fillRect(0,0,d.w,d.h)}
+  return m}
+function applyMode(){const st=DX.s;if(!st)return;const L=st.Lb,m=st.mode;
+  L.blend=m==='silhouette'?(st.lum>0.55?'multiply':'screen'):m==='average'?'source-over':m;
   L.opacity=m==='average'?st.mix/200:st.mix/100;// Moyenne: 100 % on the slider = an exact 50/50 average
-  L.mask=m==='silhouette'&&st.subj?st.subj:null;
-  if(st.Lf){st.Lf.visible=m==='silhouette';st.Lf.opacity=st.bg/100}
-  if(m==='add'||st.addWas){drawB(st)}st.addWas=m==='add';
-  markComp();requestRender()}
-async function ensureSubject(st){if(st.subj!==undefined)return st.subj;const d=S.doc;let m=null;try{m=await AI.subjectMask()}catch(e){console.warn(e)}
-  if(S.doc!==d)return null;let bb=m?maskBBox(m):null;if(bb&&(bb.x1-bb.x0)*(bb.y1-bb.y0)<d.w*d.h*0.02)bb=null;
-  st.subj=bb?m:null;st.bb=bb;
-  if(st.subj){const inv=fullMask(),g=cx(inv);g.globalCompositeOperation='destination-out';g.drawImage(st.subj,0,0);const wc=mk(d.w,d.h),wg=cx(wc);wg.fillStyle='#ffffff';wg.fillRect(0,0,d.w,d.h);
-    st.Lf=newPixel('Fond clair',wc);st.Lf.mask=inv;st.Lf.visible=false;const i=d.layers.indexOf(st.Lb);d.layers.splice(i,0,st.Lf);d.active=d.layers.indexOf(st.Lb);syncAll()}
-  return st.subj}
+  L.mask=m==='silhouette'&&st.subj?silMask(st):null;
+  if(st.Lw){st.Lw.visible=m==='silhouette';st.Lw.opacity=st.bg/100}
+  markComp();syncLayers()}
 
-async function dexpDialog(file){const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}
+async function subject(){const st=DX.s;if(st.subj!==undefined)return st.subj;const d=st.d;
+  // detected on the first photo alone: the second one is hidden while the model looks
+  const vis=[st.Lb,st.Lw].filter(Boolean).map(L=>[L,L.visible]);vis.forEach(([L])=>L.visible=false);markComp();
+  let m=null;try{m=await AI.subjectMask();if(m){st.lum=lumIn(flatSync(),m);st.head=headTop(m)}}catch(e){console.warn(e)}finally{vis.forEach(([L,v])=>L.visible=v);markComp()}
+  if(DX.s!==st||S.doc!==d)return null;let bb=m?maskBBox(m):null;if(bb&&(bb.x1-bb.x0)*(bb.y1-bb.y0)<d.w*d.h*0.02)bb=null;
+  st.subj=bb?m:null;st.bb=bb;
+  if(st.subj&&!st.Lw){const wc=mk(d.w,d.h),wg=cx(wc);wg.fillStyle='#ffffff';wg.fillRect(0,0,d.w,d.h);
+    st.Lw=newPixel('Fond clair',wc);const inv=fullMask(),g=cx(inv);g.globalCompositeOperation='destination-out';g.drawImage(st.subj,0,0);st.Lw.mask=inv;st.Lw.visible=false;
+    d.layers.splice(d.layers.indexOf(st.Lb),0,st.Lw);d.active=d.layers.indexOf(st.Lb)}
+  return st.subj}
+// median brightness of the photo inside a mask (small proxy)
+function lumIn(src,m){const W=128,H=Math.max(1,Math.round(128*src.height/src.width)),a=mk(W,H),b=mk(W,H),ga=rx(a),gb=rx(b);ga.drawImage(src,0,0,W,H);gb.drawImage(m,0,0,W,H);
+  const p=ga.getImageData(0,0,W,H).data,q=gb.getImageData(0,0,W,H).data,L=[];for(let i=0;i<p.length;i+=4)if(q[i+3]>128)L.push((0.2126*p[i]+0.7152*p[i+1]+0.0722*p[i+2])/255);
+  if(!L.length)return 0.5;L.sort((x,y)=>x-y);return L[L.length>>1]}
+// top of the head: first row of the mask in a narrow band around its centre (raised arms and loose hair at the sides don't count)
+function headTop(m){const W=160,H=Math.max(1,Math.round(160*m.height/m.width)),c=mk(W,H),g=rx(c);g.drawImage(m,0,0,W,H);const a=g.getImageData(0,0,W,H).data;
+  let sx=0,n=0;for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=a[(y*W+x)*4+3];if(v>128){sx+=x;n++}}if(!n)return null;const cx0=sx/n;
+  let x0=W,x1=0;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(a[(y*W+x)*4+3]>128){if(x<x0)x0=x;if(x>x1)x1=x}const half=Math.max(2,(x1-x0)*0.12);
+  for(let y=0;y<H;y++)for(let x=Math.max(0,Math.round(cx0-half));x<=Math.min(W-1,Math.round(cx0+half));x++)if(a[(y*W+x)*4+3]>128)return y/H*m.height;return null}
+// where the sky of the second photo ends (largest drop of brightness going down), as a fraction of its height
+function horizon(src){const W=48,H=96,t=mk(W,H),g=rx(t);g.drawImage(src,0,0,W,H);const a=g.getImageData(0,0,W,H).data,row=new Float32Array(H);
+  for(let y=0;y<H;y++){let s=0;for(let x=0;x<W;x++){const i=(y*W+x)*4;s+=0.2126*a[i]+0.7152*a[i+1]+0.0722*a[i+2]}row[y]=s/W/255}
+  let best=-1,at=-1;for(let y=Math.round(H*.15);y<H*.85;y++){let u=0,v=0;for(let i=0;i<y;i++)u+=row[i];for(let i=y;i<H;i++)v+=row[i];const c=u/y-v/(H-y);if(c>best){best=c;at=y}}
+  return best>0.08?at/H:null}
+async function auto(){const st=DX.s;if(!st)return;const m=await subject();if(DX.s!==st)return;
+  if(!m){st.mode='screen';st.s=1;st.cx=st.d.w/2;st.cy=st.d.h/2;st.mix=100;applyMode();drawNow();renderPill();toast('Pas de sujet net dans la photo : fondu en Superposition',4000);return}
+  const b=st.bb,bw=b.x1-b.x0,bh=b.y1-b.y0,K=k0(st);
+  // covers the subject with some margin, the sky of the second photo across the top of the head
+  st.s=Math.max(bw/st.src.width,bh/st.src.height)*1.12/K;let r=rectOf(st);st.cx=(b.x0+b.x1)/2;
+  const hz=horizon(st.src);const top=st.head!=null?st.head:b.y0;st.cy=hz==null?(b.y0+b.y1)/2:top+(b.y1-top)*0.3-(hz-0.5)*r.h;
+  st.cy=clamp(st.cy,b.y1-r.h/2,b.y0+r.h/2);// still covers the subject from top to bottom
+  Object.assign(st,{mode:'silhouette',mix:100,keep:85,bg:100});applyMode();drawNow();renderPill();toast('Silhouette composée. Glissez la seconde photo pour la placer, tirez un coin pour la taille.',4500)}
+async function setMode(m){const st=DX.s;if(!st)return;
+  if(m==='silhouette'&&!(await subject())){toast('Aucun sujet net trouvé : le mode Superposition est gardé',4500);m='screen'}
+  if(DX.s!==st)return;st.mode=m;applyMode();renderPill()}
+
+let prevTool='move';
+async function start(file){const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}
+  if(DX.s)finish(false);if(S.tf&&window.tfApply)tfApply();
   if(!file)file=await pick1();if(!file)return;
   busy(true,'Lecture de la seconde photo…',null);let src;try{await tick();src=await decode(file)}catch(e){busy(false);console.error(e);toast('Cette photo ne s’ouvre pas : '+(e.message||e),5000);return}busy(false);
   if(S.doc!==d)return;
-  const h0=S.history[S.hi],a0=d.active,n0=d.layers.length;
-  const st={src,gray:null,bw:false,mode:'screen',mix:100,bg:90,zoom:1,ox:0,oy:0,flip:false,flat:flatSync&&cloneC(flatSync()),subj:undefined,bb:null,Lf:null};
-  st.Lb=newPixel('Double exposition · '+(file.name||'photo').replace(/\.[^.]+$/,''),mk(d.w,d.h));d.layers.push(st.Lb);d.active=d.layers.length-1;
-  drawB(st);applyMode(st);syncAll();
-  let done=false;
-  const cleanup=()=>{if(done)return;done=true;for(const L of [st.Lb,st.Lf]){const i=L?d.layers.indexOf(L):-1;if(i>=0)d.layers.splice(i,1)}d.active=Math.min(a0,d.layers.length-1);markComp();syncAll()};
-  const modes=DX_MODES.map(([v,l,t])=>`<button class="btn sm dx-m" data-m="${v}" title="${esc(t)}">${esc(l)}</button>`).join('');
-  dialog({title:'Double exposition',light:true,body:`<p class="muted" style="margin:0 0 10px">Choisissez un mode comme sur l’appareil, ou laissez l’IA composer. Tout reste modifiable ensuite : la seconde photo est un calque.</p>
-    <button class="btn primary" id="dxAI" style="width:100%;margin-bottom:10px">Composer avec l’IA</button>
-    <div class="dx-modes" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${modes}</div>
-    <p class="muted" id="dxHint" style="margin:0 0 8px;font-size:12px"></p>
-    ${rangeRow('dxMix','Intensité',0,100,1,100,' %')}${rangeRow('dxZoom','Échelle',50,300,1,100,' %')}${rangeRow('dxX','Position horizontale',-50,50,1,0,' %')}${rangeRow('dxY','Position verticale',-50,50,1,0,' %')}
-    <div id="dxBgRow">${rangeRow('dxBg','Fond clair',0,100,1,90,' %')}</div>
-    <div style="display:flex;gap:14px;margin-top:8px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="dxBW"> Seconde photo en noir et blanc</label><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="dxFlip"> Miroir</label></div>`,
-    onOpen:el=>{
-      el.classList.add('dx-dlg');const q=s=>el.querySelector(s);
-      const sync=()=>{el.querySelectorAll('.dx-m').forEach(b=>b.classList.toggle('primary',b.dataset.m===st.mode));q('#dxHint').textContent=(DX_MODES.find(x=>x[0]===st.mode)||[])[2]||'';q('#dxBgRow').style.display=st.mode==='silhouette'?'':'none'};
-      const setMode=async m=>{if(m==='silhouette'){const s=await ensureSubject(st);if(!s){toast('Aucun sujet net trouvé : le mode Écran est gardé',4500);m='screen'}}st.mode=m;drawB(st);applyMode(st);sync()};
-      el.querySelectorAll('.dx-m').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
-      const bind=(id,k,fn)=>{const r=q('#'+id),o=q('#'+id+'-o');r.addEventListener('input',()=>{st[k]=+r.value;o.textContent=r.value+' %';fn()})};
-      bind('dxMix','mix',()=>applyMode(st));bind('dxZoom','zoom',()=>{st.zoom=+q('#dxZoom').value/100;drawB(st);markComp()});
-      bind('dxX','ox',()=>{drawB(st);markComp()});bind('dxY','oy',()=>{drawB(st);markComp()});bind('dxBg','bg',()=>applyMode(st));
-      q('#dxBW').onchange=e=>{st.bw=e.target.checked;drawB(st);markComp()};q('#dxFlip').onchange=e=>{st.flip=e.target.checked;drawB(st);markComp()};
-      q('#dxAI').onclick=async()=>{const s=await ensureSubject(st);
-        if(s){st.mode='silhouette';st.zoom=1.08;st.ox=0;st.oy=-3;st.mix=100;st.bg=90}else{st.mode='screen';st.zoom=1;st.ox=0;st.oy=0;st.mix=100}
-        for(const [id,v] of [['dxMix',st.mix],['dxZoom',Math.round(st.zoom*100)],['dxX',st.ox],['dxY',st.oy],['dxBg',st.bg]]){q('#'+id).value=v;q('#'+id+'-o').textContent=v+' %'}
-        drawB(st);applyMode(st);sync();toast(s?'Silhouette composée : réglez l’échelle et la position si besoin':'Pas de sujet net : fondu en mode Écran',4000)};
-      sync()},
-    buttons:[{label:'Annuler',onClick:()=>{cleanup()}},{label:'Appliquer',primary:true,onClick:()=>{if(S.doc!==d||S.history[S.hi]!==h0){cleanup();return}
-      done=true;if(st.Lf&&!st.Lf.visible){const i=d.layers.indexOf(st.Lf);if(i>=0)d.layers.splice(i,1)}d.active=d.layers.indexOf(st.Lb);markComp();pushHistory('Double exposition');syncAll();toast('Double exposition ajoutée en calque')}}]});}
-// from the home screen or with no photo: two photos at once
-async function dexpStart(){if(S.doc){dexpDialog();return}
+  const st={d,src,gray:null,bw:false,flip:false,mode:'screen',mix:100,keep:85,bg:100,lum:0.4,s:1,cx:d.w/2,cy:d.h/2,subj:undefined,bb:null,Lw:null,c:mk(d.w,d.h),h0:S.history[S.hi],a0:d.active};
+  st.Lb=newPixel('Double exposition · '+(file.name||'photo').replace(/\.[^.]+$/,''),st.c);d.layers.push(st.Lb);d.active=d.layers.length-1;
+  DX.s=st;if(S.tool!=='dexp')prevTool=S.tool;
+  drawNow();applyMode();syncAll();_st.call(window,'dexp');
+  toast('Glissez la seconde photo pour la placer. Entrée pour valider, Échap pour annuler.',4000)}
+function finish(keep){const st=DX.s;if(!st)return;DX.s=null;if(raf){cancelAnimationFrame(raf);raf=0}const d=st.d;
+  if(keep&&S.doc===d&&d.layers.includes(st.Lb)){
+    if(st.Lw&&!st.Lw.visible){const i=d.layers.indexOf(st.Lw);if(i>=0)d.layers.splice(i,1)}
+    d.active=d.layers.indexOf(st.Lb);markComp();pushHistory('Double exposition');syncAll();toast('Double exposition ajoutée en calques, modifiables ensuite')}
+  else{for(const L of [st.Lb,st.Lw]){const i=L?d.layers.indexOf(L):-1;if(i>=0)d.layers.splice(i,1)}d.active=Math.min(st.a0,d.layers.length-1);markComp();syncAll()}
+  if(S.tool==='dexp')_st.call(window,prevTool==='dexp'?'move':prevTool);else renderPill()}
+// with no photo open: two photos at once
+async function begin(){if(S.doc){start();return}
   const fs=await pick2();if(!fs.length)return;let a=fs[0],b=fs[1];
-  await openBlob(a);if(!S.doc)return;if(!b)b=await pick1();if(b)dexpDialog(b)}
-DX.dialog=dexpDialog;DX.start=dexpStart;window.PrismDexp=DX;
+  await openBlob(a);if(!S.doc)return;if(!b)b=await pick1();if(b)start(b)}
 
-// menus: Fichier > Photos multiples, Image, and the palette (which lists menu items)
+// ---------- on the canvas ----------
+const toS=p=>({x:S.panX+p.x*S.zoom,y:S.panY+p.y*S.zoom});
+const corners=r=>[[r.x0,r.y0],[r.x1,r.y0],[r.x1,r.y1],[r.x0,r.y1]];
+function hit(p){const st=DX.s,r=rectOf(st),sp=toS(p);const i=corners(r).findIndex(([x,y])=>{const q=toS({x,y});return Math.hypot(q.x-sp.x,q.y-sp.y)<=12});return i>=0?'c'+i:'move'}
+let drag=null;
+// no toolbar button: the mode is entered from the menus or the IA tab and left by applying or cancelling
+TOOL_NAMES.dexp='Double exposition';
+const _st=setTool;setTool=function(t){if(DX.s&&t!=='dexp'){finish(true)}if(t==='dexp'&&!DX.s)return;return _st.apply(this,arguments)};
+const _od=onDown;onDown=function(e,p){if(S.tool==='dexp'&&DX.s&&e.button!==1&&!S.spaceDown){const st=DX.s,k=hit(p);drag={k,p0:{x:p.x,y:p.y},cx:st.cx,cy:st.cy,s:st.s,r:rectOf(st)};S.drag={type:'dexp'};return}_od(e,p)};
+const _om=onMove;onMove=function(e,p){if(S.drag&&S.drag.type==='dexp'&&drag&&DX.s){const st=DX.s;
+    if(drag.k==='move'){st.cx=drag.cx+p.x-drag.p0.x;st.cy=drag.cy+p.y-drag.p0.y}
+    else{// scales about the centre: the corner follows the pointer
+      const d0=Math.hypot(drag.p0.x-drag.cx,drag.p0.y-drag.cy)||1,d1=Math.hypot(p.x-drag.cx,p.y-drag.cy);st.s=clamp(drag.s*d1/d0,0.2,6)}
+    draw();syncNums();return}_om(e,p)};
+const _ou=onUp;onUp=function(e){if(S.drag&&S.drag.type==='dexp'){S.drag=null;drag=null;return}_ou(e)};
+view.addEventListener('pointermove',e=>{if(S.tool!=='dexp'||!DX.s||S.drag)return;const p=S.pointer;if(!p)return;const k=hit({x:p.dx,y:p.dy});view.style.cursor=k==='move'?'move':(k==='c0'||k==='c2')?'nwse-resize':'nesw-resize'});
+view.addEventListener('wheel',e=>{if(S.tool!=='dexp'||!DX.s||!e.altKey)return;e.preventDefault();e.stopImmediatePropagation();DX.s.s=clamp(DX.s.s*Math.exp(-e.deltaY*0.0015),0.2,6);draw();syncNums()},{capture:true,passive:false});
+window.addEventListener('keydown',e=>{if(!DX.s)return;const t=e.target;if(t&&(/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)&&t.type!=='range'&&t.type!=='checkbox'))return;
+  if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();finish(true)}
+  else if(e.key==='Escape'||((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z'))){e.preventDefault();e.stopImmediatePropagation();finish(false)}},true);
+const _dov=drawOverlays;drawOverlays=function(c,pr){_dov.apply(this,arguments);const st=DX.s;if(!st||S.tool!=='dexp')return;const r=rectOf(st);
+  c.save();c.setTransform(pr,0,0,pr,0,0);const q=corners(r).map(([x,y])=>toS({x,y}));
+  c.beginPath();q.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.lineWidth=3;c.strokeStyle='rgba(0,0,0,.45)';c.stroke();c.lineWidth=1.2;c.strokeStyle='#fff';c.stroke();
+  for(const a of q){c.beginPath();c.rect(a.x-4.5,a.y-4.5,9,9);c.fillStyle='#fff';c.fill();c.lineWidth=1;c.strokeStyle='#000';c.stroke()}c.restore()};
+
+// ---------- options bar ----------
+const rng=(id,label,min,max,v,tip)=>`<label${tip?` title="${esc(tip)}"`:''}>${label}<input type="range" id="${id}" min="${min}" max="${max}" step="1" value="${Math.round(v)}"><span class="val" id="${id}V">${Math.round(v)} %</span></label>`;
+function syncNums(){const st=DX.s,r=$('#dxS'),o=$('#dxSV');if(st&&r){r.value=Math.round(st.s*100);if(o)o.textContent=Math.round(st.s*100)+' %'}}
+const _pe=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe.apply(this,arguments)||'';const st=DX.s;if(t!=='dexp'||!st)return h;
+  h+=`<label title="${esc((DX_MODES.find(x=>x[0]===st.mode)||[])[2]||'')}">Mode<select id="dxMode">${DX_MODES.map(([v,l])=>`<option value="${v}" ${st.mode===v?'selected':''}>${l}</option>`).join('')}</select></label>`;
+  h+=rng('dxMix','Intensité',0,100,st.mix)+rng('dxS','Taille',20,600,st.s*100);
+  if(st.mode==='silhouette')h+=rng('dxKeep','Visage',0,100,st.keep,'Garde le haut du sujet lisible')+rng('dxBg','Fond clair',0,100,st.bg);
+  h+=`<label><input type="checkbox" id="dxBW" ${st.bw?'checked':''}>Noir et blanc</label><button class="btn sm" data-act="dxFlip" title="Retourner la seconde photo">⇄</button>`;
+  h+=`<button class="btn sm" data-act="dxAuto" data-pin title="L’IA détoure le sujet, place la seconde photo dedans et éclaircit le fond">Auto (IA)</button><button class="btn sm" data-act="dxCancel" data-pin>Annuler</button><button class="btn sm primary" data-act="dxApply" data-pin>Appliquer</button>`;
+  return h};
+Object.assign(PILL_ACT,{dxApply:()=>finish(true),dxCancel:()=>finish(false),dxAuto:auto,dxFlip:()=>{if(DX.s){DX.s.flip=!DX.s.flip;draw()}}});
+if(window.W47&&W47.NAMES)W47.NAMES.dexp='Double exposition';
+const _rp=renderPill;renderPill=function(){_rp.apply(this,arguments);if(S.tool!=='dexp')return;const n=document.querySelector('#pill .tname');if(n)n.textContent='Double exposition';
+  const ot=document.getElementById('optTool');if(ot)ot.innerHTML='<svg viewBox="0 0 20 20"><circle cx="7.5" cy="10" r="5"/><circle cx="12.5" cy="10" r="5"/></svg><b>Double exposition</b>'};
+
+document.addEventListener('input',e=>{const st=DX.s,t=e.target;if(!st||!t||!t.id||!/^dx/.test(t.id))return;const v=+t.value,o=$('#'+t.id+'V');if(o&&t.type==='range')o.textContent=v+' %';
+  if(t.id==='dxMix'){st.mix=v;applyMode()}else if(t.id==='dxS'){st.s=v/100;draw()}else if(t.id==='dxKeep'){st.keep=v;applyMode()}else if(t.id==='dxBg'){st.bg=v;applyMode()}});
+document.addEventListener('change',e=>{const st=DX.s,t=e.target;if(!st||!t)return;if(t.id==='dxBW'){st.bw=t.checked;draw()}else if(t.id==='dxMode')setMode(t.value)});
+
+DX.start=start;DX.begin=begin;DX.auto=auto;DX.finish=finish;window.PrismDexp=DX;
+
+// ---------- where it is offered: Fichier > Photos multiples, and the IA tab ----------
 const _mfDX=MENU2.file.items;
-MENU2.file.items=()=>{const a=_mfDX();const g=a.find(x=>x&&x.label==='Photos multiples'&&typeof x.sub==='function');const it=MI('Double exposition…',{fn:dexpStart});
+MENU2.file.items=()=>{const a=_mfDX();const g=a.find(x=>x&&x.label==='Photos multiples'&&typeof x.sub==='function');const it=MI('Double exposition…',{fn:begin});
   if(g){const s0=g.sub;if(!g.__dx){g.__dx=1;g.sub=()=>{const b=s0();return b.some(x=>x&&x.label===it.label)?b:[it,...b]}}}
   else if(!a.some(x=>x&&x.label===it.label))a.push(SEP,it);
   return a};
-const _miDX=MENU2.image.items;MENU2.image.items=()=>{const a=_miDX();if(!a.some(x=>x&&x.label==='Double exposition…'))a.push(SEP,MI('Double exposition…',{fn:dexpStart,dis:docDis()}));return a};
-// home screen tile
-{const box=document.getElementById('wTiles');if(box&&!box.querySelector('.dx-tile')){const b=document.createElement('button');b.className='w-tile dx-tile';b.type='button';
-  b.innerHTML='<svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg><b>Double exposition</b><span>Deux photos en une, à la main ou par l’IA</span>';
-  b.addEventListener('click',e=>{e.stopPropagation();dexpStart()});box.appendChild(b)}}
+const CARD=`<div class="card dx-card"><h4><svg viewBox="0 0 20 20"><circle cx="7.5" cy="10" r="5"/><circle cx="12.5" cy="10" r="5"/></svg>Double exposition</h4><p>Une seconde photo fondue dans la vôtre, comme sur un appareil Fujifilm. En mode Silhouette, l’IA la place dans le sujet et éclaircit le fond. Vous la placez ensuite à la souris, directement sur la photo.</p><div class="acts"><button class="btn sm primary" data-dx-go="1">Choisir la seconde photo…</button></div></div>`;
+function injectCard(){const p=document.getElementById('pane-ai');if(!p||p.querySelector('.dx-card'))return;const ref=p.querySelector('.aim-card');const t=document.createElement('div');t.innerHTML=CARD;const c=t.firstChild;
+  if(ref&&ref.nextSibling)ref.parentNode.insertBefore(c,ref.nextSibling);else p.appendChild(c)}
+{const p=document.getElementById('pane-ai');if(p){p.addEventListener('click',e=>{if(e.target.closest('[data-dx-go]')){e.stopPropagation();begin()}},true);new MutationObserver(()=>injectCard()).observe(p,{childList:true});injectCard()}}
 
 }
 
@@ -11346,6 +11774,18 @@ if(typeof openLibrary==='function'){const _ol=openLibrary;openLibrary=async func
   if(m&&!m.dataset.home){const n=m.cloneNode(true);n.dataset.home='1';const t='Revenir à l’accueil';n.title=t;n.setAttribute('aria-label',t);
     const go=e=>{e.stopPropagation();e.preventDefault();window.showHome()};n.addEventListener('click',go);n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')go(e)});m.replaceWith(n)}
   return r}}
+
+}
+
+/* ===== feat: feat/zzz_perf.js ===== */
+{
+/* ===== 0.5: fluidity. Every dab marks the area it touched, so the live stroke only recomposes that area (see st.liveCanvas).
+   Loaded last: it wraps the final dab, whatever the brushes above added to it. ===== */
+const _dabP=dab;dab=function(st,p){const r=(S.opts[st.tool]&&S.opts[st.tool].size||0)*0.75+4,D=st.dirty||(st.dirty={x0:Infinity,y0:Infinity,x1:-Infinity,y1:-Infinity});
+  if(p.x-r<D.x0)D.x0=p.x-r;if(p.y-r<D.y0)D.y0=p.y-r;if(p.x+r>D.x1)D.x1=p.x+r;if(p.y+r>D.y1)D.y1=p.y+r;
+  // clone stamps read elsewhere: the whole stroke box stays dirty
+  if(st.tool==='clone'&&st.bounds){const b=st.bounds;D.x0=Math.min(D.x0,b.x0-r);D.y0=Math.min(D.y0,b.y0-r);D.x1=Math.max(D.x1,b.x1+r);D.y1=Math.max(D.y1,b.y1+r)}
+  return _dabP.apply(this,arguments)};
 
 }
 </script>

@@ -1,0 +1,1 @@
+{"model": "MediaPipe selfie multiclass 256", "fmt": "onnx, poids float16 relus en float32", "input": "float [1,256,256,3] 0..1", "output": "probabilités [1,256,256,6] : fond, cheveux, peau du corps, peau du visage, vêtements, autres", "chunks": [8353192], "total": 8353192, "sha256": "a0ba864a277d3538307af039ee5d227361b183d44eb737bc05c0a65e4a1329fa"}

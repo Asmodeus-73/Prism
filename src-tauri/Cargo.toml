@@ -1,6 +1,6 @@
 [package]
 name = "prism"
-version = "0.4.0"
+version = "0.5.0"
 description = "Prism, retouche photo"
 edition = "2021"
 
@@ -18,6 +18,11 @@ tauri-plugin-updater = "2"
 percent-encoding = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Native AI: ONNX Runtime loaded at run time from the bundled library (see src/ai.rs)
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["load-dynamic", "api-23", "directml", "coreml"] }
+
+[target.'cfg(windows)'.dependencies]
+libloading = "0.8"
 
 [profile.release]
 codegen-units = 1
