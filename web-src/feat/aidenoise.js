@@ -4,7 +4,7 @@ const DN={sess:null,loadP:null,TILE:256,OV:32,N:4,tms:null,abort:false,busyNow:f
 DN.WSRC=`let sess=null;
 self.onmessage=async e=>{const m=e.data;
  if(m.t==='init'){try{
-   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
+   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;if(m.bin){const bs=await Promise.all(m.bin.map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()})));const tot=bs.reduce((x,b)=>x+b.byteLength,0),wb=new Uint8Array(tot);let k=0;for(const b of bs){wb.set(new Uint8Array(b),k);k+=b.byteLength}ort.env.wasm.wasmBinary=wb.buffer}ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
    const n=m.chunks.length,parts=new Array(n);let done=0;
    await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.85})}));
    const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
@@ -24,7 +24,7 @@ DN._load=()=>new Promise(async res=>{DN.loadRes=res;
     else if(m.t==='ready'){DN.threads=m.threads;DN.lastEp=m.ep||'wasm';DN.loadRes=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
     else if(m.t==='err'){console.error(m.msg);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+m.msg,5000);res(null)}};
   w.onerror=e=>{console.error(e);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||'worker'),5000);res(null)};
-  w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
 DN.pend=new Map();DN.rid=0;
 DN._onmsg=e=>{const m=e.data,p=DN.pend.get(m.id);if(!p)return;DN.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 DN.tile=(f,dims)=>new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});

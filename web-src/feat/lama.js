@@ -7,7 +7,7 @@ const LM={meta:null,availP:null,w:null,loadP:null,loadRes:null,pend:new Map(),ri
 LM.WSRC=`let sess=null;
 self.onmessage=async e=>{const m=e.data;
  if(m.t==='init'){try{
-   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
+   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;if(m.bin){const bs=await Promise.all(m.bin.map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()})));const tot=bs.reduce((x,b)=>x+b.byteLength,0),wb=new Uint8Array(tot);let k=0;for(const b of bs){wb.set(new Uint8Array(b),k);k+=b.byteLength}ort.env.wasm.wasmBinary=wb.buffer}ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
    const n=m.chunks.length,parts=new Array(n);let done=0;
    await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.8})}));
    const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(let i=0;i<n;i++){buf.set(parts[i],o);o+=parts[i].length;parts[i]=null}
@@ -32,7 +32,7 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
     else if(m.t==='ready'){LM.threads=m.threads;LM.ep=m.ep||'wasm';LM.loadRes=null;LM.loadW=null;LM.w=w;w.onmessage=LM._onmsg;res(w)}
     else if(m.t==='err')fail(m.msg)};
   w.onerror=e=>fail(e.message||'worker');
-  w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
 LM._onmsg=e=>{const m=e.data,p=LM.pend.get(m.id);if(!p)return;LM.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 LM.infer=(img,mask,h,w)=>new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
 /* annulation : pendant le chargement on arrête le worker ; pendant le calcul on abandonne le résultat (le modèle reste en mémoire pour la prochaine fois) */

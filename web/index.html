@@ -1511,8 +1511,11 @@ AI.setState=(k,v,p)=>{AI.state[k]=v;AI.state[k+'P']=p;renderAIState()};
 const ORTX={_g:null,gpuP:()=>ORTX._g||(ORTX._g=(async()=>{try{if(PREF.get('aiGPU',true)===false||!navigator.gpu)return false;const a=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});return !!a}catch(e){return false}})()),
   threads:()=>self.crossOriginIsolated?Math.max(1,Math.min(8,(navigator.hardwareConcurrency||2)-1)):1};
 ORTX.bundle=async()=>asset((await ORTX.gpuP())?'ai/ort.webgpu.min.js':'ai/ort.wasm.min.js');
+// the WebGPU build of the runtime is 24 MB: stored in two pieces (hosting limit) and handed to ONNX Runtime as wasmBinary
+ORTX.binURLs=()=>[0,1].map(i=>new URL(asset(`ai/ortgpu/${i}.wasm`),location.href).href);
+ORTX.binary=async()=>{if(!(await ORTX.gpuP()))return null;if(!ORTX._bin)ORTX._bin=Promise.all(ORTX.binURLs().map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()}))).then(a=>{const n=a.reduce((t,b)=>t+b.byteLength,0),o=new Uint8Array(n);let k=0;for(const b of a){o.set(new Uint8Array(b),k);k+=b.byteLength}return o.buffer}).catch(e=>{ORTX._bin=null;throw e});return ORTX._bin};
 ORTX.eps=async()=>(await ORTX.gpuP())?['webgpu','wasm']:['wasm'];
-ORTX.create=async(ort,buf,opt)=>{const eps=await ORTX.eps(),cpu=()=>ort.InferenceSession.create(buf,{...opt,executionProviders:['wasm']});
+ORTX.create=async(ort,buf,o)=>{const {cpuOnly,...opt}=o||{},eps=cpuOnly?['wasm']:await ORTX.eps(),cpu=()=>ort.InferenceSession.create(buf,{...opt,executionProviders:['wasm']});
   if(eps[0]==='wasm'){const s=await cpu();s.__ep='wasm';return s}
   let s;try{s=await ort.InferenceSession.create(buf,{...opt,executionProviders:eps})}catch(e){console.warn('WebGPU indisponible pour ce modèle, retour au processeur',e);s=await cpu();s.__ep='wasm';return s}
   // some operators only fail when they run: the first failure moves this model to the processor for good
@@ -1521,10 +1524,10 @@ ORTX.create=async(ort,buf,opt)=>{const eps=await ORTX.eps(),cpu=()=>ort.Inferenc
 window.PrismORT=ORTX;
 AI.ensureSeg=()=>AI._seg?Promise.resolve(AI._seg):(AI._segP||(AI._segP=AI._ensureSeg().finally(()=>{AI._segP=null})));
 AI._ensureSeg=async()=>{let failed=false;AI.setState('seg','load',0);try{
-    if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;
+    if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');{const bin=await ORTX.binary();if(bin)ort.env.wasm.wasmBinary=bin}ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;
     const n=11,parts=new Array(n);let done=0;await Promise.all([...Array(n).keys()].map(async i=>{let r;try{r=await fetch(asset(`ai/isnet/${i}.wasm`));if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer())}catch(e){failed=true;throw e}if(failed)return;done++;AI.setState('seg','load',done/n*0.9);busy(true,'Téléchargement du modèle de détourage (44 Mo, une seule fois)…',done/n*0.9)}));
     const total=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(total);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
-    busy(true,'Préparation du modèle…',0.95);AI._seg=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all'});AI.setState('seg','ready');return AI._seg}
+    busy(true,'Préparation du modèle…',0.95);AI._seg=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all',cpuOnly:true});/* ISNet: MaxPool with ceil mode is not supported by the WebGPU runtime */AI.setState('seg','ready');return AI._seg}
   catch(e){failed=true;console.error(e);AI.setState('seg','error');busy(false);toast('Le modèle de détourage n’a pas pu se charger : '+(e.message||e),5000);return null}};
 AI.subjectMask=async()=>{const d=S.doc;if(!d)return null;const key=d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();const C=AI.subjectCache;if(C&&C.w===d.w&&C.h===d.h&&C.key.length===key.length&&C.key.every((v,i)=>v===key[i]))return C.m;
   const sess=await AI.ensureSeg();if(!sess)return null;busy(true,'Détection du sujet…',null);await tick();try{const R=1024,src=flatSync(),t=mk(R,R),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(src,0,0,R,R);const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);
@@ -8948,7 +8951,7 @@ const DN={sess:null,loadP:null,TILE:256,OV:32,N:4,tms:null,abort:false,busyNow:f
 DN.WSRC=`let sess=null;
 self.onmessage=async e=>{const m=e.data;
  if(m.t==='init'){try{
-   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
+   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;if(m.bin){const bs=await Promise.all(m.bin.map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()})));const tot=bs.reduce((x,b)=>x+b.byteLength,0),wb=new Uint8Array(tot);let k=0;for(const b of bs){wb.set(new Uint8Array(b),k);k+=b.byteLength}ort.env.wasm.wasmBinary=wb.buffer}ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
    const n=m.chunks.length,parts=new Array(n);let done=0;
    await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.85})}));
    const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(const p of parts){buf.set(p,o);o+=p.length}
@@ -8968,7 +8971,7 @@ DN._load=()=>new Promise(async res=>{DN.loadRes=res;
     else if(m.t==='ready'){DN.threads=m.threads;DN.lastEp=m.ep||'wasm';DN.loadRes=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
     else if(m.t==='err'){console.error(m.msg);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+m.msg,5000);res(null)}};
   w.onerror=e=>{console.error(e);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||'worker'),5000);res(null)};
-  w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
 DN.pend=new Map();DN.rid=0;
 DN._onmsg=e=>{const m=e.data,p=DN.pend.get(m.id);if(!p)return;DN.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 DN.tile=(f,dims)=>new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
@@ -9374,7 +9377,7 @@ const LM={meta:null,availP:null,w:null,loadP:null,loadRes:null,pend:new Map(),ri
 LM.WSRC=`let sess=null;
 self.onmessage=async e=>{const m=e.data;
  if(m.t==='init'){try{
-   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
+   importScripts(m.ort);const ort=self.ort;ort.env.wasm.wasmPaths=m.wasm;if(m.bin){const bs=await Promise.all(m.bin.map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('moteur IA '+r.status);return r.arrayBuffer()})));const tot=bs.reduce((x,b)=>x+b.byteLength,0),wb=new Uint8Array(tot);let k=0;for(const b of bs){wb.set(new Uint8Array(b),k);k+=b.byteLength}ort.env.wasm.wasmBinary=wb.buffer}ort.env.wasm.numThreads=m.threads;ort.env.wasm.proxy=false;
    const n=m.chunks.length,parts=new Array(n);let done=0;
    await Promise.all(m.chunks.map(async(u,i)=>{const r=await fetch(u);if(!r.ok)throw new Error('modèle '+r.status);parts[i]=new Uint8Array(await r.arrayBuffer());done++;postMessage({t:'prog',v:done/n*0.8})}));
    const tot=parts.reduce((a,p)=>a+p.length,0),buf=new Uint8Array(tot);let o=0;for(let i=0;i<n;i++){buf.set(parts[i],o);o+=parts[i].length;parts[i]=null}
@@ -9399,7 +9402,7 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
     else if(m.t==='ready'){LM.threads=m.threads;LM.ep=m.ep||'wasm';LM.loadRes=null;LM.loadW=null;LM.w=w;w.onmessage=LM._onmsg;res(w)}
     else if(m.t==='err')fail(m.msg)};
   w.onerror=e=>fail(e.message||'worker');
-  w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
 LM._onmsg=e=>{const m=e.data,p=LM.pend.get(m.id);if(!p)return;LM.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 LM.infer=(img,mask,h,w)=>new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
 /* annulation : pendant le chargement on arrête le worker ; pendant le calcul on abandonne le résultat (le modèle reste en mémoire pour la prochaine fois) */
