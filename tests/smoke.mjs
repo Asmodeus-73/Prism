@@ -197,6 +197,66 @@ await test('calques épars : déplacer, transformer, recadrer, filtrer, exporter
       const [a,b]=res;out[name]=b.nsp<4?'pas de calque compacté ('+b.nsp+')':a.tag.startsWith('erreur')||b.tag.startsWith('erreur')?a.tag+' / '+b.tag:(a.tag&&a.tag!==b.tag)?a.tag+' / '+b.tag:(a.w!==b.w||a.h!==b.h||a.n!==b.n||a.hash!==b.hash||a.lay!==b.lay)?'résultat différent '+JSON.stringify([a,b].map(x=>[x.w,x.h,x.n,x.hash])):a.hash===0?'vide':'ok'}}
     finally{saveFile=sf;SPARSE.on=true}return out});
   const bad=Object.entries(r).filter(([k,v])=>v!=='ok').map(([k,v])=>k+' : '+v);if(bad.length)throw new Error(bad.join('\n'))});
+// ---- remplissage génératif (application de bureau) : la partie page, avec un moteur natif simulé ----
+await test('remplissage génératif : hors application de bureau, un message et rien de modifié',async()=>{await sample();
+  const r=await ev(async()=>{const d=S.doc,n=d.layers.length;const had=!!window.__TAURI__;d.sel=maskFromU8(new Uint8Array(d.w*d.h).fill(1),d.w,d.h,false);
+    const items=MENU2.image.items().filter(x=>x&&x.label==='Remplissage génératif…').length;await PrismGF.dialog();const t1=document.getElementById('toast').textContent;const ok=await PrismGF.fill({prompt:'x'});
+    return{had,items,t1,ok,same:d.layers.length===n,dlg:!!document.querySelector('#scrim')}});
+  if(r.had||r.items!==1||!/application de bureau/.test(r.t1)||r.ok||!r.same||r.dlg)throw new Error(JSON.stringify(r))});
+await test('remplissage génératif : fenêtre de travail (position, taille, multiples de 8)',async()=>{await sample();
+  const bad=await ev(()=>{const bad=[],W=1800,H=1200;const cases=[[10,10,60,50],[W-40,H-30,W,H],[0,0,W,H],[800,500,1000,700],[100,100,1500,1100],[5,600,25,640]];
+    for(const[x0,y0,x1,y1]of cases)for(const work of[512,256]){const P=PrismGF.plan({x0,y0,x1,y1},W,H,work),t=`${[x0,y0,x1,y1]} w${work}`;
+      if(!(P.x0>=0&&P.y0>=0&&P.x1<=W&&P.y1<=H))bad.push(t+' hors image');
+      if(!(P.x0<=x0&&P.y0<=y0&&P.x1>=x1&&P.y1>=y1))bad.push(t+' ne contient pas la zone');
+      if(P.rw%8||P.rh%8||P.rw<64||P.rh<64)bad.push(t+' taille '+P.rw+'x'+P.rh);
+      if(Math.max(P.rw,P.rh)!==work&&Math.max(P.w,P.h)>=work/8)bad.push(t+' grand côté '+Math.max(P.rw,P.rh));
+      if(P.x1-P.x0!==P.w||P.y1-P.y0!==P.h)bad.push(t+' w/h')}
+    const q=PrismGF.plan({x0:800,y0:500,x1:900,y1:560},W,H,512);if(q.w!==256||q.h!==256||q.rw!==512||q.x0!==(850-128))bad.push('zone moyenne '+JSON.stringify(q));
+    const g=new Uint8Array(9*9);g[4*9+4]=1;const a=PrismGF.grow(g,9,9,2);let n=0;for(const v of a)n+=v;if(n!==25||!a[2*9+2]||a[1*9+1])bad.push('grow '+n);
+    return bad});
+  if(bad.length)throw new Error(bad.join('\n'))});
+await test('remplissage génératif : calque + masque progressif, annulation, échec réseau, annulation de l’utilisateur',async()=>{await sample();
+  const r=await ev(async()=>{const d=S.doc,out={};const sc=document.createElement('canvas');
+    const sel=mk(d.w,d.h),g=cx(sel);g.fillStyle='#fff';g.fillRect(600,400,200,120);d.sel=sel;selChanged();
+    const calls=[],hand={};let sawBody=null,mode='ok';
+    window.__TAURI__={event:{listen:async(ev,fn)=>{hand[ev]=fn;return()=>{delete hand[ev]}}},core:{invoke:async(cmd,a,o)=>{calls.push(cmd);
+      if(cmd==='sd_status')return{ok:true,cached:false,loaded:false,total:2.1e9,error:null};
+      if(cmd==='ai_status')return{ok:true,gpu:null};
+      if(cmd==='sd_cancel'){mode='cancel';return}
+      if(cmd==='sd_prepare'){if(mode==='offline')throw 'Téléchargement impossible : https://x/y : error sending request';
+        hand['sd-download']&&hand['sd-download']({payload:{phase:'download',done:1e9,total:2.1e9}});out.busyDl=document.querySelector('#busy span').textContent;return{ep:'CPU',load_ms:1}}
+      if(cmd==='sd_generate'){const p=JSON.parse(decodeURIComponent(o.headers['x-params'])),n=p.w*p.h;sawBody={p,len:a.length,n,a};
+        hand['sd-progress']&&hand['sd-progress']({payload:{phase:'denoise',step:3,total:p.steps,ms:1}});out.busyGen=document.querySelector('#busy span').textContent;
+        if(mode==='cancel')throw 'annulé';
+        const rgb=new Uint8Array(n*3);for(let i=0;i<n;i++){rgb[i*3]=255;rgb[i*3+1]=0;rgb[i*3+2]=0}return rgb.buffer}}}};
+    const n0=d.layers.length,h0=S.hi;
+    PrismGF.OVR={work:256,steps:8,seed:5};
+    const ok=await PrismGF.fill({prompt:'a red balloon',...PrismGF.OVR});
+    out.ok=ok;out.layers=d.layers.length-n0;const L=d.layers[d.layers.length-1];out.name=L.name;out.hasMask=!!L.mask&&L.mask.width===d.w&&L.mask.height===d.h;out.edit=L.editMask;
+    const px=(c,x,y)=>Array.from(rx(c).getImageData(x,y,1,1).data);
+    out.mid=px(L.mask,700,460);out.edge=px(L.mask,598,460);out.far=px(L.mask,100,100);out.layerMid=px(L.canvas,700,460);
+    out.ps=sawBody&&{w:sawBody.p.w,h:sawBody.p.h,steps:sawBody.p.steps,seed:sawBody.p.seed,prompt:sawBody.p.prompt,len:sawBody.len,n:sawBody.n};
+    // the body: photo window then mask; the hole covers the selection and the margin, nothing far from it
+    if(sawBody){const P=PrismGF.plan({x0:600,y0:400,x1:800,y1:520},d.w,d.h,256),n=sawBody.n,m=sawBody.a.subarray(n*3);const at=(x,y)=>m[Math.floor((y-P.y0)*P.fy)*P.rw+Math.floor((x-P.x0)*P.fx)];
+      out.holeIn=at(700,460);out.holeNear=at(598,460);out.holeFar=at(P.x0+4,P.y0+4);
+      const flat=cx(flatSync()).getImageData(P.x0+3,P.y0+3,1,1).data,k=(Math.floor(3*P.fy)*P.rw+Math.floor(3*P.fx))*3;out.srcOk=Math.abs(sawBody.a[k]-flat[0])<24}
+    out.sel=!!d.sel;out.dlBusy=/Téléchargement du modèle de génération \(2,1 Go, une seule fois\)/.test(out.busyDl||'');out.genBusy=/étape 4 sur 8/.test(out.busyGen||'');
+    out.busyOff=document.getElementById('busy').hidden;
+    undo();out.afterUndo=d.layers.length-n0;redo();out.afterRedo=d.layers.length-n0;undo();d.sel=sel;selChanged();
+    // offline: clear French message, nothing added
+    mode='offline';const ok2=await PrismGF.fill({prompt:'x',...PrismGF.OVR});out.offline=ok2===false&&d.layers.length===n0&&/connexion/.test(document.getElementById('toast').textContent);
+    // the person cancels during generation
+    mode='cancelling';const calls0=calls.length;const orig=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(c,a,o)=>{if(c==='sd_generate'){PrismGF.cancel();throw 'annulé'}return orig(c,a,o)};
+    const ok3=await PrismGF.fill({prompt:'x',...PrismGF.OVR});out.cancelled=ok3===false&&d.layers.length===n0&&/annulée/.test(document.getElementById('toast').textContent)&&calls.includes('sd_cancel');
+    delete window.__TAURI__;PrismGF.OVR={};return out});
+  const e=[];if(!r.ok||r.layers!==1)e.push('calque non créé');if(r.name!=='Remplissage génératif')e.push('nom '+r.name);if(!r.hasMask)e.push('masque absent');
+  if(r.mid[3]!==255)e.push('masque plein attendu au centre : '+r.mid);if(!(r.edge[3]>0&&r.edge[3]<255))e.push('bord non progressif : '+r.edge);if(r.far[3]!==0)e.push('masque loin : '+r.far);
+  if(r.layerMid.join()!=='255,0,0,255')e.push('pixel du calque '+r.layerMid);
+  if(!r.ps||r.ps.w!==256||r.ps.h!==256||r.ps.steps!==8||r.ps.seed!==5||r.ps.prompt!=='a red balloon'||r.ps.len!==r.ps.n*4)e.push('paramètres '+JSON.stringify(r.ps));
+  if(r.holeIn!==255||r.holeNear!==255||r.holeFar!==0)e.push(`masque envoyé ${r.holeIn}/${r.holeNear}/${r.holeFar}`);if(!r.srcOk)e.push('photo envoyée');
+  if(!r.sel)e.push('sélection perdue');if(!r.dlBusy)e.push('texte de téléchargement : '+r.busyDl);if(!r.genBusy)e.push('texte de génération : '+r.busyGen);if(!r.busyOff)e.push('overlay encore là');
+  if(r.afterUndo!==0||r.afterRedo!==1)e.push(`annuler/rétablir ${r.afterUndo}/${r.afterRedo}`);if(!r.offline)e.push('message hors ligne');if(!r.cancelled)e.push('annulation');
+  if(e.length)throw new Error(e.join('\n')+'\n'+JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

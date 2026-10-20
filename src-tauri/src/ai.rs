@@ -57,7 +57,7 @@ fn lib_path<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     places.into_iter().find(|p| p.is_file())
 }
 
-fn env<R: Runtime>(app: &AppHandle<R>) -> Result<&'static Environment, String> {
+pub(crate) fn env<R: Runtime>(app: &AppHandle<R>) -> Result<&'static Environment, String> {
     let r = ENV.get_or_init(|| {
         let path = lib_path(app).ok_or_else(|| "moteur IA natif absent".to_string())?;
         // On Windows, DirectML.dll sits next to onnxruntime.dll and must be found first.
@@ -83,7 +83,7 @@ fn env<R: Runtime>(app: &AppHandle<R>) -> Result<&'static Environment, String> {
     }
 }
 
-fn gpu_name() -> Option<String> {
+pub(crate) fn gpu_name() -> Option<String> {
     if cfg!(target_os = "windows") {
         Some("DirectML".into())
     } else if cfg!(target_os = "macos") {
@@ -106,7 +106,13 @@ pub fn ai_status(app: AppHandle) -> Status {
     }
 }
 
-fn build(env: &Environment, bytes: &[u8], gpu: bool, cache: Option<PathBuf>) -> Result<Session, String> {
+/// Where a model comes from: bytes sent by the page, or a file read by ONNX Runtime itself (large models).
+pub(crate) enum Src<'a> {
+    Mem(&'a [u8]),
+    File(&'a std::path::Path),
+}
+
+pub(crate) fn build(env: &Environment, src: Src, gpu: bool, cache: Option<PathBuf>) -> Result<Session, String> {
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
     let mut b = Session::builder(env)
         .map_err(|e| e.to_string())?
@@ -146,7 +152,11 @@ fn build(env: &Environment, bytes: &[u8], gpu: bool, cache: Option<PathBuf>) -> 
         }
     }
     let _ = &cache;
-    b.commit_from_memory(bytes).map_err(|e| e.to_string())
+    match src {
+        Src::Mem(bytes) => b.commit_from_memory(bytes),
+        Src::File(path) => b.commit_from_file(path),
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -169,12 +179,12 @@ pub async fn ai_load(app: AppHandle, state: State<'_, AiState>, request: Request
     let bytes = bytes.clone();
     let (session, ep) = tauri::async_runtime::spawn_blocking(move || {
         if !cpu && gpu_name().is_some() {
-            match build(env, &bytes, true, cache) {
+            match build(env, Src::Mem(&bytes), true, cache) {
                 Ok(s) => return Ok((s, gpu_name().unwrap())),
                 Err(e) => eprintln!("IA : carte graphique indisponible pour ce modèle ({e}), processeur"),
             }
         }
-        build(env, &bytes, false, None).map(|s| (s, "CPU".to_string()))
+        build(env, Src::Mem(&bytes), false, None).map(|s| (s, "CPU".to_string()))
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -297,6 +307,6 @@ fn header(request: &Request<'_>, name: &str) -> Result<String, String> {
         .ok_or_else(|| format!("en-tête {name} manquant"))
 }
 
-fn safe_key(k: &str) -> String {
+pub(crate) fn safe_key(k: &str) -> String {
     k.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).take(64).collect()
 }

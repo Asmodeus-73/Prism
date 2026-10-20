@@ -1,6 +1,7 @@
 mod ai;
 mod models;
 mod raw;
+mod sd;
 mod sync;
 mod tether;
 mod update;
@@ -62,6 +63,7 @@ pub fn run() {
         .manage(sync::SyncState::default())
         .manage(update::Pending::default())
         .manage(ai::AiState::default())
+        .manage(sd::SdState::default())
         .manage(tether::TetherState::default())
         .setup(|app| {
             sync::load(app.handle());
@@ -88,6 +90,11 @@ pub fn run() {
             ai::ai_load,
             ai::ai_unload,
             ai::ai_run,
+            sd::sd_status,
+            sd::sd_prepare,
+            sd::sd_generate,
+            sd::sd_cancel,
+            sd::sd_unload,
             raw::raw_decode,
             tether::tether_folder,
             tether::tether_start,

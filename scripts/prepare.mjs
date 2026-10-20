@@ -27,6 +27,8 @@ for (const dir of readdirSync(join(dist, 'ai'))) {
     rmSync(join(full, f));
   }
 }
+// Files that exist only in the GitHub release "modeles" (generative fill, src-tauri/src/sd.rs): path -> sha256
+Object.assign(models, JSON.parse(readFileSync(join(root, 'desktop', 'models-extra.json'), 'utf8')).models);
 writeFileSync(join(dist, 'desktop', 'models.js'), `window.PRISM_MODELS=${JSON.stringify(models)};\n`);
 writeFileSync(join(dist, 'models.json'), JSON.stringify(models, null, 1) + '\n');
 
