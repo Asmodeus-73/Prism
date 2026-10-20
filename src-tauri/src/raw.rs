@@ -138,7 +138,7 @@ pub fn write<const N: usize>(
             s.spawn(move || {
                 for (r, line) in band.chunks_exact_mut(ow * 6).enumerate() {
                     let dy = i * rows + r;
-                    for (dx, o) in line.chunks_exact_mut(6).enumerate() {
+                    for (dx, o) in line.as_chunks_mut::<6>().0.iter_mut().enumerate() {
                         let (fx, fy) = if transpose { (dy, dx) } else { (dx, dy) };
                         let x = if hflip { w - 1 - fx } else { fx };
                         let y = if vflip { h - 1 - fy } else { fy };
@@ -176,7 +176,7 @@ fn xyz_to_cam(raw: &RawImage) -> [[f32; 3]; 4] {
         out[..3].copy_from_slice(&pseudo_inverse(SRGB_TO_XYZ_D65));
         return out;
     }
-    for (i, row) in flat.chunks_exact(3).take(4).enumerate() {
+    for (i, row) in flat.as_chunks::<3>().0.iter().take(4).enumerate() {
         out[i] = [row[0], row[1], row[2]];
     }
     out
