@@ -131,8 +131,8 @@ fn build(env: &Environment, bytes: &[u8], gpu: bool, cache: Option<PathBuf>) -> 
             let mut ep = ort::ep::CoreML::default()
                 .with_model_format(ort::ep::coreml::ModelFormat::MLProgram)
                 .with_compute_units(ort::ep::coreml::ComputeUnits::All);
-            if let Some(dir) = cache {
-                let _ = std::fs::create_dir_all(&dir);
+            if let Some(dir) = &cache {
+                let _ = std::fs::create_dir_all(dir);
                 ep = ep.with_model_cache_dir(dir.to_string_lossy());
             }
             b = b
