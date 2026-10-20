@@ -62,6 +62,14 @@ await test('double exposition : outil et annulation',async()=>{const r=await ev(
 
 await test('agrandissement IA (moteur ONNX) sur un petit extrait',async()=>{const r=await ev(async()=>{const U=__x4p.onnx;U.ok=async()=>true;const m=await U.load('fast');if(!m)return 'modèle non chargé';
     const s=mk(48,40);cx(s).drawImage(flatSync(),500,400,48,40,0,0,48,40);const o=await U.canvas(s,2,m,null);return o.width===96&&o.height===80?'ok':o.width+'x'+o.height});if(r!=='ok')throw new Error(r)});
+await test('sélection d’objet (Segment Anything) : un clic de baguette choisit un objet',async()=>{await sample();await ev(()=>{S.opts.wand.obj=true;setTool('wand')});
+  await drag(0.5,0.5,0.5,0.5,1);await page.waitForFunction(()=>S.history[S.hi]&&S.history[S.hi].label==='Sélectionner un objet',null,{timeout:180000});
+  const r=await ev(()=>{const m=S.doc.sel,c=mk(m.width,m.height),g=rx(c);g.drawImage(m,0,0);const a=g.getImageData(0,0,c.width,c.height).data;let on=0;for(let i=3;i<a.length;i+=4)if(a[i]>127)on++;S.opts.wand.obj=false;return on/(c.width*c.height)});
+  if(!(r>0.005&&r<0.995))throw new Error('couverture '+r)});
+await test('masque IA : le nouveau réglage local est déjà dosé',async()=>{await sample();const r=await ev(async()=>{const d=S.doc,m=mk(d.w,d.h),g=cx(m);g.fillStyle='#fff';g.fillRect(d.w*0.25,d.h*0.25,d.w*0.5,d.h*0.5);
+    const cm=AI.categoryMask;AI.categoryMask=async()=>m;try{await PrismAIMask.apply('subj','layer');await PrismAIMask.apply('sky','layer')}finally{AI.categoryMask=cm}
+    const z=DEV0(),moved=L=>Object.keys(z).filter(k=>typeof z[k]==='number'&&L.dev[k]!==z[k]).length,a=d.layers.slice(-2);return a.map(L=>[L.name,!!L.mask,moved(L)])});
+  if(r[0][0]!=='Sujet (IA)'||r[1][0]!=='Ciel (IA)'||!r.every(x=>x[1]&&x[2]>0))throw new Error(JSON.stringify(r))});
 await test('impression : la page ne garde que la photo',async()=>{const r=await ev(async()=>{let called=0;window.print=()=>{called++};PrismPrint.dialog();await new Promise(r=>setTimeout(r,150));
     const info=document.querySelector('#prInfo').textContent;[...document.querySelectorAll('#scrim button')].find(b=>/Imprimer/.test(b.textContent)).click();
     for(let i=0;i<50&&!called;i++)await new Promise(r=>setTimeout(r,100));const img=document.querySelector('#printSheet img');return {called,img:!!(img&&img.naturalWidth),info}});
@@ -70,6 +78,11 @@ await test('pinceaux Photoshop (.abr) : lecture d’une pointe',async()=>{const 
 await test('pinceaux Photoshop (.abr) : un fichier piégé ne bloque pas l’éditeur',async()=>{const r=await ev(()=>{const N=5000,E=72,b=new Uint8Array(4+12+N*E),v=new DataView(b.buffer);v.setUint16(0,6);v.setUint16(2,1);b.set([56,66,73,77,115,97,109,112],4);v.setUint32(12,N*E);
   for(let i=0;i<N;i++){const o=16+i*E;v.setUint32(o,68);v.setInt32(o+4+47+8,4000);v.setInt32(o+4+47+12,4000);v.setUint16(o+4+47+16,8)}
   const t0=performance.now(),t=PrismABR(b);return t.length+' '+Math.round(performance.now()-t0)});const [n,ms]=r.split(' ').map(Number);if(n!==0||ms>2000)throw new Error(r)});
+await test('accueil et photothèque : la photo déjà ouverte se rouvre',async()=>{const r=await ev(async()=>{const c=mk(300,200);cx(c).fillStyle='#c33';cx(c).fillRect(0,0,300,200);const b=await new Promise(r=>c.toBlob(r,'image/jpeg'));
+    await openBlob(new File([b],'deja-ouverte.jpg',{type:'image/jpeg'}));await flushSave();await libLoad();const pid=S.doc.pid,em=document.getElementById('empty'),out=[];
+    showHome();await libOpen(pid);out.push(em.hidden);
+    showHome();await openLibrary();await libOpen(pid);out.push(em.hidden&&!document.querySelector('#library'));
+    showHome();await Promise.all([libOpen(pid),libOpen(pid)]);out.push(em.hidden);return out.join()});if(r!=='true,true,true')throw new Error(r)});
 await test('profils d’objectif : reconnaissance et correction',async()=>{const r=await ev(async()=>{const P=PrismLens.profiles,db=await P.load();const f=P.find(db,{make:'SONY',model:'ILCE-7M3',lens:'FE 24-70mm F2.8 GM',focal:24,fn:8});
     if(!f||!f.lens)return 'non trouvé';const q=P.params(f.lens,24,8,f.cam&&f.cam[3]);const c=mk(300,200);cx(c).fillStyle='#888';cx(c).fillRect(0,0,300,200);const o=PrismLens.runSync(c,q,true);return o.width===300&&q.lfs>0?'ok':'rendu'});if(r!=='ok')throw new Error(r)});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));

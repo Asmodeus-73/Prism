@@ -69,7 +69,12 @@ function renderLibInfo(){const el=$('#lbInfo');if(!el)return;const sel=LIB.items
   if(one){const b=$('#lbBig',el);if(b)libThumb(one,b);const nm=$('#lbName',el);nm.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter')nm.blur();if(e.key==='Escape'){nm.value=one.name;nm.blur()}};nm.onchange=()=>libRename(one,nm.value)}
   const ti=$('#lbTag',el);ti.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter'&&ti.value.trim()){const t=ti.value.split(',').map(s=>s.trim()).filter(Boolean).map(s=>s.slice(0,40));ti.value='';libSet([...LIB.sel],{addTags:t}).then(()=>$('#lbTag')?.focus())}}}
 async function libRename(it,n){n=(n||'').trim();if(!n||n===it.name)return;if(S.doc&&S.doc.pid===it.id){S.doc.name=n;updateDocName();await saveNow()}else if(it.local){it.local.name=n;it.local.updatedAt=Date.now();await IDB.put('projects',it.id,it.local);if(it.local.sync)Cloud.push(it.local)}else if(it.cloud){await Cloud.col.doc(it.id).update({name:n})}await libLoad();renderLibrary()}
-async function libOpen(id){const it=LIB.items.find(i=>i.id===id);if(!it)return;if(S.doc&&S.doc.pid===id){closeLibrary();return}await flushSave();closeLibrary();if(it.local)await openLocalProject(id);else await Cloud.open(id)}
+/* the photo already open (the home screen's first card, often) only needs the library and the home screen out of the way; a double-click asks twice, the second ask waits for the first */
+let libOpening=null;
+async function libOpen(id){const it=LIB.items.find(i=>i.id===id);if(!it)return;if(libOpening){if(libOpening.id===id)return libOpening.p;await libOpening.p.catch(()=>{})}
+  if(S.doc&&S.doc.pid===id){closeLibrary();$('#empty').hidden=true;try{updateDocName()}catch(e){}requestRender();return}
+  const p=(async()=>{await flushSave();closeLibrary();if(it.local)await openLocalProject(id);else await Cloud.open(id)})();libOpening={id,p};
+  try{return await p}finally{if(libOpening&&libOpening.p===p)libOpening=null}}
 async function libSync(it){const id=it.id,on=!(it.cloud||(it.local&&it.local.sync));if(S.doc&&S.doc.pid===id){S.doc.sync=on;if(on)await saveNow();else{await saveNow();await Cloud.remove(id).catch(()=>{})}}
   else if(it.local){it.local.sync=on;await IDB.put('projects',id,it.local);if(on)await Cloud.push(it.local);else await Cloud.remove(id).catch(()=>{})}else if(it.cloud&&!on)await Cloud.remove(id).catch(()=>{});
   toast(on?'Projet synchronisé sur votre compte':'Synchronisation arrêtée : le projet reste sur cet appareil');await libLoad();renderLibrary()}

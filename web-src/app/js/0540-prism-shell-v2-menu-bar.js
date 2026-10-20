@@ -191,7 +191,7 @@ function aboutDialog(){dialog({title:'À propos de Prism',body:`<div class="abou
   <details class="credits" style="margin-top:12px;font-size:12px"><summary style="cursor:pointer">Logiciels et modèles intégrés</summary><ul class="muted" style="margin:6px 0 0;padding-left:18px;line-height:1.55">
   <li>ONNX Runtime (MIT), TensorFlow.js (Apache 2.0)</li><li>LibRaw (LGPL 2.1 / CDDL 1.0), Little CMS (MIT), libheif (LGPL 3), pdf.js (Apache 2.0), ag-psd (MIT), encodeur AVIF libavif/aom (BSD)</li>
   <li>Détourage : ISNet, DIS (Apache 2.0) · Scènes : DeepLabv3+ ADE20K, TensorFlow Models (Apache 2.0) · Personnes : MediaPipe Selfie Multiclass (Apache 2.0)</li>
-  <li>Débruitage : SCUNet (Apache 2.0) · Suppression d’objet : LaMa (Apache 2.0) · Agrandissement : Real-ESRGAN (BSD 3 clauses)</li>
+  <li>Débruitage : SCUNet (Apache 2.0) · Suppression d’objet : LaMa (Apache 2.0) · Sélection d’objet : Segment Anything ViT-B, Meta AI (Apache 2.0) · Agrandissement : Real-ESRGAN (BSD 3 clauses)</li>
   <li>Profils d’objectif : base lensfun (CC BY-SA 3.0, lensfun.github.io)</li></ul></details>`,buttons:[{label:'Fermer',primary:true}]})}
 document.addEventListener('keydown',e=>{const t=e.target;if(t.closest&&t.closest('input,textarea,select,[contenteditable]'))return;if(e.key==='?'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();shortcutsDialog()}
   if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&(e.key==='x'||e.key==='X')&&S.doc&&S.doc.sel){e.preventDefault();cutSel()}});

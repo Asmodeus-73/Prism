@@ -42,7 +42,15 @@ async function snap(prob,W,H,coarse){const d=S.doc,long=Math.max(d.w,d.h),ps=Mat
   try{busy(true,'Affinage du contour…',null);await tick();return await refineMask(up,{radius:clamp(Math.round(long*ps/coarse),3,24),eps:0.0006,contrast:15,shift:0},ps)}catch(e){console.warn(e);return up}finally{busy(false)}}
 const covered=m=>{if(!m)return false;const b=maskBBox(m);return !!b};
 
-async function sceneMask(kind){const d=S.doc,sc=await scene();if(!sc||S.doc!==d)return null;const gr=groupGrid(sc,SEG.GROUPS[kind]);let mx=0;for(const v of gr)if(v>mx)mx=v;if(mx<0.4)return null;
+async function sceneMask(kind){const d=S.doc,sc=await scene();if(!sc||S.doc!==d)return null;const cls=SEG.GROUPS[kind],gr=groupGrid(sc,cls),K=sc.K;let sure=0;
+  // the model hedges between kinds on what it does not know (a bird read as a person, a night sky as a wall): a cell counts only
+  // where this kind is the model's first choice, and the kind needs a sizeable region of such cells
+  for(let i=0;i<gr.length;i++){let b=0,bv=-1;for(let c=0;c<K;c++){const v=sc.P[i*K+c];if(v>bv){bv=v;b=c}}if(cls.includes(b)&&gr[i]>0.5)sure++;else if(gr[i]<0.5)gr[i]=0;else gr[i]*=0.5}
+  let conf=0;for(let i=0;i<gr.length;i++)if(gr[i]>0.5)conf+=gr[i];conf/=Math.max(1,sure);
+  if(sure<gr.length*0.015||conf<0.75)return null;
+  // a near-black region (a night sky) has no detail to adjust and is where the model guesses most
+  if(kind!=='sky'){const t=mk(sc.gw,sc.gh),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(flatSync(),0,0,sc.gw,sc.gh);const a=g.getImageData(0,0,sc.gw,sc.gh).data;let l=0;
+    for(let i=0;i<gr.length;i++)if(gr[i]>0.5)l+=0.2126*a[i*4]+0.7152*a[i*4+1]+0.0722*a[i*4+2];if(l/Math.max(1,sure)<0.05*255)return null}
   return snap(gr,sc.gw,sc.gh,160)}
 // people parts: the people model looks at a square crop around the people the scene model found (or the subject)
 async function partsMask(kind){const d=S.doc;let box=null;const sc=await scene();if(S.doc!==d)return null;
