@@ -70,6 +70,11 @@ await test('pinceaux Photoshop (.abr) : lecture d’une pointe',async()=>{const 
 await test('pinceaux Photoshop (.abr) : un fichier piégé ne bloque pas l’éditeur',async()=>{const r=await ev(()=>{const N=5000,E=72,b=new Uint8Array(4+12+N*E),v=new DataView(b.buffer);v.setUint16(0,6);v.setUint16(2,1);b.set([56,66,73,77,115,97,109,112],4);v.setUint32(12,N*E);
   for(let i=0;i<N;i++){const o=16+i*E;v.setUint32(o,68);v.setInt32(o+4+47+8,4000);v.setInt32(o+4+47+12,4000);v.setUint16(o+4+47+16,8)}
   const t0=performance.now(),t=PrismABR(b);return t.length+' '+Math.round(performance.now()-t0)});const [n,ms]=r.split(' ').map(Number);if(n!==0||ms>2000)throw new Error(r)});
+await test('accueil et photothèque : la photo déjà ouverte se rouvre',async()=>{const r=await ev(async()=>{const c=mk(300,200);cx(c).fillStyle='#c33';cx(c).fillRect(0,0,300,200);const b=await new Promise(r=>c.toBlob(r,'image/jpeg'));
+    await openBlob(new File([b],'deja-ouverte.jpg',{type:'image/jpeg'}));await flushSave();await libLoad();const pid=S.doc.pid,em=document.getElementById('empty'),out=[];
+    showHome();await libOpen(pid);out.push(em.hidden);
+    showHome();await openLibrary();await libOpen(pid);out.push(em.hidden&&!document.querySelector('#library'));
+    showHome();await Promise.all([libOpen(pid),libOpen(pid)]);out.push(em.hidden);return out.join()});if(r!=='true,true,true')throw new Error(r)});
 await test('profils d’objectif : reconnaissance et correction',async()=>{const r=await ev(async()=>{const P=PrismLens.profiles,db=await P.load();const f=P.find(db,{make:'SONY',model:'ILCE-7M3',lens:'FE 24-70mm F2.8 GM',focal:24,fn:8});
     if(!f||!f.lens)return 'non trouvé';const q=P.params(f.lens,24,8,f.cam&&f.cam[3]);const c=mk(300,200);cx(c).fillStyle='#888';cx(c).fillRect(0,0,300,200);const o=PrismLens.runSync(c,q,true);return o.width===300&&q.lfs>0?'ok':'rendu'});if(r!=='ok')throw new Error(r)});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
