@@ -39,13 +39,15 @@ async function doExport16(fmt,scale,name){const d=S.doc;busy(true,'Export 16 bit
   await saveFile(blob,fname)}
 /* 16-bit PNG import */
 async function open16(file){const u8=new Uint8Array(await file.arrayBuffer());if(!(u8[0]===137&&u8[1]===80&&u8[25-1]===16))return false;busy(true,'Lecture du PNG 16 bits…',null);
-  try{const im=await decodePNG(u8),c=mk(im.w,im.h),g=rx(c),id=g.createImageData(im.w,im.h);for(let i=0;i<im.data.length;i++)id.data[i]=im.data[i]>>8;g.putImageData(id,0,0);c._hi=im.data;setDoc(c,file.name,{meta:'PNG 16 bits'});toast('PNG 16 bits ouvert : '+file.name);return true}
+  try{let im;try{im=await decodePNG(u8)}catch(e){console.warn(e);return false} // interlaced etc.: the browser decoder takes over
+    const c=canvasFrom16(im);c._hi=im.data; // pixels are sRGB: no mk(), which tags the canvas with the working space
+    setDoc(c,file.name,{meta:'PNG 16 bits'});toast('PNG 16 bits ouvert : '+file.name);return true}
   finally{busy(false)}}
 /* hi in projects: 1024 px 16-bit PNG tiles */
 const HI_TILE=1024,hiEnc=new WeakMap();
 async function encodeHi(L){const a=effHi(L);if(!a)return null;const hit=hiEnc.get(a);if(hit)return hit;const w=L.canvas.width,h=L.canvas.height,tiles=[];
   for(let y=0;y<h;y+=HI_TILE)for(let x=0;x<w;x+=HI_TILE){const tw=Math.min(HI_TILE,w-x),th=Math.min(HI_TILE,h-y),t=new Uint16Array(tw*th*4);for(let r=0;r<th;r++)t.set(a.subarray(((y+r)*w+x)*4,((y+r)*w+x+tw)*4),r*tw*4);
-    const key='t_'+uid8();PIN.add(key);await IDB.put('blobs',key,await encodePNG16({data:t,w:tw,h:th},'srgb',true));tiles.push({x,y,w:tw,h:th,key});await tick()}
+    const key='t_'+uid8();pin(key);await IDB.put('blobs',key,await encodePNG16({data:t,w:tw,h:th},'srgb',true));tiles.push({x,y,w:tw,h:th,key});await tick()}
   hiEnc.set(a,tiles);return tiles}
 async function decodeHi(tiles,w,h,getBlob){const out=new Uint16Array(w*h*4);for(const t of tiles){const b=await getBlob(t);if(!b)throw new Error('tuile 16 bits manquante');const im=await decodePNG(new Uint8Array(await b.arrayBuffer()));
     for(let r=0;r<im.h;r++)out.set(im.data.subarray(r*im.w*4,(r+1)*im.w*4),((t.y+r)*w+t.x)*4)}return out}

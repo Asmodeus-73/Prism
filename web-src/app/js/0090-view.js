@@ -40,7 +40,7 @@ function histogram(img){const d=img.data,n=d.length/4,step=Math.max(1,Math.floor
 
 /* overlays: marching ants, mask tint, crop, brush cursor */
 const ants={key:'',idx:null,img:null,c:null,m:null};
-function drawAnts(c){const d=S.doc;if(!d.sel)return;const W=view.width,H=view.height,key=[S.selVer,S.zoom,S.panX,S.panY,W,H].join('|');
+function drawAnts(c){const d=S.doc;if(!d.sel)return;const W=view.width,H=view.height,key=[S.selVer,S.zoom,S.panX,S.panY,W,H,cropAngle()].join('|');
   if(ants.key!==key){ants.key=key;if(!ants.m||ants.m.width!==W||ants.m.height!==H){ants.m=mk(W,H);ants.c=mk(W,H);ants.img=new ImageData(W,H)}else ants.img.data.fill(0);
     const m=rx(ants.m);m.setTransform(1,0,0,1,0,0);m.clearRect(0,0,W,H);m.setTransform(...viewMatrix(0,0));m.drawImage(d.sel,0,0);m.setTransform(1,0,0,1,0,0);const a=m.getImageData(0,0,W,H).data,list=[];
     for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x;if(a[i*4+3]>=128&&(a[i*4-1]<128||a[i*4+7]<128||a[(i-W)*4+3]<128||a[(i+W)*4+3]<128))list.push(i)}ants.idx=Int32Array.from(list)}

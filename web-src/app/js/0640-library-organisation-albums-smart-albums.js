@@ -5,7 +5,7 @@ const albumsOf=it=>it.lib.albums||[];
 const allAlbums=()=>{const s=new Set(PREF.get('albumsReg',[]));LIB.items.forEach(i=>albumsOf(i).forEach(a=>s.add(a)));return[...s].sort((a,b)=>a.localeCompare(b,'fr'))};
 const smartList=()=>PREF.get('smartAlbums',[]);
 const dateKey=it=>{const t=(LIB.sort==='taken'||LIB.sort==='cam'||LIB.sort==='place'?takenOf(it):it.updatedAt),d=new Date(t);return[d.getFullYear(),d.getMonth()]};
-async function libPatch(ids,fn){const at=Date.now();for(const id of ids){const it=LIB.items.find(x=>x.id===id);if(!it)continue;const l={...it.lib};fn(l);l.at=at;it.lib=l;if(S.doc&&S.doc.pid===id)S.doc.lib=l;
+async function libPatch(ids,fn){const at=Date.now();for(const id of ids){const it=LIB.items.find(x=>x.id===id);if(!it)continue;const l={...it.lib};fn(l);l.at=at;it.lib=l;if(S.doc&&S.doc.pid===id)S.doc.lib=l;try{PrismTabs.tabs.forEach(t=>{if(t.doc&&t.doc.pid===id)t.doc.lib=l})}catch(e){} // docs parked in other tabs too
     if(it.local){it.local.lib=l;await IDB.put('projects',id,it.local).catch(()=>{})}if(it.cloud&&Cloud.ok){it.cloud.lib=l;Cloud.col.doc(id).update({lib:l}).catch(e=>console.warn(e))}}renderLibrary()}
 const addAlbum=(ids,name)=>libPatch(ids,l=>{l.albums=[...new Set([...(l.albums||[]),name])]});
 const delAlbum=(ids,name)=>libPatch(ids,l=>{l.albums=(l.albums||[]).filter(a=>a!==name)});

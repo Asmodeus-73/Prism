@@ -23,7 +23,7 @@ async function exportProjectFile(){const d=S.doc;if(!d)return;busy(true,'Prépar
     await saveFile(z,(d.name||'projet').replace(/\.[a-z0-9]+$/i,'').replace(/[\\/:*?"<>|]+/g,'-')+'.prism.zip')}
   catch(e){busy(false);console.error(e);toast('Export du projet impossible : '+(e.message||e),5000)}}
 async function importZip(file){const z=await readZip(file);
-  if(z.names.includes('revelateur.json')){const m=JSON.parse(new TextDecoder().decode(await z.get('revelateur.json')));const id=uid8(),remap=new Map();
+  if(z.names.includes('revelateur.json')){const m=checkDims(JSON.parse(new TextDecoder().decode(await z.get('revelateur.json'))));const id=uid8(),remap=new Map();
     const take=async t=>{const nk='t_'+uid8();const ext=t.key===m.thumb?'.jpg':'.png';const data=await z.get('tiles/'+t.key+ext);if(!data)throw new Error('fichier manquant dans l’archive');await IDB.put('blobs',nk,new Blob([data],{type:ext==='.jpg'?'image/jpeg':'image/png'}));remap.set(t.key,nk);return{...t,key:nk}};
     for(const L of m.layers){if(L.canvas)L.canvas=await Promise.all(L.canvas.map(take));if(L.mask)L.mask=await Promise.all(L.mask.map(take));if(L.hi){try{L.hi=await Promise.all(L.hi.map(take))}catch(e){L.hi=null}}}if(m.raw&&m.raw.key){try{m.raw.key=(await take({key:m.raw.key})).key}catch(e){m.raw=null}}m.thumb=(await take({key:m.thumb})).key;
     Object.assign(m,{id,sync:Cloud.ok&&PREF.get('autoSync',true),updatedAt:Date.now(),device:DEVICE});await IDB.put('projects',id,m);await loadManifest(m,t=>IDB.get('blobs',t.key));toast('Projet importé avec ses calques');if(m.sync)scheduleSave(300);return}

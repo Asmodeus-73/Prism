@@ -39,7 +39,7 @@ async function endStroke(){const st=S.stroke;if(!st)return;S.stroke=null;const L
   const m=maskedStroke(st);if(st.target==='mask'){const g=editMask(L);g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(m,0,0)}
   else{const g=editCanvas(L);g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(m,0,0)}
   [st.tmp,st.m].forEach(c=>{if(c&&c!==L.canvas&&c!==L.mask){c.width=c.height=0}});st.live=false;markComp();pushHistory(st.target==='mask'?(st.tool==='eraser'?'Masque : retirer':'Masque : ajouter'):{brush:'Pinceau',eraser:'Gomme',clone:'Tampon de duplication'}[st.tool]);syncLayers()}
-function cancelDrag(){const dr=S.drag;S.drag=null;if(!dr)return;if(dr.type==='move'&&dr.L){dr.L.dx=0;dr.L.dy=0}if(dr.type==='gradient'&&dr.target){delete dr.target.preview;delete dr.target.maskPreview}if(dr.type==='pen'&&typeof penCancelDrag==='function')penCancelDrag(dr);markComp()}
+function cancelDrag(){const dr=S.drag;S.drag=null;if(!dr)return;if(dr.type==='move'&&dr.L){dr.L.dx=0;dr.L.dy=0}if(dr.type==='gradient'&&dr.target){delete dr.target.preview;delete dr.target.maskPreview}if(dr.type==='pen'&&typeof penCancelDrag==='function')penCancelDrag(dr);if(dr.type==='shape'&&dr.L){const d=S.doc,i=d?d.layers.indexOf(dr.L):-1;if(i>=0){d.layers.splice(i,1);d.active=Math.max(0,Math.min(d.active-1,d.layers.length-1))}delete dr.L.preview;PV.delete(dr.L.id);syncAll()}markComp()}
 function cancelStroke(){if(!S.stroke)return;const st=S.stroke;S.stroke=null;if(st.tool==='dodge')restore(S.hi);markComp()}
 
 /* healing brush: Poisson blending */

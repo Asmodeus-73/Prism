@@ -18,7 +18,7 @@ const loadRG=async()=>{
   if(!window.tf)await loadScript(asset('ai/tf.min.js'));const tf=window.tf;
   try{await tf.setBackend('webgl')}catch(e){}await tf.ready();
   const [meta,buf]=await Promise.all([fetch(asset('ai/realesr/meta.json')).then(r=>{if(!r.ok)throw new Error('modèle '+r.status);return r.json()}),fetch(asset('ai/realesr/weights.wasm')).then(r=>{if(!r.ok)throw new Error('modèle '+r.status);return r.arrayBuffer()})]);
-  const f=new Float32Array(buf);let off=0;const W={};
+  const f=new Float32Array(buf);let off=0,W={};
   for(const [k,sh] of meta){const n=sh.reduce((a,b)=>a*b,1);W[k]=[f.subarray(off,off+n),sh];off+=n}
   const conv=i=>{const [d,sh]=W[`body.${i}.weight`],[b]=W[`body.${i}.bias`],[O,I,kh,kw]=sh;
     const w=new Float32Array(kh*kw*I*O);
@@ -29,7 +29,7 @@ const loadRG=async()=>{
       for(let c=0;c<3;c++)for(let k=0;k<16;k++){const to=k*3+c,from=c*16+k;b2[to]=b[from];for(let r=0;r<kh*kw*I;r++)w2[r*48+to]=w[r*48+from]}
       ww=w2;bb=b2}
     return{w:tf.tensor4d(ww,[kh,kw,I,O]),b:tf.tensor1d(bb)}};
-  const L=[];for(let i=0;i<=66;i+=2)L.push({c:conv(i),a:i<66?tf.tensor1d(W[`body.${i+1}.weight`][0]):null});
+  const L=[];for(let i=0;i<=66;i+=2)L.push({c:conv(i),a:i<66?tf.tensor1d(W[`body.${i+1}.weight`][0]):null});W=null;
   const prelu=(x,a)=>tf.add(tf.relu(x),tf.mul(a,tf.neg(tf.relu(tf.neg(x)))));
   RG.m={native:4,predict(x){
     return tf.tidy(()=>{const inp=tf.div(x,255);let t=inp;
@@ -38,13 +38,12 @@ const loadRG=async()=>{
       return tf.mul(tf.add(up,base),255)})}};
   return RG.m};
 const _ens=AI.ensureUp;
-AI.ensureUp=async scale=>{
-  if(AI._rgFail)return _ens.call(AI,scale);
+AI.ensureUp=scale=>AI._rgFail?_ens.call(AI,scale):RG.m?Promise.resolve(RG.m):(RG.P||(RG.P=(async()=>{/* one load at a time: a second one would leak its GPU tensors */
   AI.setState('up','load',0);
   for(let a=0;a<2;a++){
-    try{busy(true,'Chargement du modèle Real-ESRGAN…',0.5);const m=await loadRG();AI.setState('up','ready');return m}
+    try{busy(true,'Chargement du modèle Real-ESRGAN…',0.5);const m=await loadRG();AI.setState('up','ready');busy(false);return m}
     catch(e){console.error(e);RG.m=null}}
-  AI._rgFail=true;toast('Real-ESRGAN indisponible : ancien modèle utilisé',4000);return _ens.call(AI,scale)};
+  AI._rgFail=true;toast('Real-ESRGAN indisponible : ancien modèle utilisé',4000);return _ens.call(AI,scale)})().finally(()=>{RG.P=null})));
 upscaleCanvas=async function(src,scale,model,onP){
   const tf=window.tf,W=src.width,H=src.height,N=model.native||scale,T=N===4?64:96,P=N===4?10:8,out=mk(W*scale,H*scale),og=cx(out);
   og.imageSmoothingEnabled=true;og.imageSmoothingQuality='high';

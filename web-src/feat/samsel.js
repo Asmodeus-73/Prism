@@ -18,14 +18,14 @@ function samSession(dir,label,mb){if(SAM.sess[dir])return Promise.resolve(SAM.se
 const samT=(s,data,dims)=>s.native?{data,dims,type:'float32'}:new window.ort.Tensor('float32',data,dims);
 
 /* the photo as the encoder sees it: long side 1024, normalised, zeros below and to the right; kept until the photo changes */
-async function samEmbed(){const d=S.doc;if(!d)return null;const key=S.docVer,E=SAM.emb;if(E&&E.d===d&&E.key===key)return E;
+async function samEmbed(){const d=S.doc;if(!d)return null;const key=S.docVer,E=SAM.emb;if(E&&E.d.deref()===d&&E.key===key)return E;
   const enc=await samSession(SAM.ENC,'encoder',96);if(!enc||S.doc!==d)return null;
   busy(true,'Analyse de la photo (une fois par photo)…',null);await tick();
   try{const N=SAM.N,k=N/Math.max(d.w,d.h),w=Math.max(1,Math.round(d.w*k)),h=Math.max(1,Math.round(d.h*k)),c=mk(w,h),g=rx(c);g.fillStyle='#fff';g.fillRect(0,0,w,h);g.imageSmoothingQuality='high';g.drawImage(flatSync(),0,0,w,h);
     const a=g.getImageData(0,0,w,h).data,x=new Float32Array(3*N*N);
     for(let y=0;y<h;y++)for(let i=0;i<w;i++){const p=(y*w+i)*4,q=y*N+i;for(let ch=0;ch<3;ch++)x[ch*N*N+q]=(a[p+ch]-SAM.MEAN[ch])/SAM.STD[ch]}
     const out=await enc.run({[enc.inputNames[0]]:samT(enc,x,[1,3,N,N])}),t=out[enc.outputNames[0]];
-    if(S.doc!==d)return null;return SAM.emb={d,key,k,w,h,data:new Float32Array(t.data),dims:t.dims.map(Number)}}
+    if(S.doc!==d)return null;return SAM.emb={d:new WeakRef(d)/* a closed photo is not kept in memory */,key,k,w,h,data:new Float32Array(t.data),dims:t.dims.map(Number)}}
   catch(e){console.error(e);toast('Analyse de la photo impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
 
 /* the object under (px, py) in photo pixels, as a full-size mask (white = selected) */

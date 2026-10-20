@@ -11,12 +11,13 @@ const loadX4=async(onP)=>{
   for(let i=0;i<meta.chunks.length;i++){const r=await fetch(asset(`ai/esrgan4p/${i}.wasm`));if(!r.ok)throw new Error('modèle introuvable');const b=new Uint8Array(await r.arrayBuffer());all.set(b,off);off+=b.length;onP&&onP((i+1)/meta.chunks.length)}
   const u16=new Uint16Array(all.buffer,0,all.length>>1),f=new Float32Array(u16.length),fb=new Uint32Array(f.buffer);
   for(let i=0;i<u16.length;i++)fb[i]=half2f(u16[i]);
-  const W={};off=0;for(const [k,sh] of meta.tensors){const n=sh.reduce((a,b)=>a*b,1);W[k]=[f.subarray(off,off+n),sh];off+=n}
+  let W={};off=0;for(const [k,sh] of meta.tensors){const n=sh.reduce((a,b)=>a*b,1);W[k]=[f.subarray(off,off+n),sh];off+=n}
   const conv=name=>{const [d,sh]=W[name+'.weight'],[b]=W[name+'.bias'],[O,I,kh,kw]=sh,w=new Float32Array(kh*kw*I*O);
     for(let o=0;o<O;o++)for(let i=0;i<I;i++)for(let y=0;y<kh;y++)for(let x=0;x<kw;x++)w[((y*kw+x)*I+i)*O+o]=d[((o*I+i)*kh+y)*kw+x];
     return{w:tf.tensor4d(w,[kh,kw,I,O]),b:tf.tensor1d(b)}};
   const C={first:conv('conv_first'),body:conv('conv_body'),up1:conv('conv_up1'),up2:conv('conv_up2'),hr:conv('conv_hr'),last:conv('conv_last'),rrdb:[]};
   for(let i=0;i<meta.nb;i++){const r=[];for(let j=1;j<=3;j++){const d=[];for(let k=1;k<=5;k++)d.push(conv(`body.${i}.rdb${j}.conv${k}`));r.push(d)}C.rrdb.push(r)}
+  W=null;/* the fp32 weights now live in the GPU tensors: the closures below would otherwise keep the whole array */
   const cv=(x,c)=>tf.add(tf.conv2d(x,c.w,1,'same'),c.b),lr=x=>tf.leakyRelu(x,0.2);
   const rdb=(x,d)=>{let cat=x;for(let k=0;k<4;k++){const y=lr(cv(cat,d[k]));cat=tf.concat([cat,y],3)}return tf.add(tf.mul(cv(cat,d[4]),0.2),x)};
   X4.m={native:4,x4p:true,

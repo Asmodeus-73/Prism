@@ -98,6 +98,8 @@ let drag=null;
 // no toolbar button: the mode is entered from the menus or the IA tab and left by applying or cancelling
 TOOL_NAMES.dexp='Double exposition';
 const _st=setTool;setTool=function(t){if(DX.s&&t!=='dexp'){finish(true)}if(t==='dexp'&&!DX.s)return;return _st.apply(this,arguments)};
+// another step pushed meanwhile: the session's layers are not in the history yet, so drop them before it is recorded (cancel used to leave them in that step)
+const _phX=pushHistory;pushHistory=function(){if(DX.s){finish(false);toast('Double exposition annulée')}return _phX.apply(this,arguments)};
 const _od=onDown;onDown=function(e,p){if(S.tool==='dexp'&&DX.s&&e.button!==1&&!S.spaceDown){const st=DX.s,k=hit(p);drag={k,p0:{x:p.x,y:p.y},cx:st.cx,cy:st.cy,s:st.s,r:rectOf(st)};S.drag={type:'dexp'};return}_od(e,p)};
 const _om=onMove;onMove=function(e,p){if(S.drag&&S.drag.type==='dexp'&&drag&&DX.s){const st=DX.s;
     if(drag.k==='move'){st.cx=drag.cx+p.x-drag.p0.x;st.cy=drag.cy+p.y-drag.p0.y}

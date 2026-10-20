@@ -3,7 +3,7 @@ async function ensurePSD(){if(!window.agPsd)await loadScript(asset('psd/ag-psd.m
 const PSD_BLEND={'normal':'source-over','multiply':'multiply','screen':'screen','overlay':'overlay','darken':'darken','lighten':'lighten','color dodge':'color-dodge','linear dodge':'lighter','color burn':'color-burn','hard light':'hard-light','soft light':'soft-light','difference':'difference','exclusion':'exclusion','hue':'hue','saturation':'saturation','color':'color','luminosity':'luminosity'};
 const BLEND_PSD=Object.fromEntries(Object.entries(PSD_BLEND).map(([a,b])=>[b,a]));
 function grayToAlpha(src,w,h,left,top,def){const m=mk(w,h),g=rx(m);if(def){g.fillStyle='#fff';g.fillRect(0,0,w,h)}if(src){const t=mk(src.width,src.height),tg=rx(t);tg.drawImage(src,0,0);const id=tg.getImageData(0,0,t.width,t.height),p=id.data;for(let i=0;i<p.length;i+=4){p[i+3]=p[i];p[i]=p[i+1]=p[i+2]=255}tg.putImageData(id,0,0);g.clearRect(left,top,t.width,t.height);g.drawImage(t,left,top)}return m}
-async function importPSD(file,name){busy(true,'Lecture du fichier Photoshop…',null);try{setCS('srgb');const ag=await ensurePSD();const buf=await file.arrayBuffer();const psd=ag.readPsd(buf,{skipThumbnail:true,useImageData:false});
+async function importPSD(file,name){busy(true,'Lecture du fichier Photoshop…',null);const cs0=CS;try{setCS('srgb');const ag=await ensurePSD();const buf=await file.arrayBuffer();const psd=ag.readPsd(buf,{skipThumbnail:true,useImageData:false});
     const W=psd.width,H=psd.height;if(W*H>MAX_PX)throw new Error(`image trop grande (${W} × ${H})`);const layers=[];let skipped=0;
     const walk=(arr,hidden,op)=>{for(const l of arr||[]){const hid=hidden||l.hidden,o=op*(l.opacity??1);if(l.children){walk(l.children,hid,o);continue}
       if(l.adjustment){skipped++;continue}if(!l.canvas){continue}const c=mk(W,H);cx(c).drawImage(l.canvas,l.left||0,l.top||0);
@@ -15,7 +15,7 @@ async function importPSD(file,name){busy(true,'Lecture du fichier Photoshop…',
     S.sample=false;S.meta='PSD · '+(layers.length-1)+' calque'+(layers.length>2?'s':'');S.history=[];S.hi=-1;S.crop=null;S.cloneSrc=null;S.cloneOff=null;S.maxHist=clamp(Math.floor(HIST_BUDGET/(W*H*4)),3,40);AI.subjectCache=null;
     pushHistory('Ouverture du PSD');selChanged();markComp();fit(true);syncAll();$('#empty').hidden=true;updateDocName();busy(false);
     toast(`PSD ouvert : ${layers.length-1} calque${layers.length>2?'s':''}${skipped?` (${skipped} calque${skipped>1?'s':''} de réglage Photoshop ignoré${skipped>1?'s':''})`:''}`,5000);scheduleSave(500)}
-  catch(e){busy(false);console.error(e);toast('Ce PSD n’a pas pu être lu : '+(e.message||e),6000)}}
+  catch(e){setCS(cs0);busy(false);console.error(e);toast('Ce PSD n’a pas pu être lu : '+(e.message||e),6000)}}
 async function exportPSD(){const d=S.doc;if(!d)return;busy(true,'Création du fichier Photoshop…',0);try{const ag=await ensurePSD();const children=[];
     for(const L of d.layers){if(L.kind!=='pixel')continue;const e={name:L.name,canvas:srgbC(L.canvas),left:0,top:0,opacity:L.opacity,hidden:L.visible===false,blendMode:BLEND_PSD[L.blend]||'normal'};
       if(L.mask){const m=mk(d.w,d.h),g=rx(m);g.drawImage(L.mask,0,0);const id=g.getImageData(0,0,d.w,d.h),p=id.data;for(let i=0;i<p.length;i+=4){p[i]=p[i+1]=p[i+2]=p[i+3];p[i+3]=255}g.putImageData(id,0,0);e.mask={canvas:m,left:0,top:0,defaultColor:0}}children.push(e)}

@@ -28,14 +28,14 @@ NAI.ok=async()=>{if(NAI.st)return NAI.st.ok;const D=window.PRISM_DESKTOP;if(!D||
   try{NAI.st=await D.invoke('ai_status')}catch(e){NAI.st={ok:false,error:String(e)}}if(!NAI.st.ok&&NAI.st.error)console.info('IA native :',NAI.st.error);return !!NAI.st.ok};
 NAI.load=async(buf,key,cpu)=>window.PRISM_DESKTOP.invoke('ai_load',buf instanceof Uint8Array?buf:new Uint8Array(buf),{headers:{'x-key':key,'x-cpu':cpu?'1':'0'}});
 NAI.TYPES={float32:Float32Array,uint8:Uint8Array,int32:Int32Array,int64:BigInt64Array};
-NAI.session=async(buf)=>{const key='m'+(++NAI.seq)+'-'+(buf.byteLength||buf.length);let info=await NAI.load(buf,key,false);
+NAI.session=async(buf)=>{const key='m'+(++NAI.seq)+'-'+(buf.byteLength||buf.length);let info=await NAI.load(buf,key,false);if(info.ep==='CPU')buf=null;// the bytes are only kept for a move from the card to the processor
   const W={native:true,__ep:info.ep,inputNames:info.inputs,outputNames:info.outputs,
     run:async(feeds)=>{const names=Object.keys(feeds),specs=[],parts=[];let n=0;
       for(const k of names){const t=feeds[k],d=t.data;specs.push({name:k,dtype:t.type,dims:t.dims.map(Number)});const u=new Uint8Array(d.buffer,d.byteOffset,d.byteLength);parts.push(u);n+=u.length}
       const body=new Uint8Array(n);let o=0;for(const u of parts){body.set(u,o);o+=u.length}
       const call=()=>window.PRISM_DESKTOP.invoke('ai_run',body,{headers:{'x-key':key,'x-inputs':JSON.stringify(specs)}});
       let ab;try{ab=await call()}catch(e){if(W.__ep==='CPU')throw e;// the card failed on this model: the processor takes over for good
-        console.warn('IA native : carte graphique en échec, processeur',e);info=await NAI.load(buf,key,true);W.__ep=info.ep;ab=await call()}
+        console.warn('IA native : carte graphique en échec, processeur',e);info=await NAI.load(buf,key,true);W.__ep=info.ep;buf=null;ab=await call()}
       const b=ab instanceof ArrayBuffer?ab:new Uint8Array(ab).buffer,dv=new DataView(b),hl=dv.getUint32(0,true),head=JSON.parse(new TextDecoder().decode(new Uint8Array(b,4,hl)));let at=4+hl;const out={};
       for(const h of head){const T=NAI.TYPES[h.dtype]||Float32Array;out[h.name]={data:new T(b.slice(at,at+h.bytes)),dims:h.dims,type:h.dtype};at+=h.bytes}return out},
     release:()=>window.PRISM_DESKTOP.invoke('ai_unload',{key}).catch(()=>{})};
@@ -85,8 +85,8 @@ async function upscaleCanvas(src,scale,model,onP){const tf=window.tf,W=src.width
     og.drawImage(oc,(x0-px0)*scale,(y0-py0)*scale,tw*scale,th*scale,x0*scale,y0*scale,tw*scale,th*scale);k++;if(k%4===0){onP&&onP(k/(nx*ny));await tick()}}
   const a=resample(src,W*scale,H*scale);og.globalCompositeOperation='destination-in';og.drawImage(a,0,0);return out}
 AI.upscale=async(scale)=>{const d=S.doc;if(!d)return;const nw=d.w*scale,nh=d.h*scale;if(nw*nh>MAX_PX){toast(`Résultat trop grand (${nw} × ${nh}). Recadrez ou réduisez d’abord la photo.`,4500);return}
-  const model=await AI.ensureUp(scale);if(!model||S.doc!==d)return;const h0=S.history[S.hi];try{const px=d.layers.filter(l=>l.kind==='pixel'),res=new Map();let i=0;for(const L of px){const r=await upscaleCanvas(L.canvas,scale,model,p=>busy(true,`Agrandissement ×${scale} : ${L.name}…`,(i+p)/px.length));res.set(L,r);i++}
-    if(S.doc!==d||S.history[S.hi]!==h0){toast('Agrandissement annulé : le document a changé');return}resizeDoc(nw,nh,`Agrandissement IA ×${scale}`,L=>res.get(L)||resample(L.canvas,nw,nh));toast(`Image agrandie à ${nw} × ${nh} px`)}catch(e){console.error(e);toast('Agrandissement interrompu : '+(e.message||e),5000)}finally{busy(false)}};
+  try{const model=await AI.ensureUp(scale);if(!model||S.doc!==d)return;const h0=S.history[S.hi];const px=d.layers.filter(l=>l.kind==='pixel'),res=new Map();let i=0;for(const L of px){const r=await upscaleCanvas(L.canvas,scale,model,p=>busy(true,`Agrandissement ×${scale} : ${L.name}…`,(i+p)/px.length));res.set(L,r);i++}
+    if(S.doc!==d||S.history[S.hi]!==h0){toast('Agrandissement annulé : le document a changé');return}resizeDoc(nw,nh,`Agrandissement IA ×${scale}`,L=>res.get(L)||resample(L.canvas,nw,nh));toast(`Image agrandie à ${nw} × ${nh} px`)}catch(e){if(e&&e.message==='annulé')return;/* the caller says « Agrandissement annulé » */console.error(e);toast('Agrandissement interrompu : '+(e.message||e),5000)}finally{busy(false)}};
 function styleCard(){return`<div class="card"><h4><svg viewBox="0 0 20 20"><circle cx="7" cy="10" r="4.5"/><circle cx="13" cy="10" r="4.5"/></svg>Copier un style</h4><p>Choisissez une photo dont vous aimez le rendu : ses tons et ses couleurs sont reproduits sur la vôtre dans un calque de réglage modifiable. Le calcul se fait sur votre appareil.</p><div class="acts"><button class="btn sm primary" data-ai="style">Choisir la photo de référence…</button><button class="btn sm" data-ai="batch">Harmoniser une série…</button></div></div>`}
 const AI_IC={subject:'<circle cx="10" cy="6.5" r="3"/><path d="M4 17c.8-3.3 3.1-5 6-5s5.2 1.7 6 5"/><rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke-dasharray="2 2"/>',bg:'<rect x="2" y="3" width="16" height="14" rx="2"/><path d="M2 13l4.5-4 3.5 3 3-2.5 5 4.5"/><path d="M3 4l14 12"/>',remove:IC.remove,up:'<path d="M3 17V11M3 17h6M3 17l6-6"/><path d="M17 3v6M17 3h-6M17 3l-6 6"/>'};
 function renderAI(){const p=$('#pane-ai');p.innerHTML=`${assistCard()}<p class="ai-intro">Les outils ci-dessous tournent entièrement sur votre appareil : vos photos ne sont pas envoyées. Le premier usage télécharge le modèle concerné, ensuite c’est immédiat.</p>

@@ -11,7 +11,7 @@ function stamp(c){
   const x=b==='l'?pad:b==='c'?(o.width-tw)/2:o.width-pad-tw,y=a==='t'?pad+fs*.8:a==='m'?(o.height+fs*.7)/2:o.height-pad;
   g.globalAlpha=w.op/100;g.shadowColor='rgba(0,0,0,.55)';g.shadowBlur=fs*.18;g.shadowOffsetY=fs*.04;g.fillStyle='#fff';g.fillText(w.text,x,y);return o}
 const _rd=renderDoc;
-renderDoc=async function(){const c=await _rd.apply(this,arguments);if(!WM.active||!WM.cur.on||!(WM.cur.text||'').trim())return c;try{return stamp(c)}catch(e){console.warn('filigrane',e);return c}};
+renderDoc=async function(sc,o){const c=await _rd.apply(this,arguments);if(!WM.active||!(o&&o.progress)||!WM.cur.on||!(WM.cur.text||'').trim())return c;try{return stamp(c)}catch(e){console.warn('filigrane',e);return c}};
 const _de=doExport;
 doExport=async function(){WM.active=true;try{return await _de.apply(this,arguments)}finally{WM.active=false}};
 const presets=()=>PREF.get(PK,[]);
@@ -213,9 +213,9 @@ textEdit=function(L,isNew){const r=_te.apply(this,arguments);
     const host=ta.closest('.dlg,.modal,.dialog')||ta.closest('#scrim')||ta.parentElement,anchor=document.getElementById('tSc').closest('.dlg-grid');
     const a=(L.txt&&L.txt.adv)||{};ADV.set(L,L.txt&&L.txt.adv||null);if(!a.grad&&!a.ul&&!a.st&&!a.caps&&!a.curve)ADV.delete(L);
     const box=document.createElement('div');box.id='tAdv';box.className='t-adv';
-    box.innerHTML=`<div class="row" style="justify-content:space-between"><label class="row"><input type="checkbox" id="taG" ${a.grad?'checked':''}> Dégradé de couleur</label><span class="row"><input type="color" class="swatch" id="taC1" value="${a.grad?a.grad.c1:'#ffd166'}"><input type="color" class="swatch" id="taC2" value="${a.grad?a.grad.c2:'#ef476f'}"><input type="range" id="taA" min="0" max="360" value="${a.grad?a.grad.angle:90}" aria-label="Angle du dégradé" style="width:90px"></span></div>
+    box.innerHTML=`<div class="row" style="justify-content:space-between"><label class="row"><input type="checkbox" id="taG" ${a.grad?'checked':''}> Dégradé de couleur</label><span class="row"><input type="color" class="swatch" id="taC1" value="${esc(a.grad?a.grad.c1:'#ffd166')}"><input type="color" class="swatch" id="taC2" value="${esc(a.grad?a.grad.c2:'#ef476f')}"><input type="range" id="taA" min="0" max="360" value="${esc(a.grad?a.grad.angle:90)}" aria-label="Angle du dégradé" style="width:90px"></span></div>
     <div class="row" style="gap:14px;flex-wrap:wrap;margin:6px 0"><label class="row"><input type="checkbox" id="taU" ${a.ul?'checked':''}> Souligné</label><label class="row"><input type="checkbox" id="taS" ${a.st?'checked':''}> Barré</label><label class="row"><input type="checkbox" id="taK" ${a.caps?'checked':''}> Majuscules</label></div>
-    <label class="field" style="display:grid;gap:3px">Courbure du texte<input type="range" id="taR" min="-100" max="100" value="${a.curve||0}"></label>
+    <label class="field" style="display:grid;gap:3px">Courbure du texte<input type="range" id="taR" min="-100" max="100" value="${esc(a.curve||0)}"></label>
     <style>.t-adv{border-top:1px solid var(--line);margin-top:8px;padding-top:8px;font-size:12px}.t-adv .row{display:flex;gap:6px;align-items:center}</style>`;
     (anchor||ta.parentElement).after(box);const iv=setInterval(()=>{if(!document.getElementById('tAdv')){clearInterval(iv);setTimeout(()=>ADV.delete(L),1500)}},300);
     const go=()=>{const v=id=>document.getElementById(id);const adv={grad:v('taG').checked?{c1:v('taC1').value,c2:v('taC2').value,angle:+v('taA').value}:null,ul:v('taU').checked,st:v('taS').checked,caps:v('taK').checked,curve:+v('taR').value};
@@ -308,7 +308,7 @@ window.PrismC={shapeMask,playAction,REC,acts,blendIfDialog,shapeMaskDialog,brush
 const pixLayers=()=>S.doc.layers.filter(L=>L.kind==='pixel'&&L.canvas);
 function mapPix(fn,label){const d=S.doc;for(const L of pixLayers()){if(L.txt||L.shp){L.txt=null;L.shp=null}if(L.fbase){L.fbase=null;L.filters=null;L.fout=null}const c=cloneC(L.canvas),g=cx(c),id=g.getImageData(0,0,c.width,c.height);fn(id.data);g.putImageData(id,0,0);L.canvas=c}
   markComp();pushHistory(label);syncAll()}
-function toGray(){if(!S.doc)return;if(S.doc.layers.some(L=>L.hi)){toast('Le mode niveaux de gris ne s’applique pas aux calques 16 bits')}
+function toGray(){if(!S.doc)return;if(S.doc.layers.some(L=>L.hi)){toast('Les calques 16 bits passent aussi en niveaux de gris, calculés en 8 bits')}
   mapPix(p=>{for(let i=0;i<p.length;i+=4){const l=Math.round(.2126*p[i]+.7152*p[i+1]+.0722*p[i+2]);p[i]=p[i+1]=p[i+2]=l}},'Mode niveaux de gris')}
 /* median cut palette from the flattened picture */
 function palette(data,n){const px=[];const step=Math.max(1,Math.floor(data.length/4/60000));for(let i=0;i<data.length;i+=4*step)if(data[i+3]>8)px.push([data[i],data[i+1],data[i+2]]);

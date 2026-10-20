@@ -95,7 +95,7 @@ function decodeTGA(u8){const idl=u8[0],cmt=u8[1],type=u8[2],cmFirst=u8[3]|(u8[4]
   if(![1,2,3,9,10,11].includes(type)||!W||!H)throw new Error('TGA non pris en charge');const rle=type>8,base=type&7,B=bpp>>3;let p=18+idl;let cmap=null;
   if(cmt){const cb=cmBits>>3;cmap=[];for(let i=0;i<cmLen;i++){const o=p+i*cb;cmap[cmFirst+i]=cb===2?(()=>{const v=u8[o]|(u8[o+1]<<8);return[((v>>10)&31)*255/31,((v>>5)&31)*255/31,(v&31)*255/31,255]})():[u8[o+2],u8[o+1],u8[o],cb===4?u8[o+3]:255]}p+=cmLen*cb}
   const N=W*H,px=new Uint8Array(N*B);if(!rle)px.set(u8.subarray(p,p+N*B));else{let o=0;while(o<N*B&&p<u8.length){const h=u8[p++],n=(h&127)+1;if(h&128){const v=u8.subarray(p,p+B);p+=B;for(let k=0;k<n;k++){px.set(v,o);o+=B}}else{px.set(u8.subarray(p,p+n*B),o);p+=n*B;o+=n*B}}}
-  const c=mk(W,H),g=rx(c),id=g.createImageData(W,H),d=id.data,top=desc&32,right=desc&16,abits=desc&15;
+  const c=document.createElement('canvas');c.width=W;c.height=H;/* sRGB pixels: not mk(), which tags the working space */const g=rx(c),id=g.createImageData(W,H),d=id.data,top=desc&32,right=desc&16,abits=desc&15;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const sy=top?y:H-1-y,sx=right?W-1-x:x,s=(sy*W+sx)*B,o=(y*W+x)*4;let r,gg,b,a=255;
     if(base===1){const e=cmap[B===2?px[s]|(px[s+1]<<8):px[s]]||[0,0,0,255];[r,gg,b,a]=e}else if(base===3){r=gg=b=px[s];if(B===2)a=px[s+1]}
     else if(B===2){const v=px[s]|(px[s+1]<<8);r=((v>>10)&31)*255/31;gg=((v>>5)&31)*255/31;b=(v&31)*255/31}else{b=px[s];gg=px[s+1];r=px[s+2];if(B===4&&abits)a=px[s+3]}
@@ -111,10 +111,10 @@ async function decodeHEIF(u8){busy(true,'Décodage HEIC…',null);try{if(!FMT.he
 function askPage(n){return new Promise(res=>{let done=false;const fin=v=>{if(!done){done=true;res(v)}};dialog({title:'Quelle page ouvrir ?',body:`<p class="muted">Ce PDF contient ${n} pages.</p><label class="field">Page<input type="number" id="pgN" min="1" max="${n}" value="1"></label>`,onOpen:el=>{setTimeout(()=>$('#pgN',el).select(),30)},buttons:[{label:'Annuler',onClick:()=>fin(0)},{label:'Ouvrir',primary:true,onClick:el=>fin(clamp(+$('#pgN',el).value|0,1,n))}]});setTimeout(()=>{const s=$('.scrim');if(s)new MutationObserver((_,o)=>{if(!document.contains(s)){o.disconnect();fin(0)}}).observe(document.body,{childList:true})},50)})}
 async function decodePDF(u8){busy(true,'Lecture du PDF…',null);let doc;try{if(!FMT.pdf){FMT.pdf=await import(asset('pdf/pdf.min.js'));FMT.pdf.GlobalWorkerOptions.workerSrc=asset('pdf/pdf.worker.min.js')}
     doc=await FMT.pdf.getDocument({data:u8.slice(),wasmUrl:asset('pdf/wasm/'),isEvalSupported:false,useSystemFonts:true}).promise}finally{busy(false)}
-  let pn=1;if(doc.numPages>1){pn=await askPage(doc.numPages);if(!pn){const e=new Error('annulé');e.cancel=true;throw e}}
+  try{let pn=1;if(doc.numPages>1){pn=await askPage(doc.numPages);if(!pn){const e=new Error('annulé');e.cancel=true;throw e}}
   busy(true,'Rendu de la page…',null);try{const page=await doc.getPage(pn),v0=page.getViewport({scale:1});let sc=300/72;const lim=Math.min(MAX_PX,40e6);if(v0.width*v0.height*sc*sc>lim)sc=Math.sqrt(lim/(v0.width*v0.height));
-    const vp=page.getViewport({scale:sc}),c=mk(Math.floor(vp.width),Math.floor(vp.height)),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);await page.render({canvasContext:g,canvas:c,viewport:vp}).promise;try{doc.destroy()}catch(e){}
-    FMT.info.set(c,{meta:`PDF · page ${pn} · 300 ppp`});return c}finally{busy(false)}}
+    const vp=page.getViewport({scale:sc}),c=mk(Math.floor(vp.width),Math.floor(vp.height)),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);await page.render({canvasContext:g,canvas:c,viewport:vp}).promise;
+    FMT.info.set(c,{meta:`PDF · page ${pn} · 300 ppp`});return c}finally{busy(false)}}finally{try{doc.destroy()}catch(e){}}}
 /* ---- SVG: rasterise large enough to edit ---- */
 async function decodeSVG(file){const url=URL.createObjectURL(new Blob([file],{type:'image/svg+xml'}));try{const im=new Image();await new Promise((r,j)=>{im.onload=r;im.onerror=()=>j(new Error('SVG illisible'));im.src=url});let w=im.naturalWidth||0,h=im.naturalHeight||0;
     if(!w||!h){const t=await file.text(),m=t.match(/viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/);w=m?+m[1]:1000;h=m?+m[2]:1000}

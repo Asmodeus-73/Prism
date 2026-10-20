@@ -23,6 +23,8 @@ tabs.push(..._doc?[{doc:_doc}]:[]);
 async function activate(t){
   if(!t||t.doc===S.doc)return;
   if(S.drag)try{cancelDrag()}catch(e){}
+  try{window.PrismTF&&PrismTF.cancel()}catch(e){}S.patch=null;S.rangePrev=null;S.rangePick=false; // tool sessions belong to the document being left
+  {const sc=$('#scrim');if(sc&&sc._cancel){try{sc._cancel()}catch(e){}}}
   S.crop=null;S.compare=null;S.poly=null;S.snapLines=null;
   const d=t.doc;S.doc=d;
   try{setCS(d.space||'srgb')}catch(e){}
@@ -38,12 +40,14 @@ const curIdx=()=>tabs.findIndex(t=>t.doc===S.doc);
 async function closeTab(t){
   if(!t)return;const i=tabs.indexOf(t);
   if(t.doc===S.doc){
-    const nx=tabs[i+1]||tabs[i-1];
-    if(nx){await flushSave().catch(()=>{});if(!await window.PrismFx.okToClose(t.doc))return;const nd=nx.doc;tabs.splice(i,1);mute++;try{S.doc=nd}finally{mute--}
+    let nx=tabs[i+1]||tabs[i-1];
+    if(nx){await flushSave().catch(()=>{});if(!await window.PrismFx.okToClose(t.doc))return;const j=tabs.indexOf(t);nx=tabs[j+1]||tabs[j-1];if(j<0||!nx||t.doc!==S.doc)return;const nd=nx.doc;tabs.splice(j,1);mute++;try{S.doc=nd}finally{mute--}
       const t2=nx;unpark(t2);try{setCS(nd.space||'srgb')}catch(e){}AI.subjectCache=null;S.crop=null;S.compare=null;
       selChanged();markComp();syncAll();updateDocName();requestRender();PREF.set('last',nd.pid);draw();return}
     closeDoc();return}
-  tabs.splice(i,1);draw()}
+  const d=t.doc;if(!d.nosave&&!d.saved&&!(t.sample&&t.hi<1)){try{await window.PrismFx.saveParked(d)}catch(e){} // a background tab is saved before it goes
+    if(!d.saved&&!await askConfirm('Cette photo n’a pas pu être enregistrée sur cet appareil : en la fermant, vous perdez ses dernières modifications.',{title:'Fermer sans enregistrer ?',ok:'Fermer quand même',danger:true}))return}
+  const j=tabs.indexOf(t);if(j<0)return;tabs.splice(j,1);draw()}
 const _cd=closeDoc;
 closeDoc=function(){const i=curIdx(),nx=tabs[i+1]||tabs[i-1];
   if(tabs.length>1&&i>=0&&nx){closeTab(tabs[i]);return}
@@ -77,7 +81,7 @@ const X='<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg>';
 function draw(){
   const show=tabs.length>=2&&!!S.doc;document.body.classList.toggle('has-tabs',show);
   if(!show){bar.innerHTML='';return}
-  bar.innerHTML=tabs.map((t,i)=>`<div class="tab ${t.doc===S.doc?'on':''}" role="tab" aria-selected="${t.doc===S.doc}" data-i="${i}" title="${esc(t.doc.name)} · ${t.doc.w} × ${t.doc.h}"><span>${esc(t.doc.name)}</span>${t.doc.saved===false?'<i title="Enregistrement en cours"></i>':''}<button type="button" data-x="${i}" aria-label="Fermer l’onglet">${X}</button></div>`).join('')+`<button class="tab-add" type="button" aria-label="Ouvrir une photo dans un nouvel onglet" title="Ouvrir une photo dans un nouvel onglet"><svg viewBox="0 0 14 14"><path d="M7 2v10M2 7h10"/></svg></button>`;
+  bar.innerHTML=tabs.map((t,i)=>`<div class="tab ${t.doc===S.doc?'on':''}" role="tab" aria-selected="${t.doc===S.doc}" data-i="${i}" title="${esc(t.doc.name)} · ${t.doc.w|0} × ${t.doc.h|0}"><span>${esc(t.doc.name)}</span>${t.doc.saved===false?'<i title="Enregistrement en cours"></i>':''}<button type="button" data-x="${i}" aria-label="Fermer l’onglet">${X}</button></div>`).join('')+`<button class="tab-add" type="button" aria-label="Ouvrir une photo dans un nouvel onglet" title="Ouvrir une photo dans un nouvel onglet"><svg viewBox="0 0 14 14"><path d="M7 2v10M2 7h10"/></svg></button>`;
   const on=bar.querySelector('.tab.on');if(on&&on.scrollIntoView)try{on.scrollIntoView({block:'nearest',inline:'nearest'})}catch(e){}}
 bar.addEventListener('click',e=>{const x=e.target.closest('[data-x]');if(x){e.stopPropagation();closeTab(tabs[+x.dataset.x]);return}
   if(e.target.closest('.tab-add')){openFile();return}

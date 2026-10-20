@@ -5,7 +5,7 @@ $('.mark').innerHTML=PRISM_LOGO+'<span>Prism</span>';
 (()=>{const h=$('.histo');if(h&&!$('#hexif')){const e=document.createElement('div');e.id='hexif';e.className='hexif';h.appendChild(e)}})();
 function updateExifLine(){const e=$('#hexif');if(!e)return;const d=S.doc,m=d&&S.meta&&!S.sample?S.meta:'';e.hidden=!m;e.innerHTML=m?m.split(' · ').map(x=>`<span>${esc(x)}</span>`).join(''):''}
 updateDocName=function(){const d=S.doc,el=$('#docname');if(!d){el.innerHTML='<b>Photothèque</b>';updateExifLine();return}const tags=[];if(d.raw)tags.push('RAW');if(d.space==='display-p3')tags.push('P3');const pl=typeof precLabel==='function'?precLabel():'';if(pl)tags.push(pl);
-  el.innerHTML=`<b>${esc(d.name)}</b><span class="dim">${d.w} × ${d.h}</span>${tags.map(t=>`<i class="tag">${esc(t)}</i>`).join('')}`;el.title='Ouvrir la photothèque';updateExifLine()};
+  el.innerHTML=`<b>${esc(d.name)}</b><span class="dim">${d.w|0} × ${d.h|0}</span>${tags.map(t=>`<i class="tag">${esc(t)}</i>`).join('')}`;el.title='Ouvrir la photothèque';updateExifLine()};
 updateDocName();
 /* floating tooltips with the shortcut, for the tool dock and the top bar */
 const TIP={el:null,t:0,cur:null};

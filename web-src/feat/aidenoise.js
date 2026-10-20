@@ -17,24 +17,24 @@ DN.abs=u=>new URL(u,location.href).href;
 DN.load=()=>DN.sess?Promise.resolve(DN.sess):(DN.loadP||(DN.loadP=DN._load().finally(()=>{DN.loadP=null})));
 /* application de bureau : le moteur IA natif (carte graphique DirectML / Core ML) passe avant le moteur web */
 DN._native=async()=>{const N=window.PrismNAI;if(!N||!(await N.ok()))return null;try{
-    const s=await N.fromChunks([...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),v=>busy(true,'Chargement du modèle de débruitage…',v*0.9));
+    const s=await N.fromChunks([...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),v=>{if(DN.loadRes)busy(true,'Chargement du modèle de débruitage…',v*0.9)});
     DN.nat=s;DN.sess=s;DN.threads=navigator.hardwareConcurrency||1;DN.lastEp='native-'+s.__ep;return s}catch(e){console.warn('IA native, débruitage :',e);return null}};
 DN._load=()=>new Promise(async res=>{DN.loadRes=res;
   busy(true,'Chargement du moteur IA…',0.02);
   {const s=await DN._native();if(s){DN.loadRes=null;res(s);return}}
-  let w;try{w=new Worker(DN.wurl||(DN.wurl=URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'}))))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
+  let w;try{w=DN.lw=new Worker(DN.wurl||(DN.wurl=URL.createObjectURL(new Blob([DN.WSRC],{type:'text/javascript'}))))}catch(e){console.error(e);busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||e),5000);res(null);return}
   const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
-  w.onmessage=e=>{const m=e.data;
+  w.onmessage=e=>{const m=e.data;if(DN.lw!==w)return;/* annulé : plus rien de ce worker */
     if(m.t==='prog'){DN.busyCancel(true);busy(true,m.prep?'Préparation du modèle…':'Téléchargement du modèle de débruitage (43 Mo, une seule fois)…',m.v);DN.busyCancel(true)}
-    else if(m.t==='ready'){DN.threads=m.threads;DN.lastEp=m.ep||'wasm';DN.loadRes=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
-    else if(m.t==='err'){console.error(m.msg);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+m.msg,5000);res(null)}};
-  w.onerror=e=>{console.error(e);w.terminate();busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||'worker'),5000);res(null)};
+    else if(m.t==='ready'){DN.threads=m.threads;DN.lastEp=m.ep||'wasm';DN.loadRes=null;DN.lw=null;DN.sess=DN.w=w;w.onmessage=DN._onmsg;res(w)}
+    else if(m.t==='err'){console.error(m.msg);w.terminate();DN.lw=null;busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+m.msg,5000);res(null)}};
+  w.onerror=e=>{if(DN.lw!==w)return;console.error(e);w.terminate();DN.lw=null;busy(false);toast('Le modèle de débruitage n’a pas pu se charger : '+(e.message||'worker'),5000);res(null)};
   w.postMessage({t:'init',ort:DN.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:DN.abs(asset('ai/')),chunks:[...Array(DN.N).keys()].map(i=>DN.abs(asset(`ai/aidenoise/${i}.wasm`))),threads:thr})});
 DN.pend=new Map();DN.rid=0;
 DN._onmsg=e=>{const m=e.data,p=DN.pend.get(m.id);if(!p)return;DN.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 DN.tile=(f,dims)=>DN.nat?DN.nat.run({[DN.nat.inputNames[0]]:{data:f,dims,type:'float32'}}).then(o=>o[DN.nat.outputNames[0]].data):new Promise((res,rej)=>{const id=++DN.rid;DN.pend.set(id,{res,rej});DN.w.postMessage({t:'run',id,buf:f.buffer,dims},[f.buffer])});
 /* annulation immédiate : on arrête le worker (le modèle sera rechargé au prochain usage) */
-DN.kill=()=>{if(DN.loadRes){DN.loadRes(null);DN.loadRes=null}if(DN.w){DN.w.terminate();DN.w=null;DN.sess=null}DN.pend.forEach(p=>p.rej(new Error('annulé')));DN.pend.clear()};
+DN.kill=()=>{if(DN.loadRes){DN.loadRes(null);DN.loadRes=null;busy(false)}if(DN.lw){DN.lw.terminate();DN.lw=null}if(DN.w){DN.w.terminate();DN.w=null;DN.sess=null}DN.pend.forEach(p=>p.rej(new Error('annulé')));DN.pend.clear()};
 /* indice miroir (bords de l'image) */
 const dnMir=(i,n)=>{if(n<2)return 0;const p=2*n-2;i=((i%p)+p)%p;return i<n?i:p-i};
 /* positions de tuiles sur un axe pour la zone [r0,r1[ */
