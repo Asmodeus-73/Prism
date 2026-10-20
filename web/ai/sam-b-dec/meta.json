@@ -1,0 +1,1 @@
+{"model": "sam-vit-b (décodeur)", "fmt": "onnx, poids int8 (quantification dynamique), export rembg", "chunks": [8742591], "total": 8742591, "sha256": "40b02c2f694bb87b8360bb04ad8aaa84eab9673f4092b4911e0513890812b42e"}

@@ -62,6 +62,10 @@ await test('double exposition : outil et annulation',async()=>{const r=await ev(
 
 await test('agrandissement IA (moteur ONNX) sur un petit extrait',async()=>{const r=await ev(async()=>{const U=__x4p.onnx;U.ok=async()=>true;const m=await U.load('fast');if(!m)return 'modèle non chargé';
     const s=mk(48,40);cx(s).drawImage(flatSync(),500,400,48,40,0,0,48,40);const o=await U.canvas(s,2,m,null);return o.width===96&&o.height===80?'ok':o.width+'x'+o.height});if(r!=='ok')throw new Error(r)});
+await test('sélection d’objet (Segment Anything) : un clic de baguette choisit un objet',async()=>{await sample();await ev(()=>{S.opts.wand.obj=true;setTool('wand')});
+  await drag(0.5,0.5,0.5,0.5,1);await page.waitForFunction(()=>S.history[S.hi]&&S.history[S.hi].label==='Sélectionner un objet',null,{timeout:180000});
+  const r=await ev(()=>{const m=S.doc.sel,c=mk(m.width,m.height),g=rx(c);g.drawImage(m,0,0);const a=g.getImageData(0,0,c.width,c.height).data;let on=0;for(let i=3;i<a.length;i+=4)if(a[i]>127)on++;S.opts.wand.obj=false;return on/(c.width*c.height)});
+  if(!(r>0.005&&r<0.995))throw new Error('couverture '+r)});
 await test('impression : la page ne garde que la photo',async()=>{const r=await ev(async()=>{let called=0;window.print=()=>{called++};PrismPrint.dialog();await new Promise(r=>setTimeout(r,150));
     const info=document.querySelector('#prInfo').textContent;[...document.querySelectorAll('#scrim button')].find(b=>/Imprimer/.test(b.textContent)).click();
     for(let i=0;i<50&&!called;i++)await new Promise(r=>setTimeout(r,100));const img=document.querySelector('#printSheet img');return {called,img:!!(img&&img.naturalWidth),info}});
