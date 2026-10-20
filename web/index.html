@@ -9232,7 +9232,15 @@ async function snap(prob,W,H,coarse){const d=S.doc,long=Math.max(d.w,d.h),ps=Mat
   try{busy(true,'Affinage du contour…',null);await tick();return await refineMask(up,{radius:clamp(Math.round(long*ps/coarse),3,24),eps:0.0006,contrast:15,shift:0},ps)}catch(e){console.warn(e);return up}finally{busy(false)}}
 const covered=m=>{if(!m)return false;const b=maskBBox(m);return !!b};
 
-async function sceneMask(kind){const d=S.doc,sc=await scene();if(!sc||S.doc!==d)return null;const gr=groupGrid(sc,SEG.GROUPS[kind]);let mx=0;for(const v of gr)if(v>mx)mx=v;if(mx<0.4)return null;
+async function sceneMask(kind){const d=S.doc,sc=await scene();if(!sc||S.doc!==d)return null;const cls=SEG.GROUPS[kind],gr=groupGrid(sc,cls),K=sc.K;let sure=0;
+  // the model hedges between kinds on what it does not know (a bird read as a person, a night sky as a wall): a cell counts only
+  // where this kind is the model's first choice, and the kind needs a sizeable region of such cells
+  for(let i=0;i<gr.length;i++){let b=0,bv=-1;for(let c=0;c<K;c++){const v=sc.P[i*K+c];if(v>bv){bv=v;b=c}}if(cls.includes(b)&&gr[i]>0.5)sure++;else if(gr[i]<0.5)gr[i]=0;else gr[i]*=0.5}
+  let conf=0;for(let i=0;i<gr.length;i++)if(gr[i]>0.5)conf+=gr[i];conf/=Math.max(1,sure);
+  if(sure<gr.length*0.015||conf<0.75)return null;
+  // a near-black region (a night sky) has no detail to adjust and is where the model guesses most
+  if(kind!=='sky'){const t=mk(sc.gw,sc.gh),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(flatSync(),0,0,sc.gw,sc.gh);const a=g.getImageData(0,0,sc.gw,sc.gh).data;let l=0;
+    for(let i=0;i<gr.length;i++)if(gr[i]>0.5)l+=0.2126*a[i*4]+0.7152*a[i*4+1]+0.0722*a[i*4+2];if(l/Math.max(1,sure)<0.05*255)return null}
   return snap(gr,sc.gw,sc.gh,160)}
 // people parts: the people model looks at a square crop around the people the scene model found (or the subject)
 async function partsMask(kind){const d=S.doc;let box=null;const sc=await scene();if(S.doc!==d)return null;
@@ -11504,13 +11512,29 @@ function mainBlobs(m){const R=512,s=Math.min(1,R/Math.max(m.width,m.height)),w=M
 AIM.masks=masks;
 const r2=v=>Math.round(v*100)/100;
 function devSubject(st){const z=DEV0();if(!st)return z;
-  z.exposure=r2(clamp(1.1*Math.log2(0.48/Math.max(0.03,st.med)),-0.4,0.5));
-  z.shadows=Math.round(clamp((0.12-st.lo)*160+8,0,35));z.highlights=st.hi>0.95?-20:0;
+  z.exposure=r2(clamp(1.1*Math.log2(0.48/Math.max(0.03,st.med)),-0.4,0.8));
+  z.shadows=Math.round(clamp((0.12-st.lo)*200+8,0,45));z.highlights=st.hi>0.95?-20:0;
   z.clarity=10;z.texture=8;z.vibrance=st.sat<0.25?12:5;return z}
 function devSky(st){const z=DEV0();if(!st)return z;
   z.highlights=Math.round(-clamp(20+st.clip*300+(st.hi-0.85)*120,15,60));z.whites=st.clip>0.02?-15:-5;
   z.dehaze=st.spread<0.25?18:10;z.vibrance=14;z.saturation=st.sat<0.15?6:0;
   if(st.med>0.83)z.exposure=-r2(clamp((st.med-0.8)*2,0,0.4));return z}
+// a starting dose for a single AI mask, measured on the region (the user then tunes it)
+function devFor(kind,m){const st=stats(m);if(!st)return DEV0();
+  if(kind==='sky')return devSky(st);
+  if(kind==='bg')return devBg(st,stats(invOf(m)));
+  if(kind==='subj'||kind==='people')return devSubject(st);
+  const z=DEV0(),lift=Math.round(clamp((0.2-st.lo)*80,0,20));
+  if(kind==='face'||kind==='skin'){z.exposure=r2(clamp(0.8*Math.log2(0.5/Math.max(0.05,st.med)),-0.3,0.4));z.texture=-12;z.clarity=-6;z.shadows=lift}
+  else if(kind==='hair'){z.texture=14;z.clarity=6;z.shadows=lift}
+  else if(kind==='clothes'){z.texture=8;z.vibrance=8;z.shadows=lift}
+  else if(kind==='vegetation'){z.vibrance=18;z.texture=8;z.shadows=lift}
+  else if(kind==='water'){z.dehaze=10;z.vibrance=12;z.clarity=6}
+  else if(kind==='mountains'){z.dehaze=15;z.clarity=10;z.texture=8}
+  else if(kind==='buildings'){z.clarity=12;z.texture=10;z.shadows=lift}
+  else if(kind==='ground'){z.texture=10;z.clarity=6;z.shadows=lift}
+  if(st.hi>0.95&&kind!=='sky')z.highlights=Math.min(z.highlights||0,-15);return z}
+const isNeutral=L=>{const z=DEV0(),v=L.dev||{};return Object.keys(z).every(k=>typeof z[k]!=='number'||(v[k]??z[k])===z[k])};
 function devBg(st,sub){const z=DEV0();if(!st)return z;
   const gap=sub?(st.med-sub.med):0;z.exposure=r2(clamp(-0.1-Math.max(0,gap)*0.4,-0.3,0));z.clarity=-6;z.saturation=-4;return z}
 
@@ -11530,24 +11554,28 @@ async function aiMaskRetouch(){const d=S.doc;if(!d){toast('Ouvrez d’abord une 
 AIM.retouch=aiMaskRetouch;
 
 // ---------- AI mask on the active local adjustment (or pixel layer mask) ----------
-const OPS=[['new','Remplacer'],['add','Ajouter'],['sub','Retirer'],['and','Croiser']];
+const OPS=[['layer','Nouveau réglage'],['new','Remplacer'],['add','Ajouter'],['sub','Retirer'],['and','Croiser']];
 async function applyAIMask(kind,op){const d=S.doc,A=d&&d.layers[d.active];if(!A){toast('Ouvrez d’abord une photo');return}
-  if(A.kind==='adjust'&&!A.mask&&op!=='new'){op='new'}
+  if(A.kind==='adjust'&&!A.mask&&op!=='new'&&op!=='layer'){op='new'}
   const h0=S.history[S.hi];let m=null;try{busy(true,'Masque IA…',null);await tick();m=await AI.categoryMask(kind)}finally{busy(false)}
   if(!m||S.doc!==d||S.history[S.hi]!==h0)return;
   let out;const cur=A.mask;
-  if(op==='new'||!cur)out=cloneC(m);
+  if(op==='new'||op==='layer'||!cur)out=cloneC(m);
   else{out=cloneC(cur);const g=cx(out);g.globalCompositeOperation=op==='add'?'source-over':op==='sub'?'destination-out':'destination-in';g.drawImage(m,0,0);g.globalCompositeOperation='source-over'}
-  if(A.kind==='adjust'&&!A.mask&&d.layers.filter(l=>l.kind==='adjust'&&!l.mask).length<=1){// never mask the only global adjustment: make a new local one
-    const L=newAdjust(AI.categoryLabel(kind)+' (IA)',out);insertLayer(L,'Masque IA',true);switchTab('develop');toast('Nouveau réglage local créé sur ce masque');return}
-  A.mask=out;markComp();if(typeof markContent==='function')markContent();pushHistory('Masque IA');syncAll();toast('Masque mis à jour')}
+  // a new local adjustment: asked for, or the only global adjustment (never masked)
+  if(op==='layer'||A.kind==='adjust'&&!A.mask&&d.layers.filter(l=>l.kind==='adjust'&&!l.mask).length<=1){
+    const L=newAdjust(AI.categoryLabel(kind)+' (IA)',out);L.dev=devFor(kind,out);insertLayer(L,'Masque IA',true);switchTab('develop');toast(AI.categoryLabel(kind)+' : nouveau réglage local, déjà dosé. Ajustez-le à droite.',5000);return}
+  // a fresh local adjustment gets a starting dose too, so the mask shows its effect right away
+  const dosed=A.kind==='adjust'&&op==='new'&&isNeutral(A);if(dosed)A.dev=devFor(kind,out);
+  if(op==='new'&&/ \(IA\)$/.test(A.name||''))A.name=AI.categoryLabel(kind)+' (IA)';
+  A.mask=out;markComp();if(typeof markContent==='function')markContent();pushHistory('Masque IA');syncAll();toast(dosed?'Masque appliqué, réglage déjà dosé':'Masque mis à jour')}
 AIM.apply=applyAIMask;window.PrismAIMask=AIM;
 
 // Masque section (local adjustments): a row of AI buttons with the combination mode
 {const st=document.createElement('style');st.textContent='.aim-row{display:grid;gap:6px;margin:2px 0 10px}.aim-row .aim-t{font-size:11.5px;color:var(--fg-2)}.aim-row .aim-b{display:flex;gap:6px;flex-wrap:wrap}.aim-row select{font:inherit;font-size:12px}';document.body.appendChild(st)}
 function injectRow(){const root=document.querySelector('#zmSec .zm-root');if(!root||root.querySelector('.aim-row'))return;
   const r=document.createElement('div');r.className='aim-row';
-  r.innerHTML=`<span class="aim-t">Masque IA</span><div class="aim-b"><button type="button" class="btn sm" data-aim="subj">Sujet</button><button type="button" class="btn sm" data-aim="sky">Ciel</button><button type="button" class="btn sm" data-aim="people">Personnes</button><button type="button" class="btn sm" data-aim="bg">Arrière-plan</button><select class="aim-more" aria-label="Autres masques IA"><option value="">Autre…</option>${AI.categories().filter(k=>!['subj','sky','people','bg'].includes(k)).map(k=>`<option value="${k}">${AI.categoryLabel(k)}</option>`).join('')}</select><select class="aim-op" aria-label="Combinaison">${OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>`;
+  r.innerHTML=`<span class="aim-t">Masque IA</span><div class="aim-b"><button type="button" class="btn sm" data-aim="subj">Sujet</button><button type="button" class="btn sm" data-aim="sky">Ciel</button><button type="button" class="btn sm" data-aim="people">Personnes</button><button type="button" class="btn sm" data-aim="bg">Arrière-plan</button><select class="aim-more" aria-label="Autres masques IA"><option value="">Autre…</option>${AI.categories().filter(k=>!['subj','sky','people','bg'].includes(k)).map(k=>`<option value="${k}">${AI.categoryLabel(k)}</option>`).join('')}</select><select class="aim-op" aria-label="Combinaison">${OPS.slice(1).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>`;
   r.addEventListener('click',e=>{const b=e.target.closest('[data-aim]');if(!b)return;e.preventDefault();e.stopPropagation();applyAIMask(b.dataset.aim,r.querySelector('.aim-op').value)});
   r.addEventListener('change',e=>{const t=e.target.closest('.aim-more');if(!t||!t.value)return;const k=t.value;t.value='';applyAIMask(k,r.querySelector('.aim-op').value)});
   root.insertBefore(r,root.firstChild)}

@@ -66,6 +66,10 @@ await test('sélection d’objet (Segment Anything) : un clic de baguette choisi
   await drag(0.5,0.5,0.5,0.5,1);await page.waitForFunction(()=>S.history[S.hi]&&S.history[S.hi].label==='Sélectionner un objet',null,{timeout:180000});
   const r=await ev(()=>{const m=S.doc.sel,c=mk(m.width,m.height),g=rx(c);g.drawImage(m,0,0);const a=g.getImageData(0,0,c.width,c.height).data;let on=0;for(let i=3;i<a.length;i+=4)if(a[i]>127)on++;S.opts.wand.obj=false;return on/(c.width*c.height)});
   if(!(r>0.005&&r<0.995))throw new Error('couverture '+r)});
+await test('masque IA : le nouveau réglage local est déjà dosé',async()=>{await sample();const r=await ev(async()=>{const d=S.doc,m=mk(d.w,d.h),g=cx(m);g.fillStyle='#fff';g.fillRect(d.w*0.25,d.h*0.25,d.w*0.5,d.h*0.5);
+    const cm=AI.categoryMask;AI.categoryMask=async()=>m;try{await PrismAIMask.apply('subj','layer');await PrismAIMask.apply('sky','layer')}finally{AI.categoryMask=cm}
+    const z=DEV0(),moved=L=>Object.keys(z).filter(k=>typeof z[k]==='number'&&L.dev[k]!==z[k]).length,a=d.layers.slice(-2);return a.map(L=>[L.name,!!L.mask,moved(L)])});
+  if(r[0][0]!=='Sujet (IA)'||r[1][0]!=='Ciel (IA)'||!r.every(x=>x[1]&&x[2]>0))throw new Error(JSON.stringify(r))});
 await test('impression : la page ne garde que la photo',async()=>{const r=await ev(async()=>{let called=0;window.print=()=>{called++};PrismPrint.dialog();await new Promise(r=>setTimeout(r,150));
     const info=document.querySelector('#prInfo').textContent;[...document.querySelectorAll('#scrim button')].find(b=>/Imprimer/.test(b.textContent)).click();
     for(let i=0;i<50&&!called;i++)await new Promise(r=>setTimeout(r,100));const img=document.querySelector('#printSheet img');return {called,img:!!(img&&img.naturalWidth),info}});
