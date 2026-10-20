@@ -13,7 +13,7 @@ const PILL_ACT={penSel:penToSel,penMask:penToMask,penFill:penFill,penStroke:penS
 const _selChanged=selChanged;selChanged=function(){_selChanged();if(['marquee','lasso','wand'].includes(S.tool)){clearTimeout(selChanged.t);selChanged.t=setTimeout(renderPill,50)}};
 document.addEventListener('keydown',e=>{if(S.tool!=='pen'||!S.doc||$('#library'))return;const tg=e.target;if(tg.closest&&tg.closest('input,textarea,select,[contenteditable]'))return;if($('#scrim')&&!$('#scrim').classList.contains('light'))return;
   const P=S.doc.path;if(e.key==='Enter'&&P&&P.pts.length>1){e.preventDefault();e.stopPropagation();penToSel();return}
-  if((e.key==='Backspace'||e.key==='Delete')&&P&&P.pts.length&&!e.metaKey&&!e.ctrlKey){e.preventDefault();e.stopPropagation();if(P.closed)P.closed=false;else P.pts.pop();if(!P.pts.length)S.doc.path=null;requestRender();renderPill()}},true);
+  if((e.key==='Backspace'||e.key==='Delete')&&P&&P.pts.length&&!e.metaKey&&!e.ctrlKey){e.preventDefault();e.stopImmediatePropagation();if(P.closed)P.closed=false;else P.pts.pop();if(!P.pts.length)S.doc.path=null;requestRender();renderPill()}},true);
 document.addEventListener('keydown',e=>{const tg=e.target;if($('#library')||(tg.closest&&tg.closest('input,textarea,select,[contenteditable]')))return;const mod=(e.metaKey||e.ctrlKey)&&!(e.getModifierState&&e.getModifierState('AltGraph'));
   if(mod&&e.code==='KeyY'&&e.shiftKey&&S.doc){e.preventDefault();e.stopPropagation();proofToggle();return}
   if(mod&&e.altKey&&e.code==='KeyR'&&S.doc){e.preventDefault();e.stopPropagation();refineDialog()}},true);

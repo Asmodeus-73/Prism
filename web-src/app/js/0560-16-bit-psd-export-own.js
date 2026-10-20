@@ -85,7 +85,7 @@ async function readPSD16(buf){const u=new Uint8Array(buf),v=new DataView(buf);if
       await tick()}
     layers.push(...recs)}
   return{W,H,layers,icc}}
-async function importPSD16(file,name){busy(true,'Lecture du fichier Photoshop 16 bits…',null);try{const buf=await file.arrayBuffer();const P=await readPSD16(buf);const W=P.W,H=P.H;if(W*H>MAX_PX)throw new Error(`image trop grande (${W} × ${H})`);
+async function importPSD16(file,name){busy(true,'Lecture du fichier Photoshop 16 bits…',null);const cs0=CS;try{const buf=await file.arrayBuffer();const P=await readPSD16(buf);const W=P.W,H=P.H;if(W*H>MAX_PX)throw new Error(`image trop grande (${W} × ${H})`);
     setCS(P.icc&&typeof wantP3==='function'&&wantP3(P.icc)&&P3_OK?'display-p3':'srgb');
     const layers=[],stack=[{hidden:false,op:1}];let skipped=0;
     const KEY=Object.fromEntries(Object.entries(PSD_KEY).map(([a,b])=>[b,a]));
@@ -99,11 +99,11 @@ async function importPSD16(file,name){busy(true,'Lecture du fichier Photoshop 16
       const M=r.px[-2];if(M&&r.mask&&!r.mask.disabled){const mw=r.mask.right-r.mask.left,mh=r.mask.bottom-r.mask.top,m=mk(W,H),mg=rx(m);if(r.mask.def>127){mg.fillStyle='#fff';mg.fillRect(0,0,W,H)}const t=mk(mw,mh),tg=rx(t),ti=tg.createImageData(mw,mh);for(let i=0;i<mw*mh;i++){ti.data[i*4]=ti.data[i*4+1]=ti.data[i*4+2]=255;ti.data[i*4+3]=(M[i]+128)/257}tg.putImageData(ti,0,0);mg.clearRect(r.mask.left,r.mask.top,mw,mh);mg.drawImage(t,r.mask.left,r.mask.top);L.mask=m}
       layers.push(L);await tick()}
     if(!layers.length)throw new Error('aucun calque lisible');layers.push(newAdjust('Réglages'));
-    S.doc={w:W,h:H,name:(name||file.name||'photoshop.psd'),layers,active:layers.length-1,sel:null,pid:uid8(),sync:Cloud.ok&&PREF.get('autoSync',true),saved:false};
+    S.doc={w:W,h:H,name:(name||file.name||'photoshop.psd'),layers,active:layers.length-1,sel:null,pid:uid8(),sync:Cloud.ok&&PREF.get('autoSync',true),saved:false,space:CS};
     S.sample=false;S.meta='PSD 16 bits · '+(layers.length-1)+' calque'+(layers.length>2?'s':'');S.history=[];S.hi=-1;S.crop=null;S.cloneSrc=null;S.cloneOff=null;S.maxHist=clamp(Math.floor(HIST_BUDGET/(W*H*4)),3,40);AI.subjectCache=null;
     pushHistory('Ouverture du PSD');selChanged();markComp();fit(true);syncAll();$('#empty').hidden=true;updateDocName();busy(false);
     toast(`PSD 16 bits ouvert : ${layers.length-1} calque${layers.length>2?'s':''}${skipped?` (${skipped} calque${skipped>1?'s':''} de réglage ou vide${skipped>1?'s':''} ignoré${skipped>1?'s':''})`:''}`,5000);scheduleSave(500)}
-  catch(e){busy(false);console.error(e);toast('Ce PSD n’a pas pu être lu : '+(e.message||e),6000)}}
+  catch(e){setCS(cs0);busy(false);console.error(e);toast('Ce PSD n’a pas pu être lu : '+(e.message||e),6000)}}
 const _importPSD8=importPSD;
 importPSD=async function(file,name){let dp=8,md=3;try{const h=new Uint8Array(await file.slice(0,26).arrayBuffer());dp=h[22]*256+h[23];md=h[24]*256+h[25]}catch(e){}return dp===16&&md===3?importPSD16(file,name):_importPSD8(file,name)};
 

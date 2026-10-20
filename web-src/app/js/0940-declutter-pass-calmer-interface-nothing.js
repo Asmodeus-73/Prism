@@ -28,7 +28,7 @@ body.zclean .statusbar .st-doc{color:var(--fg-3);font-size:11px}
 body.zclean #w47hint{color:var(--fg-3);font-size:11px}
 body.zclean #w47hint:empty{display:block}
 /* ---- top bar ---- */
-body.zclean .docname .tag{display:none}
+body.zclean .docname .tag:not(.w48-ro){display:none}
 body.zclean .w47-save em{display:none}
 body.zclean:not(.no-doc) #bCmd{width:32px;padding:0;justify-content:center;gap:0;border-color:transparent;background:none}
 body.zclean:not(.no-doc) #bCmd span,body.zclean:not(.no-doc) #bCmd kbd{display:none}

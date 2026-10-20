@@ -37,7 +37,7 @@ function finalizeMeta(L){const d=S.doc,c=mk(d.w,d.h);if(L.txt){const bb=drawText
 const inBox=(b,p)=>b&&p.x>=b[0]-6&&p.x<=b[0]+b[2]+6&&p.y>=b[1]-6&&p.y<=b[1]+b[3]+6;
 const nameOfText=t=>'Texte : '+((t.text.split('\n')[0]||'').slice(0,18)||'…');
 function rRow(id,label,min,max,step,val,unit){return rangeRow(id,label,min,max,step,val,unit)}
-async function textEdit(L,isNew){const d=S.doc,o=S.opts.text,orig={txt:L.txt,canvas:L.canvas,name:L.name,fx:L.fx};let t={...L.txt};let fin=false;
+async function textEdit(L,isNew){const d=S.doc,o=S.opts.text,orig={txt:L.txt,canvas:L.canvas,name:L.name,fx:L.fx};let t={...L.txt};let fin=false,cancel=null;
   const ctl=el=>{const g=id=>$('#'+id,el);t={...t,text:g('tTxt').value,font:g('tFont').value,color:g('tCol').value,bold:g('tB').classList.contains('on'),italic:g('tI').classList.contains('on'),align:el.querySelector('[data-al].on').dataset.al,size:+g('tSize').value,lh:+g('tLh').value/100,track:+g('tTr').value,boxW:+g('tBox').value,sw:+g('tSw').value,sc:g('tSc').value};
     g('tSize-o').textContent=t.size+' px';g('tLh-o').textContent=t.lh.toFixed(2);g('tTr-o').textContent=t.track+' px';g('tBox-o').textContent=t.boxW?t.boxW+' px':'auto';g('tSw-o').textContent=t.sw+' px'};
   const upd=async el=>{ctl(el);L.txt=t;L.name=keepName(L,nameOfText(t),/^Texte( :|$)/);await loadFont(t);if(fin)return;livePreview(L)};
@@ -53,8 +53,8 @@ async function textEdit(L,isNew){const d=S.doc,o=S.opts.text,orig={txt:L.txt,can
       ['tB','tI'].forEach(id=>$('#'+id,el).addEventListener('click',e=>{e.currentTarget.classList.toggle('on');go()}));
       el.querySelectorAll('[data-al]').forEach(b=>b.addEventListener('click',()=>{el.querySelectorAll('[data-al]').forEach(x=>x.classList.toggle('on',x===b));go()}));
       go();setTimeout(()=>{const a=$('#tTxt',el);a.focus();if(isNew)a.select()},30)},
-    buttons:[{label:'Annuler',onClick:()=>{fin=true;if(isNew){const i=d.layers.indexOf(L);if(i>=0){d.layers.splice(i,1);d.active=Math.max(0,Math.min(d.active-1,d.layers.length-1))}}else{L.txt=orig.txt;L.name=orig.name}delete L.preview;PV.delete(L.id);markComp();syncAll()}},
-      {label:isNew?'Ajouter le texte':'Appliquer',primary:true,onClick:async()=>{fin=true;if(!d.layers.includes(L)||S.doc!==d)return;ctl(document);await loadFont(t);L.txt=t;L.name=keepName(L,nameOfText(t),/^Texte( :|$)/);finalizeMeta(L);Object.assign(o,{font:t.font,size:t.size,bold:t.bold,italic:t.italic});markComp();pushHistory(isNew?'Texte':'Modifier le texte');syncAll()}}]})}
+    buttons:[{label:'Annuler',onClick:cancel=()=>{fin=true;if(isNew){const i=d.layers.indexOf(L);if(i>=0){d.layers.splice(i,1);d.active=Math.max(0,Math.min(d.active-1,d.layers.length-1))}}else{L.txt=orig.txt;L.name=orig.name}delete L.preview;PV.delete(L.id);markComp();syncAll()}},
+      {label:isNew?'Ajouter le texte':'Appliquer',primary:true,onClick:async()=>{if(!d.layers.includes(L)||S.doc!==d){cancel();return}fin=true;ctl(document);await loadFont(t);L.txt=t;L.name=keepName(L,nameOfText(t),/^Texte( :|$)/);finalizeMeta(L);Object.assign(o,{font:t.font,size:t.size,bold:t.bold,italic:t.italic});markComp();pushHistory(isNew?'Texte':'Modifier le texte');syncAll()}}]})}
 textAt=async function(p){const prev=$('#scrim');if(prev&&prev._cancel)prev._cancel();const d=S.doc,o=S.opts.text;
   const hit=[...d.layers].reverse().find(l=>l.txt&&l.visible!==false&&inBox(l.txt.bbox,p));if(hit){d.active=d.layers.indexOf(hit);syncAll();return textEdit(hit,false)}
   const L=newPixel('Texte',mk(d.w,d.h));L.txt={text:'Votre texte',font:o.font,size:o.size,bold:o.bold,italic:o.italic,color:S.color,align:'left',lh:1.15,track:0,boxW:0,sw:0,sc:'#000000',x:Math.round(p.x),y:Math.round(p.y)};
@@ -115,7 +115,9 @@ function shapeEdit(L){if(!L||!L.shp)return;const d=S.doc,orig=L.shp;let s={...L.
 const FXD=()=>({shadow:{on:false,color:'#000000',op:.5,blur:18,dx:6,dy:8},stroke:{on:false,color:'#ffffff',w:6},glow:{on:false,color:'#ffd27a',op:.8,blur:24}});
 const fxOn=f=>!!(f&&((f.shadow&&f.shadow.on)||(f.stroke&&f.stroke.on)||(f.glow&&f.glow.on)));
 const FXC=new WeakMap();
-function fxBake(L){const d=S.doc,base=L.canvas,key=JSON.stringify(L.fx),ca=FXC.get(base);if(ca&&ca.key===key&&ca.w===d.w&&ca.h===d.h)return ca.c;
+/* tools that paint in place (dodge, smudge, liquify) keep the same canvas: a content version invalidates its styled cache */
+const _mcFx=markComp;markComp=function(){const st=S.stroke,dr=S.drag,c=(st&&st.ctx&&st.ctx.canvas)||(dr&&dr.ctx&&dr.ctx.canvas);if(c)c._v=(c._v|0)+1;return _mcFx.apply(this,arguments)};
+function fxBake(L){const d=S.doc,base=L.canvas,key=JSON.stringify(L.fx)+'|'+(base._v|0),ca=FXC.get(base);if(ca&&ca.key===key&&ca.w===d.w&&ca.h===d.h)return ca.c;
   const f=L.fx,out=mk(d.w,d.h),g=cx(out);let region=null;const bb=L.txt&&L.txt.bbox||(L.shp&&shpBox(L.shp));if(bb){const pad=Math.ceil(((f.shadow&&f.shadow.on?f.shadow.blur*2+Math.abs(f.shadow.dx)+Math.abs(f.shadow.dy):0)+(f.glow&&f.glow.on?f.glow.blur*2:0)+(f.stroke&&f.stroke.on?f.stroke.w:0))+8);region=[Math.max(0,Math.floor(bb[0]-pad)),Math.max(0,Math.floor(bb[1]-pad)),0,0];region[2]=Math.min(d.w,Math.ceil(bb[0]+bb[2]+pad))-region[0];region[3]=Math.min(d.h,Math.ceil(bb[1]+bb[3]+pad))-region[1];if(region[2]<=0||region[3]<=0)region=null}
   const [rx0,ry0,rw,rh]=region||[0,0,d.w,d.h];const W=rw,H=rh,wk=mk(W,H),w=cx(wk);w.drawImage(base,rx0,ry0,rw,rh,0,0,W,H);
   const tint=col=>{const t=mk(W,H),q=cx(t);q.drawImage(wk,0,0);q.globalCompositeOperation='source-in';q.fillStyle=col;q.fillRect(0,0,W,H);return t};

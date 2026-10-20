@@ -27,8 +27,8 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   if(!LM.meta&&!(await LM.avail())){res(null);return}
   busy(true,'Chargement du moteur IA…',0.02);LM.busyCancel(true);
   /* application de bureau : moteur IA natif (carte graphique) d'abord */
-  {const N=window.PrismNAI;if(N&&await N.ok()){try{const s=await N.fromChunks([...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),v=>{busy(true,'Chargement du modèle de suppression…',v*0.9);LM.busyCancel(true)});
-      if(LM.loadRes!==res){s.release();return}LM.nat=s;LM.w=s;LM.ep='native-'+s.__ep;LM.threads=navigator.hardwareConcurrency||1;LM.loadRes=null;res(s);return}catch(e){console.warn('IA native, suppression :',e)}}}
+  {const N=window.PrismNAI;if(N&&await N.ok()){try{const s=await N.fromChunks([...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),v=>{if(LM.loadRes!==res)return;busy(true,'Chargement du modèle de suppression…',v*0.9);LM.busyCancel(true)});
+      if(LM.loadRes!==res){s.release();if(!LM.loadRes&&!LM.busyNow&&document.querySelector('#busy .lm-cancel')){busy(false);LM.busyCancel(false)}return}LM.nat=s;LM.w=s;LM.ep='native-'+s.__ep;LM.threads=navigator.hardwareConcurrency||1;LM.loadRes=null;res(s);return}catch(e){console.warn('IA native, suppression :',e)}}}
   let w;try{w=new Worker(LM.wurl||(LM.wurl=URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'}))))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
   const fail=msg=>{console.warn('lama',msg);try{w.terminate()}catch(e){}LM.loadRes=null;res(null)};

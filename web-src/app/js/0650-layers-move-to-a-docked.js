@@ -27,7 +27,7 @@ const LYR={w:PREF.get('lyW',innerWidth<1500?216:244),off:PREF.get('lyOff',false)
   const _al=applyLayout;applyLayout=function(){_al.apply(this,arguments);place()};COMPACT.addEventListener('change',place);
   $('#lyHide').onclick=()=>{LYR.off=true;PREF.set('lyOff',true);apply()};$('#lyShow').onclick=()=>{LYR.off=false;PREF.set('lyOff',false);apply()};
   const g=$('#lyrGrip');let drag=null;g.addEventListener('pointerdown',e=>{drag={x:e.clientX,w:LYR.w};g.setPointerCapture(e.pointerId);g.classList.add('on')});
-  g.addEventListener('pointermove',e=>{if(!drag)return;LYR.w=clamp(drag.w+e.clientX-drag.x,200,440);apply()});g.addEventListener('pointerup',()=>{if(drag){drag=null;g.classList.remove('on');PREF.set('lyW',LYR.w)}});
+  g.addEventListener('pointermove',e=>{if(!drag)return;LYR.w=clamp(drag.w+e.clientX-drag.x,200,440);apply()});const gEnd=()=>{if(drag){drag=null;g.classList.remove('on');PREF.set('lyW',LYR.w)}};['pointerup','pointercancel','lostpointercapture'].forEach(t=>g.addEventListener(t,gEnd));
   g.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();LYR.w=clamp(LYR.w+(e.key==='ArrowRight'?16:-16),200,440);PREF.set('lyW',LYR.w);apply()}});
   document.addEventListener('keydown',e=>{if(e.key==='F7'){e.preventDefault();LYR.off=!LYR.off;PREF.set('lyOff',LYR.off);apply()}});
   place()})();

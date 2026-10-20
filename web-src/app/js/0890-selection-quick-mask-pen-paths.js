@@ -92,11 +92,7 @@ const _ph=pushHistory;pushHistory=function(){const o=S.doc&&PH.get(S.doc);if(o)o
 const ptx=fn=>function(){const d=S.doc,j=d?JSON.stringify(d.path||null):null,seq=PSEQ;const r=fn.apply(this,arguments);if(d&&PSEQ===seq)pathTx(d,j);return r};
 let penTx=null;
 window.addEventListener('keydown',e=>{if(S.tool!=='pen'||!S.doc||inField(e.target)||!['Backspace','Delete','Escape'].includes(e.key))return;const d=S.doc,j=JSON.stringify(d.path||null),seq=PSEQ;setTimeout(()=>{if(PSEQ===seq)pathTx(d,j)},0)},true);
-/* crop, rotation, flips and resizing carry the path along (it used to stay where it was) */
-const xfPath=(d,M)=>{const P=d.path;if(!P||!P.pts)return;const f=(x,y)=>{const q=M.transformPoint(new DOMPoint(x,y));return[q.x,q.y]};for(const a of P.pts){[a.x,a.y]=f(a.x,a.y);[a.ix,a.iy]=f(a.ix,a.iy);[a.ox,a.oy]=f(a.ox,a.oy)}};
-const docXf=(fn,mfn)=>function(){const d=S.doc;if(!d||!d.path)return fn.apply(this,arguments);const top=S.history[S.hi],w0=d.w,h0=d.h;TFM=null;const r=fn.apply(this,arguments);
-  try{if(S.doc===d&&S.history[S.hi]!==top&&d.path){const M=mfn(w0,h0,d);if(M){xfPath(d,M);S.history[S.hi].path=cpP(d.path);requestRender()}}}catch(e){console.warn(e)}return r};
-transformDoc=docXf(transformDoc,()=>TFM);applyCrop=docXf(applyCrop,()=>TFM);resizeDoc=docXf(resizeDoc,(w0,h0,d)=>new DOMMatrix().scale(d.w/w0,d.h/h0));
+/* crop, rotation, flips and resizing carry the path along: done once, by 0850's mapPath before the history snapshot */
 /* selection → path: traces the LARGEST region (it used to take the topmost speck), at a finer scale, on the true pixel edge */
 traceMask=function(m){const s=Math.min(1,1600/Math.max(m.width,m.height)),w=Math.max(2,Math.round(m.width*s)),h=Math.max(2,Math.round(m.height*s)),t=mk(w,h),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(m,0,0,w,h);const a=g.getImageData(0,0,w,h).data,N=w*h;
   const lab=new Int32Array(N),st=[];let cur=0,best=0,bestN=0,bestI=-1;

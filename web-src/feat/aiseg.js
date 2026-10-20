@@ -12,16 +12,18 @@ SEG.LABEL={subj:'Sujet',sky:'Ciel',people:'Personnes',bg:'Arrière-plan',vegetat
 async function ortReady(){if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');{const bin=await ORTX.binary();if(bin)ort.env.wasm.wasmBinary=bin}
   ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;return ort}
 function session(dir,label,mb){if(SEG.sess[dir])return Promise.resolve(SEG.sess[dir]);if(SEG.P[dir])return SEG.P[dir];
-  return SEG.P[dir]=(async()=>{try{const ort=await ortReady();
-      const {buf}=await AI.fetchModel(dir,label,p=>busy(true,`Téléchargement du modèle ${label} (${mb} Mo, une seule fois)…`,p*0.95));
+  return SEG.P[dir]=(async()=>{let off=false;try{const ort=await ortReady();
+      const {buf}=await AI.fetchModel(dir,label,p=>off||busy(true,`Téléchargement du modèle ${label} (${mb} Mo, une seule fois)…`,p*0.95));
       busy(true,'Préparation du modèle…',0.97);const s=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all'});SEG.sess[dir]=s;return s}
-    catch(e){console.error(e);toast(`Le modèle ${label} n’a pas pu se charger : `+(e.message||e),5000);return null}
-    finally{SEG.P[dir]=null}})()}
+    catch(e){console.error(e);SEG.fail=true;toast(`Le modèle ${label} n’a pas pu se charger : `+(e.message||e),5000);return null}
+    finally{off=true;SEG.P[dir]=null;busy(false)}})()}
 const docKey=d=>d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();
-const sameKey=(a,b)=>a.length===b.length&&a.every((v,i)=>v===b[i]);
+const sameKey=(a,b)=>a.length===b.length&&a.every((v,i)=>(v instanceof WeakRef?v.deref():v)===b[i]);
+// the cache holds the document and its canvases weakly: a closed photo is not kept in memory
+const weakKey=k=>k.map(v=>v&&typeof v==='object'?new WeakRef(v):v);
 
 // scene probabilities on a 129 × 129 grid (the photo letterboxed into 513 × 513, as the model was trained)
-async function scene(){const d=S.doc;if(!d)return null;const key=docKey(d),C=SEG.scene;if(C&&C.d===d&&sameKey(C.key,key))return C;
+async function scene(){const d=S.doc;if(!d)return null;const key=docKey(d),C=SEG.scene;if(C&&C.d.deref()===d&&sameKey(C.key,key))return C;
   const sess=await session('ai/ade1/','des scènes',82);if(!sess||S.doc!==d)return null;
   busy(true,'Analyse de la scène…',null);await tick();
   try{const R=513,k=R/Math.max(d.w,d.h),w=Math.max(1,Math.round(d.w*k)),h=Math.max(1,Math.round(d.h*k)),t=mk(R,R),g=rx(t);g.fillStyle='rgb(128,128,128)';g.fillRect(0,0,R,R);g.imageSmoothingQuality='high';g.drawImage(flatSync(),0,0,w,h);
@@ -29,7 +31,7 @@ async function scene(){const d=S.doc;if(!d)return null;const key=docKey(d),C=SEG
     const ort=window.ort,out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('uint8',x,[1,R,R,3])}),L=out[sess.outputNames[0]].data,G=129,K=151;
     const gw=Math.min(G,Math.ceil(w*(G-1)/(R-1))+1),gh=Math.min(G,Math.ceil(h*(G-1)/(R-1))+1),P=new Float32Array(gw*gh*K);
     for(let y=0;y<gh;y++)for(let x0=0;x0<gw;x0++){const o=(y*G+x0)*K,q=(y*gw+x0)*K;let mx=-1e9;for(let c=0;c<K;c++)if(L[o+c]>mx)mx=L[o+c];let s=0;for(let c=0;c<K;c++){const e=Math.exp(L[o+c]-mx);P[q+c]=e;s+=e}for(let c=0;c<K;c++)P[q+c]/=s}
-    if(S.doc!==d)return null;return SEG.scene={d,key,P,gw,gh,K}}
+    if(S.doc!==d)return null;return SEG.scene={d:new WeakRef(d),key:weakKey(key),P,gw,gh,K}}
   catch(e){console.error(e);toast('Analyse de la scène impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
 function groupGrid(sc,classes){const n=sc.gw*sc.gh,o=new Float32Array(n);for(let i=0;i<n;i++){let s=0;for(const c of classes)s+=sc.P[i*sc.K+c];o[i]=s>1?1:s}return o}
 // probability grid -> W × H values (bilinear), grid point (gw-1, gh-1) on the far edge of the letterboxed photo
@@ -79,15 +81,16 @@ async function partsMask(kind){const d=S.doc;let box=null;const sc=await scene()
   catch(e){console.error(e);toast('Analyse des personnes impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
 
 // one entry point for every kind; null (with a message) when the photo has none
-AI.categoryMask=async kind=>{let m=null;
+AI.categoryMask=async kind=>{let m=null;SEG.fail=false;
   if(kind==='subj')m=await AI.subjectMask();
   else if(kind==='bg'){const s=await AI.subjectMask();if(s){m=fullMask();const g=cx(m);g.globalCompositeOperation='destination-out';g.drawImage(s,0,0)}}
   else if(kind==='sky')m=await AI.skyMask();
   else if(SEG.GROUPS[kind])m=await sceneMask(kind);
   else if(SEG.PARTS[kind])m=await partsMask(kind);
   if(m&&!covered(m))m=null;
-  if(!m&&kind!=='subj')toast(`${SEG.LABEL[kind]||kind} : rien de net trouvé dans cette photo`,4000);
+  if(!m&&kind!=='subj'&&!SEG.fail)toast(`${SEG.LABEL[kind]||kind} : rien de net trouvé dans cette photo`,4000);
   return m};
+{const _es=AI._ensureSeg;AI._ensureSeg=async()=>{const s=await _es();if(!s)SEG.fail=true;return s}}// a model that did not load already said so
 AI.categories=()=>['subj','sky','people','bg','vegetation','water','mountains','buildings','ground','face','skin','hair','clothes'];
 AI.categoryLabel=k=>SEG.LABEL[k]||k;
 AI.scene=scene;AI.ortSession=session;

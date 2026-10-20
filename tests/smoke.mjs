@@ -70,6 +70,16 @@ await test('masque IA : le nouveau réglage local est déjà dosé',async()=>{aw
     const cm=AI.categoryMask;AI.categoryMask=async()=>m;try{await PrismAIMask.apply('subj','layer');await PrismAIMask.apply('sky','layer')}finally{AI.categoryMask=cm}
     const z=DEV0(),moved=L=>Object.keys(z).filter(k=>typeof z[k]==='number'&&L.dev[k]!==z[k]).length,a=d.layers.slice(-2);return a.map(L=>[L.name,!!L.mask,moved(L)])});
   if(r[0][0]!=='Sujet (IA)'||r[1][0]!=='Ciel (IA)'||!r.every(x=>x[1]&&x[2]>0))throw new Error(JSON.stringify(r))});
+await test('avant / après : glisser la séparation ne sélectionne rien et reste sur la photo',async()=>{await sample();await ev(()=>{S.compare='off';toggleCompare()});await page.waitForTimeout(200);
+  const b=await page.locator('#split .knob').boundingBox();await page.mouse.move(b.x+16,b.y+16);await page.mouse.down();for(let i=1;i<=12;i++)await page.mouse.move(b.x+16-i*60,b.y+16+i*4);await page.mouse.up();
+  const r=await ev(()=>{const a=S.panX/S.vw,o={sel:getSelection().type,x:S.splitX,a};S.compare='off';markContent();return o});
+  if(r.sel==='Range'||r.x<r.a)throw new Error(JSON.stringify(r))});
+await test('plume : Retour arrière retire un point, pas le calque',async()=>{await sample();await ev(()=>{setTool('pen');const d=S.doc;d.path={pts:[{x:10,y:10,ix:10,iy:10,ox:10,oy:10},{x:80,y:40,ix:80,iy:40,ox:80,oy:40}],closed:false};document.activeElement&&document.activeElement.blur&&document.activeElement.blur()});
+  const n0=await ev(()=>S.doc.layers.length);await page.keyboard.press('Backspace');await page.waitForTimeout(150);
+  const r=await ev(()=>[S.doc.layers.length,S.doc.path?S.doc.path.pts.length:0]);await ev(()=>{S.doc.path=null;setTool('move')});if(r[0]!==n0||r[1]!==1)throw new Error(JSON.stringify([n0,...r]))});
+await test('plume : le tracé suit le redimensionnement une seule fois',async()=>{await sample();const r=await ev(()=>{const d=S.doc;d.path={pts:[{x:100,y:60,ix:100,iy:60,ox:100,oy:60}],closed:false};resizeDoc(Math.round(d.w/2),Math.round(d.h/2),'Test');const p=S.doc.path.pts[0];const o=[p.x,p.y];undo();S.doc.path=null;return o});
+  if(Math.abs(r[0]-50)>1||Math.abs(r[1]-30)>1)throw new Error(JSON.stringify(r))});
+await test('projets : des dimensions piégées sont refusées',async()=>{const r=await ev(()=>{const out=[];for(const m of [{w:'<img src=x onerror=alert(1)>',h:10},{w:1.5,h:10},{w:0,h:10},{w:4000,h:3000}]){try{checkDims(m);out.push('ok')}catch(e){out.push('refus')}}return out.join()});if(r!=='refus,refus,refus,ok')throw new Error(r)});
 await test('impression : la page ne garde que la photo',async()=>{const r=await ev(async()=>{let called=0;window.print=()=>{called++};PrismPrint.dialog();await new Promise(r=>setTimeout(r,150));
     const info=document.querySelector('#prInfo').textContent;[...document.querySelectorAll('#scrim button')].find(b=>/Imprimer/.test(b.textContent)).click();
     for(let i=0;i<50&&!called;i++)await new Promise(r=>setTimeout(r,100));const img=document.querySelector('#printSheet img');return {called,img:!!(img&&img.naturalWidth),info}});

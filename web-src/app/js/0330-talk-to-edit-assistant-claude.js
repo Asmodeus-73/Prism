@@ -43,13 +43,13 @@ Opérations possibles :
 Préfère modifier un calque existant quand la demande prolonge une retouche précédente. Garde un rendu naturel et crédible sauf demande contraire. Si la demande est impossible avec ces outils (ex. ajouter un objet), renvoie "ops":[] et explique-le dans "message".`}
 async function assist(text){text=(text||'').trim();if(!text||ASSIST.busy)return;const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}
   const smp=sampleNS||await sampleReady;if(!smp){toast('La retouche en parlant n’est pas disponible dans cette vue');return}
-  ASSIST.busy=true;composerState('Claude regarde la photo…');ASSIST.ctl=new AbortController();
+  ASSIST.busy=true;composerState('Claude regarde la photo…');ASSIST.ctl=new AbortController();const h0=S.history[S.hi];/* layer indexes refer to this state */
   try{const s=Math.min(1,1024/Math.max(d.w,d.h)),c=await renderDoc(s),o=mk(c.width,c.height),g=cx(o);g.fillStyle='#808080';g.fillRect(0,0,o.width,o.height);g.drawImage(c,0,0);const img=await toBlob(o,'image/jpeg',0.85);
     const res=await smp.json(assistPrompt(text),{images:[img],signal:ASSIST.ctl.signal,cache:false,onText:()=>composerState('Claude prépare la retouche…')});
-    if(S.doc!==d){composerState(null);toast('La photo a changé : retouche annulée');return}
+    if(S.doc!==d||S.history[S.hi]!==h0){composerState(null);toast('La photo a changé : retouche annulée');return}
     composerState('Application…');const ops=Array.isArray(res&&res.ops)?res.ops:[];let n=0;const touched=[];const n0=d.layers.length;
     const removes=[...new Set(ops.filter(o=>o&&o.op==='remove').map(o=>o.index|0))].filter(i=>i>=0&&i<n0).sort((a,b)=>b-a);
-    const masks=new Map();for(const op of ops)if(op&&op.op==='add'){const m=await areaMask(op.area);if(op.area&&op.area.type&&op.area.type!=='global'&&!m)throw new Error('zone introuvable');masks.set(op,m)}if(S.doc!==d){composerState(null);return}
+    const masks=new Map();for(const op of ops)if(op&&op.op==='add'){const m=await areaMask(op.area);if(op.area&&op.area.type&&op.area.type!=='global'&&!m)throw new Error('zone introuvable');masks.set(op,m)}if(S.doc!==d||S.history[S.hi]!==h0){composerState(null);toast('La photo a changé : retouche annulée');return}
     for(const op of ops){if(!op||typeof op!=='object')continue;
       if(op.op==='add'){const mask=masks.get(op)||null;const L=newAdjust(String(op.name||'Retouche').slice(0,40),mask);Object.assign(L.dev,cleanParams(op.params));d.layers.push(L);d.active=d.layers.length-1;touched.push(L.name);n++}
       else if(op.op==='edit'){const L=(op.index|0)<n0?d.layers[op.index|0]:null;if(L&&L.kind==='adjust'){Object.assign(L.dev,cleanParams(op.params));d.active=op.index|0;touched.push(L.name);n++}}

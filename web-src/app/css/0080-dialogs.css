@@ -29,7 +29,7 @@
 .about .logo{width:56px;height:56px;color:var(--fg)}
 .about b{font-size:17px}
 .toast{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:var(--r);z-index:180;font-weight:500;max-width:calc(100% - 32px);width:max-content;text-align:center;box-shadow:var(--shadow)}
-.busy{position:fixed;inset:0;z-index:170;display:grid;place-items:center;background:rgba(0,0,0,.4)}
+.busy{position:fixed;inset:0;z-index:170;-webkit-user-select:none;user-select:none;display:grid;place-items:center;background:rgba(0,0,0,.4)}
 .busy>div{background:var(--chrome);padding:16px 18px;border-radius:var(--r-l);border:1px solid var(--line-2);min-width:280px;display:grid;gap:10px;font-weight:500;box-shadow:var(--shadow)}
 
 /* command palette */

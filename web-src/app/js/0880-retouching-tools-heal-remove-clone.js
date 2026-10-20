@@ -190,7 +190,7 @@ function smStep(dr,p){const d=S.doc,o=S.opts.smudge,r=o.size/2;if(r<.5)return;co
   for(let c=0;c<4;c++){const cur=a[j+c],v=cd[i+c]*pk+cur*(1-pk);nc[j+c]=v;if(k>0)a[j+c]=cur+(v-cur)*k}}}
  dr.ctx.putImageData(img,x0,y0);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
 function smPath(dr,p){const o=S.opts.smudge,sp=Math.max(1.5,o.size*.06),dx=p.x-dr.last.x,dy=p.y-dr.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;
- const n=Math.floor(dist/sp),sx=dx/dist*sp,sy=dy/dist*sp;let q={x:dr.last.x,y:dr.last.y};for(let k=1;k<=n;k++){q={x:q.x+sx,y:q.y+sy};smStep(dr,q)}dr.last=q;markComp()}
+ const n=Math.floor(dist/sp),sx=dx/dist*sp,sy=dy/dist*sp;let q={x:dr.last.x,y:dr.last.y};for(let k=1;k<=n;k++){q={x:q.x+sx,y:q.y+sy};smStep(dr,q)}dr.last=q;dr.moved=true;markComp()}
 const _od=onDown;onDown=function(e,p){const pre=new Map();if(S.tool==='liquify'&&S.doc){S.doc.layers.forEach(l=>pre.set(l,l.canvas));if(e&&e.altKey!=null)S.altDown=!!e.altKey}
  const r=_od.apply(this,arguments);const dr=S.drag;
  if(dr&&dr.type==='ip'&&dr.tool==='smudge'){dr.type='smg';dr.cy=null;smStep(dr,{x:p.x,y:p.y})}
@@ -199,7 +199,7 @@ const _od=onDown;onDown=function(e,p){const pre=new Map();if(S.tool==='liquify'&
    dr.timer=setInterval(()=>{if(S.drag!==dr){clearInterval(dr.timer);return}if(performance.now()-(dr.lastT||0)<60)return;lqStep(dr,dr.cur,0,0);markComp()},70)}}
  return r};
 const _om=onMove;onMove=function(e,p){const dr=S.drag;if(dr&&dr.type==='lqf'&&e&&e.altKey!=null)S.altDown=!!e.altKey;if(dr&&(dr.type==='lqf'||dr.type==='smg')){if(e&&e.pointerType==='pen')dr.pressure=e.pressure||dr.pressure;if(dr.type==='lqf')lqPath(dr,p);else smPath(dr,p);return}return _om.apply(this,arguments)};
-const _ou=onUp;onUp=function(e){const dr=S.drag;if(dr&&dr.type==='smg'){S.drag=null;SB=[new Float32Array(0),new Float32Array(0)];markComp();pushHistory('Doigt');return}
+const _ou=onUp;onUp=function(e){const dr=S.drag;if(dr&&dr.type==='smg'){S.drag=null;SB=[new Float32Array(0),new Float32Array(0)];if(!dr.moved){if(S.doc&&S.hi>=0)restore(S.hi);requestRender();return}/* a click without moving is not a step */markComp();pushHistory('Doigt');return}
  if(dr&&dr.type==='lqf'){S.drag=null;if(dr.timer)clearInterval(dr.timer);markComp();pushHistory('Fluidité');if(LQF&&LQF.layer===dr.L)LQF.hist=S.history[S.hi];return}return _ou.apply(this,arguments)};
 const SHORT={remove:1,clone:1,dodge:1};
 const _st=setTool;setTool=function(t){if(t!=='liquify')LQF=null;const r=_st.apply(this,arguments);

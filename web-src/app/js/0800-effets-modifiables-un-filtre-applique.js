@@ -18,7 +18,7 @@ applyMasked=function(L,result,label){
 function editEffect(L,i,after){
   const d=S.doc,list=L.filters,f=list[i],F=FILTERS[f.id];if(!F)return;
   const prefix=chain(L.fbase,list,i),p={...f.p};let tmr=null,fin=false;
-  const run=()=>{const first=F.run(prefix,p);let r=first;for(let k=i+1;k<list.length;k++){const g=list[k];if(g.off)continue;const G=FILTERS[g.id];if(G)r=G.run(r,g.p)}return r};
+  const run=()=>{const first=f.off?prefix:F.run(prefix,p);let r=first;for(let k=i+1;k<list.length;k++){const g=list[k];if(g.off)continue;const G=FILTERS[g.id];if(G)r=G.run(r,g.p)}return r};
   const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{L.preview=run();markComp()},120)};
   dialog({title:F.name,light:true,body:F.params.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join(''),
     onOpen:el=>{F.params.forEach(q=>{const inp=$('#f-'+q[0],el);inp.oninput=()=>{p[q[0]]=+inp.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+inp.value,q[4])+q[6];prev()}})},
@@ -36,7 +36,7 @@ function effectsDialog(){
     onOpen:el=>{
       el.addEventListener('change',e=>{const c=e.target.closest('[data-t]');if(!c)return;const i=+c.dataset.t;setList(L,L.filters.map((f,k)=>k===i?{...f,off:!c.checked}:f),'Effet '+(c.checked?'activé':'désactivé'));setTimeout(effectsDialog,0)});
       el.addEventListener('click',e=>{const b=e.target.closest('button[data-e],button[data-d]');if(!b)return;
-        if(b.dataset.e!=null){closeDialog();editEffect(L,+b.dataset.e,()=>setTimeout(effectsDialog,0))}
+        if(b.dataset.e!=null){closeDialog();editEffect(L,+b.dataset.e,()=>setTimeout(()=>{if(!$('#scrim'))effectsDialog()},0))}
         else{const i=+b.dataset.d;const nm=(FILTERS[L.filters[i].id]||{}).name||'effet';setList(L,L.filters.filter((f,k)=>k!==i),'Retirer : '+nm);setTimeout(()=>{if(valid(AL()))effectsDialog();else closeDialog()},0)}})},
     buttons:[{label:'Fermer',primary:true}]})}
 /* menu Filtre : accès aux effets du calque */

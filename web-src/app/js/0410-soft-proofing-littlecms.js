@@ -22,7 +22,7 @@ async function proofPrepare(){const key=[PROOF.name,PROOF.intent,PROOF.bpc,PROOF
   if(PROOF.xf)m.cmsDeleteTransform(PROOF.xf);if(PROOF.xfG)m.cmsDeleteTransform(PROOF.xfG);
   PROOF.xf=m.cmsCreateProofingTransform(io,T,io,T,PROOF.h,PROOF.intent,pi,fl);PROOF.xfG=m.cmsCreateProofingTransform(io,T,io,T,PROOF.h,PROOF.intent,pi,fl|0x1000);
   if(!PROOF.xf)throw new Error('transformation impossible avec ce profil');PROOF.key=key;return true}
-function proofApply(g,w,h){if(!PROOF.on||!PROOF.xf||PROOF.key.split('|')[4]!==CS)return;const m=CMS.m,id=g.getImageData(0,0,w,h),n=w*h;const out=m.cmsDoTransform(PROOF.xf,id.data,n);
+function proofApply(g,w,h){if(!PROOF.on||!PROOF.xf)return;if(PROOF.key.split('|')[4]!==CS){/* colour space changed: rebuild the transform for it */if(!PROOF.busy){PROOF.busy=true;proofPrepare().then(()=>markContent(),e=>{console.warn(e);PROOF.on=false;renderProofBadge()}).finally(()=>{PROOF.busy=false})}return}const m=CMS.m,id=g.getImageData(0,0,w,h),n=w*h;const out=m.cmsDoTransform(PROOF.xf,id.data,n);
   if(PROOF.gamut&&PROOF.xfG){const ga=m.cmsDoTransform(PROOF.xfG,id.data,n);for(let i=0;i<n;i++){const j=i*4;if(ga[j]===127&&ga[j+1]===127&&ga[j+2]===127&&!(out[j]===127&&out[j+1]===127&&out[j+2]===127)){out[j]=255;out[j+1]=40;out[j+2]=200}}}
   for(let i=3;i<out.length;i+=4)out[i]=id.data[i];id.data.set(out);g.putImageData(id,0,0)}
 async function proofToggle(on){if(on==null)on=!PROOF.on;if(!on){PROOF.on=false;markContent();renderProofBadge();return}
@@ -38,9 +38,9 @@ function proofDialog(){const st={...PROOF};let bytes=PROOF.bytes,name=PROOF.name
     <label class="inline"><input type="checkbox" id="pfGamut" ${st.gamut?'checked':''}>Alerte de gamut (couleurs non imprimables en rose)</label>`,
     onOpen:el=>{$('#pfPick',el).onclick=async()=>{const f=await pickFile('.icc,.icm,application/vnd.iccprofile');if(!f)return;const u8=new Uint8Array(await f.arrayBuffer());
         if(u8.length<132||String.fromCharCode(...u8.slice(36,40))!=='acsp'){toast('Ce fichier n’est pas un profil ICC');return}bytes=u8;name=f.name.replace(/\.(icc|icm)$/i,'');$('#pfName',el).textContent=name}},
-    buttons:[{label:'Fermer'},{label:'Désactiver',onClick:()=>proofToggle(false)},{label:'Afficher l’épreuve',primary:true,onClick:async el=>{if(!bytes){toast('Choisissez d’abord un profil ICC');return false}
+    buttons:[{label:'Fermer'},{label:'Désactiver',onClick:()=>proofToggle(false)},{label:'Afficher l’épreuve',primary:true,onClick:el=>{if(!bytes){toast('Choisissez d’abord un profil ICC');return false}(async()=>{
       const changed=bytes!==PROOF.bytes;Object.assign(PROOF,{intent:+$('#pfIntent',el).value,bpc:$('#pfBpc',el).checked,paper:$('#pfPaper',el).checked,gamut:$('#pfGamut',el).checked});
       if(changed){if(PROOF.h&&CMS.m){try{CMS.m.cmsCloseProfile(PROOF.h)}catch(e){}}PROOF.h=null;PROOF.key='';PROOF.bytes=bytes;PROOF.name=name;
         try{const old=PREF.get('iccKey',null);const k='icc_'+uid8();await IDB.put('blobs',k,new Blob([bytes]));PREF.set('iccKey',k);PREF.set('iccName',name);if(old)IDB.del('blobs',old).catch(()=>{})}catch(e){}}
-      PROOF.key='';await proofToggle(true)}}]})}
+      PROOF.key='';await proofToggle(true)})()}}]})}
 

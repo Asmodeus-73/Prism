@@ -188,7 +188,7 @@ async function takeProject(m,take){
   if(m.thumb)m.thumb=(await take({key:m.thumb})).key}
 const zext=(m,k)=>k===m.thumb?'.jpg':'.png';
 importZip=async function(file){const z=await readZip(file);
-  if(z.names.includes('revelateur.json')){const m=JSON.parse(new TextDecoder().decode(await z.get('revelateur.json')));const id=uid8(),remap=new Map();
+  if(z.names.includes('revelateur.json')){const m=checkDims(JSON.parse(new TextDecoder().decode(await z.get('revelateur.json'))));const id=uid8(),remap=new Map();
     const take=async t=>{if(remap.has(t.key))return{...t,key:remap.get(t.key)};const nk='t_'+uid8(),ext=zext(m,t.key);const data=await z.get('tiles/'+t.key+ext);if(!data)throw new Error('fichier manquant dans l’archive');
       PIN.add(nk);await IDB.put('blobs',nk,new Blob([data],{type:ext==='.jpg'?'image/jpeg':'image/png'}));remap.set(t.key,nk);return{...t,key:nk}};
     await takeProject(m,take);
@@ -206,7 +206,7 @@ async function restoreLibrary2(file){
     for(const id of ids){
       busy(true,'Restauration… '+(++i)+' / '+ids.length,i/ids.length);
       if(have.has(id)){skipped++;continue}
-      try{const m=JSON.parse(new TextDecoder().decode(await z.get('p/'+id+'/revelateur.json')));
+      try{const m=checkDims(JSON.parse(new TextDecoder().decode(await z.get('p/'+id+'/revelateur.json'))));
         const take=async t=>{const ext=zext(m,t.key);const data=await z.get('p/'+id+'/tiles/'+t.key+ext);if(!data)throw new Error('tuile manquante');PIN.add(t.key);await IDB.put('blobs',t.key,new Blob([data],{type:ext==='.jpg'?'image/jpeg':'image/png'}));return t};
         await takeProject(m,take);m.sync=false;await IDB.put('projects',id,m);manifestKeys(m).forEach(k=>PIN.delete(k));added++}
       catch(e){failed++;console.warn('restauration',id,e)}
@@ -346,6 +346,6 @@ async function jpegMetaICC(blob,exif,icc){const u=new Uint8Array(await blob.arra
   add();keep.push(u.subarray(p));return new Blob(keep,{type:'image/jpeg'})}
 /* 17. "Garder la meilleure de chaque groupe" kept the OLDEST of two near-identical photos: an edited version (layers, adjustments, text) was deleted in favour of the untouched original */
 const editScore=it=>{try{const m=it&&it.local;if(!m||!m.layers)return 0;let n=0;for(const L of m.layers){if(L.kind==='adjust'){if(!devIsId(L.dev))n+=2}else n+=1}return n}catch(e){return 0}};
-window.PrismFx={jpegMetaICC,okToClose,editScore};
+window.PrismFx={jpegMetaICC,okToClose,editScore,saveParked};
 })();
 

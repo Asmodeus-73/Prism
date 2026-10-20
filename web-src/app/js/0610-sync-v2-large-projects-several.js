@@ -29,7 +29,7 @@ Cloud.push=async function(m){if(!this.ok){setSaveState('saved');return}if(this.p
     for(const a of live)if(!keep.has(a))this.assets.delete(a).catch(()=>{});Cloud.prog=null;
     if(!S.doc||S.doc.pid===m.id)setSaveState(SAVE.timer||SAVE.running?'pending':'synced')}
   catch(e){console.error(e);Cloud.prog=null;SAVE.err=e.code==='quota_or_state'||e.code==='quota_exceeded'?'espace de synchronisation plein':e.code==='not_granted'?'autorisation refusée':(e.message||e.code||'erreur réseau');setSaveState('syncerr');if(!/plein|refus/.test(SAVE.err)){clearTimeout(this.rt2);this.rt2=setTimeout(()=>{if(S.doc&&S.doc.pid===m.id&&S.doc.sync)scheduleSave(500)},20000)}}
-  finally{this.pushing=false;if(fork){this.forkLocal(m)}else if(this.pushAgain){const n=this.pushAgain;this.pushAgain=null;this.push(n)}}};
+  finally{this.pushing=false;if(fork){if(this.pushAgain&&this.pushAgain.id===m.id)this.pushAgain=null;/* stale: would overwrite the other device's version */this.forkLocal(m)}else if(this.pushAgain){const n=this.pushAgain;this.pushAgain=null;this.push(n)}}};
 /* another device saved first: keep this device's version as its own copy, nothing is lost, nothing to resolve */
 Cloud.forkLocal=async function(m){const d=S.doc;if(!d||d.pid!==m.id)return;const oldId=m.id,stamp=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
   try{await this.download(oldId)}catch(e){console.warn(e)}

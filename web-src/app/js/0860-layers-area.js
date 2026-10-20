@@ -12,7 +12,7 @@ body:not(.compact) #lyrDock .lyr-btns .ib{flex:1 1 0;width:auto;min-width:0;max-
 .lyrs li.lyr.fx-drag{opacity:.45}
 .lyrs li.lyr.fx-above{box-shadow:inset 0 2px 0 var(--accent-fg)}
 .lyrs li.lyr.fx-below{box-shadow:inset 0 -2px 0 var(--accent-fg)}
-body.fx-dragging,body.fx-dragging *{cursor:grabbing!important;user-select:none!important}
+body.fx-dragging,body.fx-dragging *{cursor:grabbing!important;-webkit-user-select:none!important;user-select:none!important}
 .lyr .mth.moff{opacity:.38}
 `;document.body.appendChild(st)})();
 
@@ -38,8 +38,10 @@ mergeDown=function(){const d=S.doc;if(d&&d.active>=1){const top=d.layers[d.activ
   if(top&&bot&&(top.kind!=='pixel'||bot.kind!=='pixel')){toast('Fusion possible entre deux calques de pixels. Pour figer des réglages : Calque > Fusionner les calques visibles.');return}
   if(top&&bot&&top.kind==='pixel'&&bot.kind==='pixel'){if(top.visible&&!bot.visible){toast('Le calque du dessous est masqué : affichez-le pour fusionner');return}bakeLayerLook(top);bakeLayerLook(bot)}}return _mdL.apply(this,arguments)};
 const _psdL=exportPSD;
-exportPSD=async function(...a){const sw=[];for(const L of S.doc.layers)if(L.kind==='pixel'&&((L.bif&&!L.hi)||L.moff)){sw.push([L,L.canvas,L.mask]);if(L.bif&&!L.hi)L.canvas=bifBake(fxOn(L.fx)?fxBake(L):L.canvas,L.bif);if(L.moff)L.mask=null}
-  try{return await _psdL.apply(this,a)}finally{sw.forEach(([L,c,m])=>{L.canvas=c;L.mask=m})}};
+/* autosave waits while the export holds swapped canvases on the live layers (it used to save the baked/maskless state) */
+const PSDX=new Set(),_bmL=buildManifest;buildManifest=async function(d){const D=d||S.doc;while(D&&PSDX.has(D))await new Promise(r=>setTimeout(r,80));return _bmL.apply(this,arguments)};
+exportPSD=async function(...a){const d=S.doc;if(!d)return _psdL.apply(this,a);if(SAVE.running){await waitFor(()=>SAVE.running);if(S.doc!==d)return}PSDX.add(d);const sw=[];for(const L of S.doc.layers)if(L.kind==='pixel'&&((L.bif&&!L.hi)||L.moff)){sw.push([L,L.canvas,L.mask]);if(L.bif&&!L.hi)L.canvas=bifBake(fxOn(L.fx)?fxBake(L):L.canvas,L.bif);if(L.moff)L.mask=null}
+  try{return await _psdL.apply(this,a)}finally{sw.forEach(([L,c,m])=>{L.canvas=c;L.mask=m});PSDX.delete(d)}};
 
 /* ---------- mask: disabled masks are ignored by every renderer ---------- */
 XKEYS.push('moff');
@@ -148,7 +150,7 @@ function moveLayerTo(from,to){const d=S.doc;if(!d||from===to||from<0||to<0||from
   const slotAt=y=>{const rs=rows();if(!rs.length)return null;let best=null,bd=1e9;for(const li of rs){const r=li.getBoundingClientRect(),c=(r.top+r.bottom)/2,dd=Math.abs(y-c);if(dd<bd){bd=dd;best={li,above:y<c}}}return best};
   const clear=()=>pane.querySelectorAll('.fx-above,.fx-below').forEach(x=>x.classList.remove('fx-above','fx-below'));
   const end=()=>{document.removeEventListener('pointermove',mv,true);document.removeEventListener('pointerup',up,true);document.removeEventListener('keydown',kd,true);document.body.classList.remove('fx-dragging');clear();if(dr&&dr.li)dr.li.classList.remove('fx-drag');dr=null};
-  const mv=e=>{if(!dr)return;if(!(e.buttons&1)){end();return}if(!dr.on){if(Math.hypot(e.clientX-dr.x,e.clientY-dr.y)<6)return;dr.on=true;dr.li.classList.add('fx-drag');document.body.classList.add('fx-dragging')}
+  const mv=e=>{if(!dr)return;if(!(e.buttons&1)){end();return}if(!dr.on){if(Math.hypot(e.clientX-dr.x,e.clientY-dr.y)<6)return;dr.on=true;dr.li.classList.add('fx-drag');document.body.classList.add('fx-dragging');try{getSelection().removeAllRanges()}catch(err){}}
     const ul=pane.querySelector('ul.lyrs');if(ul){const r=ul.getBoundingClientRect();if(e.clientY<r.top+22)ul.scrollTop-=12;else if(e.clientY>r.bottom-22)ul.scrollTop+=12}
     const pr=pane.getBoundingClientRect(),inside=e.clientX>=pr.left&&e.clientX<=pr.right&&e.clientY>=pr.top&&e.clientY<=pr.bottom;
     clear();const s=inside?slotAt(e.clientY):null;dr.slot=s;if(s&&+s.li.dataset.i!==dr.i)s.li.classList.add(s.above?'fx-above':'fx-below');
@@ -158,6 +160,7 @@ function moveLayerTo(from,to){const d=S.doc;if(!d||from===to||from<0||to<0||from
     if(!s)return;const d=S.doc;if(!d)return;const ri=+s.li.dataset.i;let pos=s.above?ri+1:ri;if(was.i<pos)pos--;moveLayerTo(was.i,pos)};
   const kd=e=>{if(e.key==='Escape'&&dr){e.preventDefault();e.stopPropagation();end()}};
   window.addEventListener('blur',()=>{if(dr)end()});
+  document.addEventListener('selectstart',e=>{if(dr)e.preventDefault()},true);/* WebKit started a text selection while a row was dragged */
   pane.addEventListener('pointerdown',e=>{if(e.button!==0||e.pointerType==='touch'||!S.doc)return;if(e.target.closest('button,input,select,textarea'))return;const li=e.target.closest('ul.lyrs li.lyr');if(!li)return;
     dr={li,i:+li.dataset.i,x:e.clientX,y:e.clientY,on:false,slot:null};document.addEventListener('pointermove',mv,true);document.addEventListener('pointerup',up,true);document.addEventListener('keydown',kd,true)});
   window.fxMoveLayerTo=moveLayerTo}
