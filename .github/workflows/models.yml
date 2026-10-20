@@ -5,6 +5,10 @@ name: Modèles d'IA générative
 # The hashes are the ones Hugging Face publishes for the large files; a download that does not match fails the job.
 on:
   workflow_dispatch:
+  # also runs when this file changes on the branch that adds it (a new workflow cannot be started by hand before it reaches main)
+  push:
+    branches: [claude/project-thread-fn17xg]
+    paths: ['.github/workflows/models.yml']
 
 permissions:
   contents: write
