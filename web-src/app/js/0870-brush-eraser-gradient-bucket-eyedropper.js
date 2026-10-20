@@ -98,7 +98,10 @@ gradientPreview=function(dr){const L=dr.target;if(!L||Math.hypot(dr.x1-dr.x0,dr.
 gradientCommit=function(dr){const L=dr.target;if(!L)return;{const oP=L.preview,oM=L.maskPreview;delete L.maskPreview;delete L.preview;if(oP&&oP!==L.canvas)free(oP);if(oM&&oM!==L.mask)free(oM)}if(!S.doc.layers.includes(L)||Math.hypot(dr.x1-dr.x0,dr.y1-dr.y0)*S.zoom<4){markComp();return}
  if(onMaskOf(L)){const r=gradBuild(dr);L.mask=r.mask;markComp();pushHistory(dr.shape==='radial'?'Masque radial':'Masque dégradé');syncLayers();savePaint();return}
  if(L.kind!=='pixel'){markComp();return}
- toPixels(L);const r=gradBuild(dr),g=editCanvas(L);g.globalAlpha=r.op;g.drawImage(r.gc,0,0);g.globalAlpha=1;free(r.gc);markComp();pushHistory('Dégradé');syncLayers();savePaint()};
+ toPixels(L);const r=gradBuild(dr),H=hiTake(L),g=editCanvas(L);g.globalAlpha=r.op;g.drawImage(r.gc,0,0);g.globalAlpha=1;free(r.gc);
+ // 16-bit layer: the gradient is computed in float (the 8-bit one would band); the selection is applied twice, as on the canvas (gradientCanvas, then gradBuild)
+ if(H&&window.gradF){const d=S.doc,f=gradF(dr,S.color),sg=d.sel?rx(d.sel):null;hiComp(L,{x0:0,y0:0,x1:d.w,y1:d.h},(x,y,w,h)=>{const o=new Float32Array(w*h*4);f.fill(x,y,w,h,o);if(sg){const sa=sg.getImageData(x,y,w,h).data;for(let j=3;j<o.length;j+=4){const k=sa[j]/255;o[j]*=k*k}}return o},r.op)}
+ markComp();pushHistory('Dégradé');syncLayers();savePaint()};
 const _omP=onMove;onMove=function(e,p){const dr=S.drag;
  // the button went up somewhere we were not told about (window lost focus, menu...): finish instead of painting without a button
  if(dr&&(dr.type==='stroke'||dr.type==='gradient')&&PAINT_TOOLS.includes(S.tool)&&e&&e.type==='pointermove'&&e.buttons===0){onUp(e);return}

@@ -100,7 +100,7 @@ const _dupL=dupLayer;
 dupLayer=function(){const d=S.doc,src=AL(),sel=!!(d&&d.sel),n0=d?d.layers.length:0;const r=_dupL.apply(this,arguments);
   const N=AL();if(d&&S.doc===d&&src&&N&&N!==src&&d.layers.length===n0+1){
     if(N.kind==='pixel'){
-      if(!sel&&src.hi&&N.canvas===src.canvas){N.hi=src.hi;N.hiC=src.hiC}
+      if(!sel&&src.hi&&N.canvas===src.canvas){N.hi=src.hi;N.hiP=src.hiP;N.hiC=src.hiC}
       if(sel&&src.mask&&!src.moff){const c=cloneC(N.canvas),g=cx(c);g.globalCompositeOperation='destination-in';g.drawImage(src.mask,0,0);N.canvas=c}
       if(src.moff&&N.mask)N.moff=true}
     if(!sel&&/ copie$/.test(N.name)){const root=src.name.replace(/ copie( \d+)?$/,'');N.name=uniqueName(d,root+' copie',N)}else N.name=uniqueName(d,N.name,N);

@@ -533,7 +533,7 @@ const _enc=encodeCanvas;
 encodeCanvas=async function(c){const hit=encCache.get(c);if(hit){try{let ok=true;for(const t of hit)if(!await tileOK(t)){ok=false;break}if(!ok)encCache.delete(c)}catch(e){encCache.delete(c)}}return _enc.call(this,c)};
 
 const HK=id=>'hist_'+id;
-const canv=L=>[L.canvas,L.mask,L.fbase,L.so&&L.so.src];
+const canv=L=>[lcv(L),L.mask,L.fbase,L.so&&L.so.src];
 /* keys that must survive garbage collection: tiles of every canvas still reachable from undo history or snapshots, plus saved history records */
 async function keep(keepSet,projects){
   const add=s=>{if(!s||!s.layers)return;for(const L of s.layers)for(const c of canv(L)){const t=c&&encCache.get(c);t&&t.forEach(x=>keepSet.add(x.key))}};
@@ -548,10 +548,10 @@ async function keep(keepSet,projects){
 async function decode(m){const get=t=>IDB.get('blobs',t.key),layers=[];
   for(const e of m.layers){const L={id:S.nextId++,kind:e.kind,name:e.name,visible:e.visible!==false,opacity:e.opacity??1,blend:e.blend||'source-over',editMask:!!e.editMask,mask:null,...xtra(e)};
     if(e.kind==='adjust')L.dev=Object.assign(DEV0(),e.dev||{});
-    if(e.canvas){L.canvas=await decodeTiles(e.canvas,m.w,m.h,get);encCache.set(L.canvas,e.canvas)}
+    if(e.canvas)await loadLayerCanvas(L,e,m.w,m.h,get);
     if(e.mask){L.mask=await decodeTiles(e.mask,m.w,m.h,get);encCache.set(L.mask,e.mask)}
     if(e.so&&L.canvas){try{const sc=await decodeTiles(e.so.t,m.w,m.h,get);encCache.set(sc,e.so.t);L.so={src:sc,m:e.so.m,out:L.canvas}}catch(err){}}
-    if(L.canvas&&e.fbase&&e.filters){try{L.fbase=await decodeTiles(e.fbase,m.w,m.h,get);encCache.set(L.fbase,e.fbase);L.filters=e.filters;L.fout=L.canvas}catch(err){}}
+    if(e.fbase&&e.filters&&L.canvas){try{L.fbase=await decodeTiles(e.fbase,m.w,m.h,get);encCache.set(L.fbase,e.fbase);L.filters=e.filters;L.fout=L.canvas}catch(err){}}
     layers.push(L);await tick()}
   return{w:m.w,h:m.h,active:Math.min(Math.max(0,m.active??layers.length-1),layers.length-1),sel:null,layers}}
 

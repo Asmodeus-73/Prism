@@ -56,6 +56,6 @@ async function rawDialog(){const d=S.doc;if(!d||!d.raw){toast('Disponible pour l
     buttons:[{label:'Annuler',onClick:end},{label:'Appliquer',primary:true,onClick:async el=>{closed=true;clearTimeout(t);if($('#rwDef',el).checked)PREF.set('rawDef',{...set});busy(true,'Développement en pleine résolution…',null);await tick();
       try{const c=rawDevelop(R,set,true);delete L.preview;const sp=c._cs||'srgb';if(sp!==prevSpace){setCS(sp);d.layers.forEach((X,i)=>{if(i>0&&X.canvas){const n=mk(X.canvas.width,X.canvas.height);cx(n).drawImage(X.canvas,0,0);X.canvas=n}});d.space=CS}
         let lc=c;if(c.width!==d.w||c.height!==d.h){lc=mk(d.w,d.h);const g=cx(lc);g.imageSmoothingQuality='high';g.drawImage(c,0,0,d.w,d.h)}else if((c._cs||'srgb')!==CS){lc=mk(d.w,d.h);cx(lc).drawImage(c,0,0)}
-        L.canvas=lc;if(c._hi&&c.width===d.w&&c.height===d.h){L.hi=c._hi;L.hiC=lc}else{L.hi=null;L.hiC=null}d.raw.set={...set};markComp();pushHistory('Développement RAW');updateDocName();toast('RAW redéveloppé'+(sp==='display-p3'?' en Display P3':''))}
+        L.canvas=lc;if(c._hi&&c.width===d.w&&c.height===d.h){L.hi=c._hi;L.hiP=null;L.hiC=lc}else{L.hi=null;L.hiP=null;L.hiC=null}d.raw.set={...set};markComp();pushHistory('Développement RAW');updateDocName();toast('RAW redéveloppé'+(sp==='display-p3'?' en Display P3':''))}
       catch(e){console.error(e);end();toast('Développement impossible : '+(e.message||e),5000)}finally{busy(false)}}}]})}
 

@@ -95,6 +95,108 @@ await test('accueil et photothèque : la photo déjà ouverte se rouvre',async()
     showHome();await Promise.all([libOpen(pid),libOpen(pid)]);out.push(em.hidden);return out.join()});if(r!=='true,true,true')throw new Error(r)});
 await test('profils d’objectif : reconnaissance et correction',async()=>{const r=await ev(async()=>{const P=PrismLens.profiles,db=await P.load();const f=P.find(db,{make:'SONY',model:'ILCE-7M3',lens:'FE 24-70mm F2.8 GM',focal:24,fn:8});
     if(!f||!f.lens)return 'non trouvé';const q=P.params(f.lens,24,8,f.cam&&f.cam[3]);const c=mk(300,200);cx(c).fillStyle='#888';cx(c).fillRect(0,0,300,200);const o=PrismLens.runSync(c,q,true);return o.width===300&&q.lfs>0?'ok':'rendu'});if(r!=='ok')throw new Error(r)});
+await test('16 bits : pinceau et densité doux restent en 16 bits, annuler les retire',async()=>{const r=await ev(async()=>{const W=600,H=400,a=new Uint16Array(W*H*4);
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4;a[i]=Math.round(9000+x*30.5);a[i+1]=Math.round(15000+y*20.25);a[i+2]=Math.round(20000+x*10.125);a[i+3]=65535}
+    setDoc(canvasFrom16({w:W,h:H,data:a,hi:true}),'degrade.png',{meta:'PNG 16 bits'});const h0=effHi(S.doc.layers[0]).slice(),n0=S.hi;
+    const stroke=(t,y)=>{setTool(t);const o=S.opts[t],sp=Math.max(1,o.size*(t==='dodge'?0.2:(o.spacing||12)/100));beginStroke({x:100,y});for(let k=1;k<=16;k++)moveStroke({x:100+k*sp+.01,y});return endStroke()};
+    Object.assign(S.opts.brush,{size:120,hardness:0,opacity:.08,flow:.5,smooth:0,scatter:0,grain:0,pressSize:false});S.color='#ffffff';for(let i=0;i<3;i++)await stroke('brush',130);
+    Object.assign(S.opts.dodge,{size:120,strength:.1,mode:'dodge',range:'all'});for(let i=0;i<3;i++)await stroke('dodge',280);
+    const L=S.doc.layers[0],e=effHi(L),c8=rx(L.canvas).getImageData(0,0,W,H).data,o={steps:S.hi-n0};
+    for(const[k,y0]of[['pinceau',130],['densité',280]]){let ch=0,fine=0,off=0;const lv=new Set();for(let y=y0-30;y<y0+30;y++)for(let x=110;x<400;x++){const i=(y*W+x)*4;
+      for(let c=0;c<3;c++){const dv=e[i+c]-h0[i+c];if(dv){ch++;if(dv%257)fine++;if(!c)lv.add(dv)}if(Math.abs(c8[i+c]-e[i+c]/257)>1.01)off++}}o[k]={ch,fine,lv:lv.size,off}}
+    const e1=e.slice();while(S.hi>n0)undo();let u=0;const eu=effHi(S.doc.layers[0]);for(let i=0;i<eu.length;i++)if(eu[i]!==h0[i])u++;
+    while(S.hi<n0+6)redo();let rd=0;const er=effHi(S.doc.layers[0]);for(let i=0;i<er.length;i++)if(er[i]!==e1[i])rd++;o.undo=u;o.redo=rd;return o});
+  const bad=[];if(r.steps!==6)bad.push('étapes '+r.steps);
+  for(const k of ['pinceau','densité']){const q=r[k];if(!(q.ch>1000))bad.push(k+' : trop peu de pixels changés');if(!(q.fine>q.ch*0.5))bad.push(k+' : changements arrondis aux niveaux 8 bits ('+q.fine+'/'+q.ch+')');if(!(q.lv>200))bad.push(k+' : '+q.lv+' niveaux seulement');if(q.off)bad.push(k+' : le canevas 8 bits ne suit pas ('+q.off+')')}
+  if(r.undo)bad.push('annuler laisse '+r.undo+' valeurs');if(r.redo)bad.push('rétablir diffère de '+r.redo+' valeurs');if(bad.length)throw new Error(bad.join('\n')+'\n'+JSON.stringify(r))});
+await test('16 bits : gomme, tampon, dégradé, correcteur, doigt et pot gardent les 16 bits',async()=>{const r=await ev(async()=>{const W=600,H=400,a=new Uint16Array(W*H*4);
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4;a[i]=Math.round(9000+x*30.5);a[i+1]=Math.round(15000+y*20.25);a[i+2]=Math.round(20000+x*10.125);a[i+3]=65535}
+    setDoc(canvasFrom16({w:W,h:H,data:a,hi:true}),'degrade.png',{meta:'PNG 16 bits'});const n0=S.hi,o={};let prev=effHi(S.doc.layers[0]).slice();
+    const look=k=>{const e=effHi(S.doc.layers[0]);let ch=0,fine=0;for(let i=0;i<e.length;i++){const dv=e[i]-prev[i];if(dv){ch++;if(dv%257)fine++}}o[k]=[ch,fine,S.history[S.hi].label];prev=e.slice()};
+    const stroke=(t,x0,y)=>{setTool(t);const q=S.opts[t],sp=Math.max(1,q.size*(q.spacing||12)/100);beginStroke({x:x0,y});for(let k=1;k<=10;k++)moveStroke({x:x0+k*sp+.01,y});return endStroke()};
+    Object.assign(S.opts.eraser,{size:80,hardness:0,opacity:.1,smooth:0,scatter:0,grain:0});await stroke('eraser',300,60);look('gomme');
+    S.cloneSrc={x:100,y:330};S.cloneOff=null;Object.assign(S.opts.clone,{size:60,hardness:0,all:false,aligned:false,smooth:0});await stroke('clone',400,350);look('tampon');
+    setTool('gradient');S.opts.gradient.opacity=.3;S.color='#ffffff';gradientCommit({type:'gradient',shape:'linear',x0:0,y0:0,x1:W,y1:0,target:S.doc.layers[0]});look('dégradé');
+    Object.assign(S.opts.heal,{size:40,hardness:.5,mode:'spot'});await stroke('heal',300,200);look('correcteur');
+    const pe=b=>({button:0,buttons:b,pointerType:'mouse',pressure:.5,shiftKey:false,altKey:false,preventDefault(){},stopPropagation(){}});setTool('smudge');Object.assign(S.opts.smudge,{size:60,strength:.5,hardness:.5});
+    onDown(pe(1),{x:100,y:300});for(let k=1;k<20;k++)onMove(pe(1),{x:100+k*5,y:300});onUp(pe(0),{x:195,y:300});look('doigt');
+    setTool('bucket');Object.assign(S.opts.bucket,{tol:255,contiguous:true,all:false,opacity:.07,soft:true});onDown(pe(1),{x:50,y:50});onUp(pe(0),{x:50,y:50});look('pot');
+    const steps=S.hi-n0;while(S.hi>n0)undo();let u=0;const eu=effHi(S.doc.layers[0]);for(let i=0;i<eu.length;i++)if(eu[i]!==a[i])u++;return{o,steps,u}});
+  const bad=[];for(const k in r.o){const[ch,fine]=r.o[k];if(!(ch>100))bad.push(k+' : rien n’a changé');else if(!(fine>ch*0.5))bad.push(k+' : changements arrondis aux niveaux 8 bits ('+fine+'/'+ch+')')}
+  if(r.steps!==6)bad.push('étapes '+r.steps);if(r.u)bad.push('annuler laisse '+r.u+' valeurs');if(bad.length)throw new Error(bad.join('\n')+'\n'+JSON.stringify(r))});
+// sparse layers (calques épars): a text, a shape, a brush stroke and a small paste on the sample photo; helpers live in the page as window.__sp
+async function spScene(compact){await sample();return ev(async compact=>{SPARSE.on=false;const d=S.doc,W=d.w,H=d.h,wait=ms=>new Promise(r=>setTimeout(r,ms));
+  window.__sp={pix:c=>rx(c).getImageData(0,0,c.width,c.height).data,flat:()=>{flatCache.key='';return __sp.pix(flatSync())},
+    eq:(a,b)=>{if(a.length!==b.length)return false;const x=new Uint32Array(a.buffer),y=new Uint32Array(b.buffer);for(let i=0;i<x.length;i++)if(x[i]!==y[i])return false;return true},
+    hash:a=>{const x=new Uint32Array(a.buffer);let h=0;for(let i=0;i<x.length;i++)h=(h*31+x[i])|0;return h},
+    layer:L=>__sp.pix(spOf(L)?spExpand(spOf(L)):L.canvas),/* reads a layer without rebuilding it */
+    small:L=>!!spOf(L)&&layerBytes(L)<W*H*4*0.25,
+    stroke:async(x,y,col)=>{setTool('brush');Object.assign(S.opts.brush,{size:30,hardness:.8,opacity:1,flow:1,smooth:0,scatter:0,grain:0,pressSize:false});S.color=col;beginStroke({x,y});for(let k=1;k<=24;k++)moveStroke({x:x+k*12,y:y+Math.sin(k/3)*30});await endStroke()},
+    pe:b=>({button:0,buttons:b,pointerType:'mouse',pressure:.5,shiftKey:false,altKey:false,ctrlKey:false,metaKey:false,preventDefault(){},stopPropagation(){}})};
+  const T=newPixel('Texte',mk(W,H));T.txt={text:'Bonjour',font:'Georgia',size:90,bold:true,italic:false,color:'#ffee00',align:'left',lh:1.15,track:0,boxW:0,sw:2,sc:'#000000',x:200,y:150};
+  T.fx={shadow:{on:true,color:'#000000',op:.5,blur:12,dx:4,dy:6}};d.layers.splice(d.active+1,0,T);d.active++;finalizeMeta(T);markComp();pushHistory('Texte');
+  const F=newPixel('Forme',mk(W,H));F.shp={type:'star',x:1100,y:700,w:300,h:280,fill:'#e8574a',stroke:'#ffffff',sw:6,r:40,n:5};d.layers.splice(d.active+1,0,F);d.active++;finalizeMeta(F);markComp();pushHistory('Forme');
+  addLayer();await __sp.stroke(300,900,'#22cc88');
+  const pc=mk(220,140);{const q=cx(pc);q.fillStyle='#3388ff';q.fillRect(0,0,220,140);q.fillStyle='#fff';q.fillRect(40,40,140,60)}pc.pos={x:1400,y:150};pasteClip(pc,'Collage');
+  window.__sp.idx=[2,3,4,5];setTool('move');await wait(50);if(compact){SPARSE.on=true;await SPARSE.compactAll()}
+  return d.layers.map(L=>L.name)},compact)}
+await test('calques épars : au repos, un calque presque vide se compacte et le rendu reste identique au pixel près',async()=>{await spScene(false);
+  const r=await ev(async()=>{const d=S.doc,o={},A=__sp.idx.map(i=>d.layers[i]);ditherSeed=1;const f0=__sp.flat(),r0=__sp.pix(await renderDoc(1)),th0=A.map(L=>__sp.hash(__sp.layer(L))),b0=d.bits;const r16=async()=>{d.bits=16;S.docVer++;ditherSeed=1;try{return __sp.pix(await renderDoc(1))}finally{d.bits=b0;S.docVer++}},q0=await r16();
+    o.before=A.map(L=>!!spOf(L));const delay=SPARSE.delay;SPARSE.delay=150;SPARSE.on=true;SPARSE.act=0;SPARSE.schedule(0);
+    for(let i=0;i<200&&!(A.every(L=>spOf(L))&&!spCandidates().length);i++)await new Promise(r=>setTimeout(r,50));SPARSE.delay=delay;
+    o.after=A.map(L=>__sp.small(L));o.kb=A.map(L=>Math.round(layerBytes(L)/1024));o.fullKb=Math.round(d.w*d.h*4/1024);
+    o.hist=S.history.every(h=>h.layers.every(l=>l.kind!=='pixel'||l===h.layers[0]||!!spOf(l)||!Object.getOwnPropertyDescriptor(l,'canvas').value));
+    SPARSE.log=[];const e0=SPARSE.stats.expand;ditherSeed=1;o.flat=__sp.eq(f0,__sp.flat());o.full=__sp.eq(r0,__sp.pix(await renderDoc(1)));o.layers=A.every((L,k)=>__sp.hash(__sp.layer(L))===th0[k]);o.full16=__sp.eq(q0,await r16());
+    S.contentDirty=true;render();syncAll();drawLayerThumbs();renderThumbs();undo();redo();await buildManifest(d);memEstimate();o.view=SPARSE.stats.expand-e0;o.where=SPARSE.log.map(s=>s.split('\n').slice(3,6).map(x=>x.trim().split(' ')[1]).join(' < '));SPARSE.log=null;
+    o.still=__sp.idx.every(i=>!!spOf(S.doc.layers[i]));return o});
+  const bad=[];if(r.before.some(Boolean))bad.push('compacté trop tôt');if(!r.after.every(Boolean))bad.push('pas compacté : '+r.kb.join(',')+' Ko sur '+r.fullKb);if(!r.hist)bad.push('historique non compacté');
+  if(!r.flat)bad.push('aplati différent');if(!r.full)bad.push('rendu pleine résolution différent');if(!r.layers)bad.push('pixels du calque différents');if(!r.full16)bad.push('rendu 16 bits différent');if(r.view)bad.push(r.view+' reconstruction(s) pendant rendu, vignettes, historique ou enregistrement');if(!r.still)bad.push('le calque ne reste pas épars');
+  if(bad.length)throw new Error(bad.join('\n')+'\n'+JSON.stringify(r))});
+await test('calques épars : peindre sur un calque compacté, annuler, rétablir sont exacts',async()=>{await spScene(true);
+  const r=await ev(async()=>{const d=S.doc,i=4,o={};d.active=i;const s0=spOf(d.layers[i]),p0=__sp.layer(d.layers[i]),f0=__sp.flat();o.sparse0=!!s0;
+    await __sp.stroke(250,1000,'#ff2244');const p1=__sp.pix(d.layers[i].canvas),f1=__sp.flat();o.changed=!__sp.eq(p0,p1);
+    undo();o.undoStore=spOf(d.layers[i])===s0;o.undo=__sp.eq(__sp.layer(d.layers[i]),p0)&&__sp.eq(__sp.flat(),f0);
+    redo();o.redo=__sp.eq(__sp.layer(d.layers[i]),p1)&&__sp.eq(__sp.flat(),f1);
+    await SPARSE.compactAll();o.recompact=__sp.small(d.layers[i])&&__sp.eq(__sp.layer(d.layers[i]),p1)&&__sp.eq(__sp.flat(),f1);
+    undo();o.undo2=__sp.eq(__sp.layer(d.layers[i]),p0)&&__sp.eq(__sp.flat(),f0);redo();o.redo2=__sp.eq(__sp.layer(d.layers[i]),p1)&&__sp.eq(__sp.flat(),f1);
+    setTool('eraser');Object.assign(S.opts.eraser,{size:60,hardness:.5,opacity:1,smooth:0,scatter:0,grain:0});beginStroke({x:300,y:900});for(let k=1;k<=10;k++)moveStroke({x:300+k*15,y:900});await endStroke();
+    const p2=__sp.layer(d.layers[i]);o.erased=!__sp.eq(p2,p1);undo();o.undo3=__sp.eq(__sp.layer(d.layers[i]),p1);return o});
+  const bad=Object.entries(r).filter(([k,v])=>!v).map(([k])=>k);if(bad.length)throw new Error('échec : '+bad.join(', ')+'\n'+JSON.stringify(r))});
+await test('calques épars : enregistrer puis rouvrir un projet aux calques compactés est identique',async()=>{await spScene(true);
+  const r=await ev(async()=>{const d=S.doc,o={},A=__sp.idx.map(i=>d.layers[i]);o.sparse=A.every(L=>__sp.small(L));const f0=__sp.flat(),lp=A.map(L=>__sp.hash(__sp.layer(L)));
+    const m=await buildManifest(d);const area=e=>(e.canvas||[]).reduce((n,t)=>n+t.w*t.h,0);o.tiles=__sp.idx.map(i=>area(m.layers[i])<d.w*d.h*0.25);await IDB.put('projects',m.id,m);
+    SPARSE.log=[];const e0=SPARSE.stats.expand;await loadManifest(m,t=>IDB.get('blobs',t.key));const D=S.doc;o.loadedSparse=__sp.idx.map(i=>!!spOf(D.layers[i]));o.noRebuild=SPARSE.stats.expand===e0;o.where=SPARSE.log.map(s=>s.split('\n').slice(3,6).map(x=>x.trim().split(' ')[1]).join(' < ')).join(' | ')||1;SPARSE.log=null;
+    o.flat=__sp.eq(__sp.flat(),f0);o.layers=__sp.idx.every((i,k)=>__sp.hash(__sp.layer(D.layers[i]))===lp[k]);o.meta=!!(D.layers[2].txt&&D.layers[2].fx&&D.layers[3].shp);
+    await IDB.del('projects',m.id);return o});
+  const bad=Object.entries(r).filter(([k,v])=>!(Array.isArray(v)?v.every(Boolean):v)).map(([k])=>k);if(bad.length)throw new Error('échec : '+bad.join(', ')+'\n'+JSON.stringify(r))});
+await test('calques épars : un projet enregistré en calques pleine taille s’ouvre toujours, puis se compacte',async()=>{await spScene(false);
+  const r=await ev(async()=>{const d=S.doc,o={};const f0=__sp.flat();const m=await buildManifest(d);o.fullTiles=__sp.idx.every(i=>m.layers[i].canvas.reduce((n,t)=>n+t.w*t.h,0)===d.w*d.h);
+    await loadManifest(m,t=>IDB.get('blobs',t.key));const D=S.doc;o.plain=__sp.idx.every(i=>!spOf(D.layers[i])&&D.layers[i].canvas.width===d.w);o.flat=__sp.eq(__sp.flat(),f0);
+    SPARSE.on=true;await SPARSE.compactAll();o.compacted=__sp.idx.every(i=>__sp.small(D.layers[i]));o.flat2=__sp.eq(__sp.flat(),f0);await IDB.del('projects',m.id);return o});
+  const bad=Object.entries(r).filter(([k,v])=>!v).map(([k])=>k);if(bad.length)throw new Error('échec : '+bad.join(', ')+'\n'+JSON.stringify(r))});
+await test('calques épars : déplacer, transformer, recadrer, filtrer, exporter, fusionner, aplatir, dupliquer, réordonner sur des calques compactés',async()=>{await spScene(false);
+  const r=await ev(async()=>{const d=S.doc,h0=S.hi,pe=__sp.pe,out={};let psd=0;const sf=saveFile;saveFile=async b=>{psd=b.size};
+    const mv=(i,dx,dy)=>{d.active=i;setTool('move');onDown(pe(1),{x:500,y:500});onMove(pe(1),{x:500+dx/2,y:500+dy/2});onMove(pe(1),{x:500+dx,y:500+dy});onUp(pe(0),{x:500+dx,y:500+dy})};
+    const ops={
+      'déplacer (pixels)':()=>mv(4,60,40),'déplacer (texte)':()=>mv(2,-30,25),'déplacer (collage)':()=>mv(5,-200,300),
+      'transformation libre':()=>{d.active=3;if(!tfStart())throw new Error('tfStart');const T=S.tf,tfMesh=PrismTF.mesh,c=T.q.reduce((a,p)=>({x:a.x+p.x/4,y:a.y+p.y/4}),{x:0,y:0});T.q.forEach(p=>{p.x=c.x+(p.x-c.x)*1.3;p.y=c.y+(p.y-c.y)*1.3});tfMesh(T);tfApply()},
+      'recadrer':()=>{setTool('crop');S.crop={x:100,y:80,w:1500,h:1000,angle:0};applyCrop();setTool('move')},
+      'redimensionner':()=>resizeDoc(900,600,'Test'),
+      'filtre':()=>{d.active=5;const L=AL();applyMasked(L,FILTERS.blur.run(L.canvas,{r:3}),FILTERS.blur.name)},
+      'fusionner vers le bas':()=>{d.active=3;mergeDown()},
+      'aplatir':async()=>{await flatten()},
+      'dupliquer':()=>{d.active=2;dupLayer()},
+      'réordonner':()=>{d.active=4;moveLayer(-1)},
+      'copier-coller':()=>{d.active=5;S.doc.sel=null;copySel();pasteClip(clip,'Collé')},
+      'export PSD':async()=>{psd=0;await exportPSD();return psd>1000?'psd':'psd vide'},
+      'export PNG':async()=>{const c=await renderDoc(1);const b=await new Promise(r=>c.toBlob(r,'image/png'));return b.size>1000?'png':'png vide'}};
+    try{for(const [name,fn] of Object.entries(ops)){const res=[];
+      for(const comp of [false,true]){restore(h0);SPARSE.on=false;if(comp){SPARSE.on=true;await SPARSE.compactAll();SPARSE.on=false}else for(const L of S.doc.layers)void L.canvas;
+        const nsp=S.doc.layers.filter(L=>spOf(L)).length;ditherSeed=1;let tag='';try{tag=(await fn())||''}catch(e){tag='erreur : '+e.message}const D=S.doc,f=__sp.flat();
+        res.push({nsp,tag,w:D.w,h:D.h,n:D.layers.length,hash:__sp.hash(f),lay:D.layers.map(L=>L.kind==='pixel'?__sp.hash(__sp.layer(L)):0).join()})}
+      const [a,b]=res;out[name]=b.nsp<4?'pas de calque compacté ('+b.nsp+')':a.tag.startsWith('erreur')||b.tag.startsWith('erreur')?a.tag+' / '+b.tag:(a.tag&&a.tag!==b.tag)?a.tag+' / '+b.tag:(a.w!==b.w||a.h!==b.h||a.n!==b.n||a.hash!==b.hash||a.lay!==b.lay)?'résultat différent '+JSON.stringify([a,b].map(x=>[x.w,x.h,x.n,x.hash])):a.hash===0?'vide':'ok'}}
+    finally{saveFile=sf;SPARSE.on=true}return out});
+  const bad=Object.entries(r).filter(([k,v])=>v!=='ok').map(([k,v])=>k+' : '+v);if(bad.length)throw new Error(bad.join('\n'))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

@@ -28,7 +28,7 @@ const _toast16=toast;toast=function(msg,ms){if(typeof msg==='string'){const m=/^
 /* the sync status line says what to do */
 const _ssState16=setSaveState;setSaveState=function(st){_ssState16(st);if(st==='syncerr'&&SAVE.err&&/réseau|connexion|fetch/i.test(SAVE.err))SAVE.err='connexion perdue, nouvel essai automatique'};
 /* memory guard for very large photos with many layers */
-function memEstimate(){const d=S.doc;if(!d)return 0;const px=d.w*d.h;let b=0;for(const L of d.layers){if(L.canvas)b+=px*4;if(L.mask)b+=px*4;if(L.hi)b+=px*8}if(d.sel)b+=px*4;return b}
+function memEstimate(){const d=S.doc;if(!d)return 0;const px=d.w*d.h;let b=0;for(const L of d.layers){const c=lcv(L);if(c)b+=c.__sp?c.width*c.height*4:px*4;if(L.mask)b+=px*4;if(L.hi)b+=px*8}if(d.sel)b+=px*4;return b}
 const memBudget=()=>IS_IOS?5e8:Math.min(3e9,(navigator.deviceMemory||4)*4e8);
 const _pushHistory16=pushHistory;pushHistory=function(){const r=_pushHistory16.apply(this,arguments);try{const d=S.doc;if(d&&!d._memWarned){const e=memEstimate(),bud=memBudget();if(e>bud*0.8){d._memWarned=true;toast(`Cette photo de ${(d.w*d.h/1e6).toFixed(0)} Mpx avec ${d.layers.length} calques occupe environ ${(e/1e9).toFixed(1).replace('.',',')} Go de mémoire. Fusionnez quelques calques (${MOD}E) pour garder de la fluidité.`,8000)}}}catch(e){}return r};
 

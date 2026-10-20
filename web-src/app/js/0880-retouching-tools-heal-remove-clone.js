@@ -69,10 +69,10 @@ function solveMG(D,ins,w,h){const n=w*h;let m=0;for(let i=0;i<n;i++)if(ins[i])m+
  for(let y=0;y<h;y++){const fy=Math.min(h2-1,Math.max(0,(y-.5)/2)),y0=Math.floor(fy),y1=Math.min(h2-1,y0+1),ty=fy-y0;for(let x=0;x<w;x++){const i=y*w+x;if(!ins[i])continue;const fx=Math.min(w2-1,Math.max(0,(x-.5)/2)),x0=Math.floor(fx),x1=Math.min(w2-1,x0+1),tx=fx-x0;
   for(let c=0;c<D.length;c++){const A=D2[c];D[c][i]=(A[y0*w2+x0]*(1-tx)+A[y0*w2+x1]*tx)*(1-ty)+(A[y1*w2+x0]*(1-tx)+A[y1*w2+x1]*tx)*ty}}}
  relax(D,ins,w,h,Math.min(120,40+Math.round(Math.sqrt(m)*.3)),1.6)}
-function readClamped(g,sx,sy,w,h,W,H){if(sx>=0&&sy>=0&&sx+w<=W&&sy+h<=H)return g.getImageData(sx,sy,w,h).data;
- const rx0=clamp(sx,0,W-1),ry0=clamp(sy,0,H-1),rx1=clamp(sx+w,rx0+1,W),ry1=clamp(sy+h,ry0+1,H),rw=rx1-rx0,R=g.getImageData(rx0,ry0,rw,ry1-ry0).data,o=new Uint8ClampedArray(w*h*4);
+function readClamped(g,sx,sy,w,h,W,H,rd){const get=rd||((x,y,w,h)=>g.getImageData(x,y,w,h).data);if(sx>=0&&sy>=0&&sx+w<=W&&sy+h<=H)return get(sx,sy,w,h);
+ const rx0=clamp(sx,0,W-1),ry0=clamp(sy,0,H-1),rx1=clamp(sx+w,rx0+1,W),ry1=clamp(sy+h,ry0+1,H),rw=rx1-rx0,R=get(rx0,ry0,rw,ry1-ry0),o=rd?new Float32Array(w*h*4):new Uint8ClampedArray(w*h*4);
  for(let y=0;y<h;y++){const yy=clamp(sy+y,ry0,ry1-1)-ry0;for(let x=0;x<w;x++){const xx=clamp(sx+x,rx0,rx1-1)-rx0,j=(yy*rw+xx)*4,i=(y*w+x)*4;o[i]=R[j];o[i+1]=R[j+1];o[i+2]=R[j+2];o[i+3]=R[j+3]}}return o}
-healRegion=function(L,maskC,bx,manualOff){const d=S.doc,W=d.w,H=d.h,x0=Math.max(0,Math.floor(bx.x0)-3),y0=Math.max(0,Math.floor(bx.y0)-3),x1=Math.min(W,Math.ceil(bx.x1)+3),y1=Math.min(H,Math.ceil(bx.y1)+3),rw=x1-x0,rh=y1-y0;if(rw<3||rh<3)return false;
+healRegion=function(L,maskC,bx,manualOff,hl){const d=S.doc,W=d.w,H=d.h,x0=Math.max(0,Math.floor(bx.x0)-3),y0=Math.max(0,Math.floor(bx.y0)-3),x1=Math.min(W,Math.ceil(bx.x1)+3),y1=Math.min(H,Math.ceil(bx.y1)+3),rw=x1-x0,rh=y1-y0;if(rw<3||rh<3)return false;
  const g=rx(L.canvas),T=g.getImageData(x0,y0,rw,rh),td=T.data,M=rx(maskC).getImageData(x0,y0,rw,rh).data,n=rw*rh,ins=new Uint8Array(n);let cnt=0;for(let i=0;i<n;i++)if(M[i*4+3]>6){ins[i]=1;cnt++}if(!cnt)return false;
  let cur=ins.slice();for(let pass=0;pass<3;pass++){const nx=cur.slice();for(let y=0;y<rh;y++)for(let x=0;x<rw;x++){const i=y*rw+x;if(cur[i])continue;if((x>0&&cur[i-1])||(x<rw-1&&cur[i+1])||(y>0&&cur[i-rw])||(y<rh-1&&cur[i+rw]))nx[i]=1}cur=nx}
  const ringL=[];for(let i=0;i<n;i++)if(cur[i]&&!ins[i])ringL.push(i);let off=manualOff?{x:Math.round(manualOff.x),y:Math.round(manualOff.y)}:null;
@@ -81,10 +81,12 @@ healRegion=function(L,maskC,bx,manualOff){const d=S.doc,W=d.w,H=d.h,x0=Math.max(
    for(const i of ringL){const px=i%rw,py=(i/rw)|0,sj=((y0+py+dy-ay0)*aw+(x0+px+dx-ax0))*4,tj=i*4,e0=td[tj]-A[sj],e1=td[tj+1]-A[sj+1],e2=td[tj+2]-A[sj+2];cost+=e0*e0+e1*e1+e2*e2}cost/=Math.max(1,ringL.length);
    let ov=0;for(const i of insL){const px=(i%rw)+dx,py=((i/rw)|0)+dy;if(px>=0&&py>=0&&px<rw&&py<rh&&ins[py*rw+px])ov++}cost+=ov*400+f*40;if(cost<best){best=cost;off={x:dx,y:dy}}}
   if(!off){toast('Pas assez de matière autour pour corriger cette zone');return false}}
- const Sd=readClamped(g,x0+off.x,y0+off.y,rw,rh,W,H),D=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];
- for(let i=0;i<n;i++){if(ins[i])continue;for(let c=0;c<3;c++)D[c][i]=td[i*4+c]-Sd[i*4+c]}
+ // 16-bit layer (hl): the same solve on its 16-bit pixels, in float; the 8-bit canvas follows
+ const tF=hl?hiRead(L,x0,y0,rw,rh):td,Sd=readClamped(g,x0+off.x,y0+off.y,rw,rh,W,H,hl?(x,y,w,h)=>hiRead(L,x,y,w,h):null),D=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];
+ for(let i=0;i<n;i++){if(ins[i])continue;for(let c=0;c<3;c++)D[c][i]=tF[i*4+c]-Sd[i*4+c]}
  solveMG(D,ins,rw,rh);
- for(let i=0;i<n;i++){if(!ins[i])continue;const a=Math.min(1,M[i*4+3]/255*1.15),j=i*4;for(let c=0;c<3;c++){const v=Sd[j+c]+D[c][i];td[j+c]=clamp(td[j+c]+(v-td[j+c])*a,0,255)}if(Sd[j+3]>0)td[j+3]=td[j+3]+(Sd[j+3]-td[j+3])*a}
+ for(let i=0;i<n;i++){if(!ins[i])continue;const a=Math.min(1,M[i*4+3]/255*1.15),j=i*4;for(let c=0;c<3;c++){const v=Sd[j+c]+D[c][i];tF[j+c]=clamp(tF[j+c]+(v-tF[j+c])*a,0,255)}if(Sd[j+3]>0)tF[j+3]=tF[j+3]+(Sd[j+3]-tF[j+3])*a}
+ if(hl){const X=hiTx(L);hiWrite(X,x0,y0,rw,rh,tF);hiEnd(X);return true}
  g.putImageData(T,x0,y0);return true};
 
 // ---------- Densité: the tonal range only applies to the modes that show it (Éclaircir, Assombrir, Saturer, Désaturer) ----------
@@ -178,7 +180,7 @@ function lqPath(dr,p){const o=S.opts.liquify,sp=Math.max(1.5,o.size*.07),dx=p.x-
 // ---------- smudge: the paint picked up now travels with the brush (it stayed where it was taken, so the tool barely changed anything) ----------
 let SB=[new Float32Array(0),new Float32Array(0)];
 function smStep(dr,p){const d=S.doc,o=S.opts.smudge,r=o.size/2;if(r<.5)return;const x0=Math.max(0,Math.floor(p.x-r)),y0=Math.max(0,Math.floor(p.y-r)),x1=Math.min(d.w,Math.ceil(p.x+r)),y1=Math.min(d.h,Math.ceil(p.y+r));if(x1<=x0||y1<=y0)return;
- const w=x1-x0,h=y1-y0,n=w*h*4,img=dr.ctx.getImageData(x0,y0,w,h),a=img.data,C=dr.cy;
+ const w=x1-x0,h=y1-y0,n=w*h*4,img=dr.ctx.getImageData(x0,y0,w,h),hw=dr.hw,a=hw?hw.get(x0,y0,w,h):img.data,C=dr.cy;
  if(!C){const buf=new Float32Array(n);for(let i=0;i<n;i++)buf[i]=a[i];dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:0,ry:0,data:buf};return}
  const S0=clamp(o.strength*(dr.pressure||1),.02,1),q=Math.min(.985,Math.pow(S0,.3)),hard=clamp(o.hardness,0,1),sel=dr.sel?dr.sel.getImageData(x0,y0,w,h).data:null;
  const fx=p.x-C.px+C.rx,fy=p.y-C.py+C.ry,ix=Math.round(fx),iy=Math.round(fy);
@@ -188,7 +190,8 @@ function smStep(dr,p){const d=S.doc,o=S.opts.smudge,r=o.size/2;if(r<.5)return;co
   if(dist>=1||sx<0||sy<0||sx>=C.w||sy>=C.h){nc[j]=a[j];nc[j+1]=a[j+1];nc[j+2]=a[j+2];nc[j+3]=a[j+3];continue}
   const f=dist<=hard?1:Math.pow(1-(dist-hard)/(1-hard+1e-6),2),ws=sel?sel[j+3]/255:1,i=(sy*C.w+sx)*4,pk=1-(1-q)*f,k=f*S0*ws;
   for(let c=0;c<4;c++){const cur=a[j+c],v=cd[i+c]*pk+cur*(1-pk);nc[j+c]=v;if(k>0)a[j+c]=cur+(v-cur)*k}}}
- dr.ctx.putImageData(img,x0,y0);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
+ // 16-bit layer: the float pixels are kept, the canvas shows them rounded
+ if(hw){hw.set(x0,y0,w,h,a);img.data.set(a)}dr.ctx.putImageData(img,x0,y0);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
 function smPath(dr,p){const o=S.opts.smudge,sp=Math.max(1.5,o.size*.06),dx=p.x-dr.last.x,dy=p.y-dr.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;
  const n=Math.floor(dist/sp),sx=dx/dist*sp,sy=dy/dist*sp;let q={x:dr.last.x,y:dr.last.y};for(let k=1;k<=n;k++){q={x:q.x+sx,y:q.y+sy};smStep(dr,q)}dr.last=q;dr.moved=true;markComp()}
 const _od=onDown;onDown=function(e,p){const pre=new Map();if(S.tool==='liquify'&&S.doc){S.doc.layers.forEach(l=>pre.set(l,l.canvas));if(e&&e.altKey!=null)S.altDown=!!e.altKey}
@@ -199,7 +202,7 @@ const _od=onDown;onDown=function(e,p){const pre=new Map();if(S.tool==='liquify'&
    dr.timer=setInterval(()=>{if(S.drag!==dr){clearInterval(dr.timer);return}if(performance.now()-(dr.lastT||0)<60)return;lqStep(dr,dr.cur,0,0);markComp()},70)}}
  return r};
 const _om=onMove;onMove=function(e,p){const dr=S.drag;if(dr&&dr.type==='lqf'&&e&&e.altKey!=null)S.altDown=!!e.altKey;if(dr&&(dr.type==='lqf'||dr.type==='smg')){if(e&&e.pointerType==='pen')dr.pressure=e.pressure||dr.pressure;if(dr.type==='lqf')lqPath(dr,p);else smPath(dr,p);return}return _om.apply(this,arguments)};
-const _ou=onUp;onUp=function(e){const dr=S.drag;if(dr&&dr.type==='smg'){S.drag=null;SB=[new Float32Array(0),new Float32Array(0)];if(!dr.moved){if(S.doc&&S.hi>=0)restore(S.hi);requestRender();return}/* a click without moving is not a step */markComp();pushHistory('Doigt');return}
+const _ou=onUp;onUp=function(e){const dr=S.drag;if(dr&&dr.type==='smg'){S.drag=null;SB=[new Float32Array(0),new Float32Array(0)];if(!dr.moved){if(S.doc&&S.hi>=0)restore(S.hi);requestRender();return}/* a click without moving is not a step */if(dr.hw)dr.hw.commit();markComp();pushHistory('Doigt');return}
  if(dr&&dr.type==='lqf'){S.drag=null;if(dr.timer)clearInterval(dr.timer);markComp();pushHistory('Fluidité');if(LQF&&LQF.layer===dr.L)LQF.hist=S.history[S.hi];return}return _ou.apply(this,arguments)};
 const SHORT={remove:1,clone:1,dodge:1};
 const _st=setTool;setTool=function(t){if(t!=='liquify')LQF=null;const r=_st.apply(this,arguments);

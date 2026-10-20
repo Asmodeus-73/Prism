@@ -1,6 +1,6 @@
 [package]
 name = "prism"
-version = "0.6.1"
+version = "0.7.0"
 description = "Prism, retouche photo"
 edition = "2021"
 
@@ -18,8 +18,14 @@ tauri-plugin-updater = "2"
 percent-encoding = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# AI models fetched on first use (src/models.rs): the same HTTP stack as the updater
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+sha2 = "0.10"
 # Native AI: ONNX Runtime loaded at run time from the bundled library (see src/ai.rs)
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["load-dynamic", "api-23", "directml", "coreml"] }
+# Native camera RAW decoding in the desktop app (src/raw.rs); web/raw (LibRaw wasm) stays the fallback
+rawler = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 libloading = "0.8"

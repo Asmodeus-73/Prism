@@ -5,11 +5,11 @@ function beginStroke(p,e){const d=S.doc,t=S.tool,A=AL();if(!A)return;const o=S.o
   if((t==='brush'||t==='eraser')&&((A.kind==='adjust'&&A.mask)||(A.mask&&A.editMask))){L=A;target='mask'}
   else{L=pixelTarget();if(!L){toast('Aucun calque de pixels à retoucher');return}}
   if(!L.visible){toast('Ce calque est masqué');return}
-  const st={tool:t,layer:L,target,last:p,bounds:{x0:p.x,y0:p.y,x1:p.x,y1:p.y},pressure:1};
+  const st={tool:t,layer:L,target,last:p,bounds:{x0:p.x,y0:p.y,x1:p.x,y1:p.y},pressure:1,col:S.color};
   if(t==='clone'||(t==='heal'&&o.mode==='source')){if(!S.cloneSrc){toast(ALT+'+clic pour définir la zone source');return}if(t==='heal'||!o.aligned||!S.cloneOff)S.cloneOff={x:S.cloneSrc.x-p.x,y:S.cloneSrc.y-p.y};st.off={...S.cloneOff}}
-  if(t==='dodge'){editCanvas(L);st.selData=null;st.selC=d.sel?rx(d.sel):null;st.ctx=rx(L.canvas);S.stroke=st;dab(st,p);markComp();return}
+  if(t==='dodge'){st.hiL=hiTake(L);editCanvas(L);st.selData=null;st.selC=d.sel?rx(d.sel):null;st.ctx=rx(L.canvas);S.stroke=st;dab(st,p);markComp();return}
   st.canvas=mk(d.w,d.h);st.g=cx(st.canvas);st.live=true;st.opacity=o.opacity??1;
-  if(t==='clone'){st.src=S.opts.clone.all?cloneC(flatSync()):L.canvas;st.dabC=mk(Math.ceil(o.size)+2,Math.ceil(o.size)+2);st.mask=stampFor(o.size,o.hardness,'#000')}
+  if(t==='clone'){st.self=!S.opts.clone.all;st.src=st.self?L.canvas:cloneC(flatSync());st.dabC=mk(Math.ceil(o.size)+2,Math.ceil(o.size)+2);st.mask=stampFor(o.size,o.hardness,'#000')}
   else if(t==='heal'||t==='remove'){st.target='heal';st.live=false;st.stamp=stampFor(o.size,t==='remove'?0.9:o.hardness,'#ffffff');st.opacity=1}
   else st.stamp=stampFor(o.size,o.hardness,(t==='eraser'||target==='mask')?'#ffffff':S.color);
   // the layer as it will be once the stroke is applied; after the first frame only the area the new dabs touched is recomposed
@@ -34,11 +34,15 @@ function pixelDab(st,p){const d=S.doc,o=S.opts.dodge,r=o.size/2,x0=Math.max(0,Ma
   st.ctx.putImageData(img,x0,y0)}
 async function endStroke(){const st=S.stroke;if(!st)return;S.stroke=null;const L=st.layer;
   if(st.tool==='dodge'){markComp();pushHistory({dodge:'Densité −',burn:'Densité +',blur:'Goutte d’eau',sharpen:'Netteté',saturate:'Éponge (saturer)',desaturate:'Éponge (désaturer)'}[S.opts.dodge.mode]);return}
-  if(st.tool==='heal'){busy(true,'Correction…');await tick();let ok=true;const prevC=L.canvas;try{editCanvas(L);ok=healRegion(L,st.canvas,st.bounds,S.opts.heal.mode==='source'?st.off:null)!==false}finally{busy(false)}if(!ok){L.canvas=prevC;markComp();return}markComp();pushHistory(S.opts.heal.mode==='spot'?'Correcteur localisé':'Correcteur');return}
+  if(st.tool==='heal'){busy(true,'Correction…');await tick();let ok=true;const prevC=L.canvas;try{const H=hiTake(L);editCanvas(L);ok=healRegion(L,st.canvas,st.bounds,S.opts.heal.mode==='source'?st.off:null,H)!==false}finally{busy(false)}if(!ok){L.canvas=prevC;markComp();return}markComp();pushHistory(S.opts.heal.mode==='spot'?'Correcteur localisé':'Correcteur');return}
   if(st.tool==='remove'){requestRender();await removeObject(L,st.canvas,st.bounds);return}
   const m=maskedStroke(st);if(st.target==='mask'){const g=editMask(L);g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(m,0,0)}
-  else{const g=editCanvas(L);g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(m,0,0)}
+  else{const H=hiTake(L),g=editCanvas(L);g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(m,0,0);if(H)hiStroke(st,L,m)}
   [st.tmp,st.m].forEach(c=>{if(c&&c!==L.canvas&&c!==L.mask){c.width=c.height=0}});st.live=false;markComp();pushHistory(st.target==='mask'?(st.tool==='eraser'?'Masque : retirer':'Masque : ajouter'):{brush:'Pinceau',eraser:'Gomme',clone:'Tampon de duplication'}[st.tool]);syncLayers()}
+/* 16-bit layer: the same composite in float over its 16-bit pixels (the brush keeps its exact colour, the clone stamp copies the 16-bit source) */
+function hiStroke(st,L,m){const b=st.bounds,pad=Math.max(st.stamp?st.stamp.width:0,st.dabC?st.dabC.width:0,S.opts[st.tool].size||0)/2+4,ox=st.off?Math.round(st.off.x):0,oy=st.off?Math.round(st.off.y):0;
+  const src=st.tool==='clone'?hiSrc(m,null,st.self?(x,y,w,h)=>hiRead(L,x+ox,y+oy,w,h):null):hiSrc(m,st.tool==='eraser'?[0,0,0]:hexRGB(st.col||S.color));
+  hiComp(L,{x0:b.x0-pad,y0:b.y0-pad,x1:b.x1+pad,y1:b.y1+pad},src,st.opacity,st.tool==='eraser')}
 function cancelDrag(){const dr=S.drag;S.drag=null;if(!dr)return;if(dr.type==='move'&&dr.L){dr.L.dx=0;dr.L.dy=0}if(dr.type==='gradient'&&dr.target){delete dr.target.preview;delete dr.target.maskPreview}if(dr.type==='pen'&&typeof penCancelDrag==='function')penCancelDrag(dr);if(dr.type==='shape'&&dr.L){const d=S.doc,i=d?d.layers.indexOf(dr.L):-1;if(i>=0){d.layers.splice(i,1);d.active=Math.max(0,Math.min(d.active-1,d.layers.length-1))}delete dr.L.preview;PV.delete(dr.L.id);syncAll()}markComp()}
 function cancelStroke(){if(!S.stroke)return;const st=S.stroke;S.stroke=null;if(st.tool==='dodge')restore(S.hi);markComp()}
 

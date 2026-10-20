@@ -15,5 +15,6 @@ let _FO;const filterOK=()=>_FO===undefined?(_FO=(()=>{try{const t=mk(9,1),c=cx(t
 const IS_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 let MAX_PX=IS_IOS?16777216:(navigator.deviceMemory||8)>=8?120e6:60e6;
 const HIST_BUDGET=IS_IOS?2.5e8:(navigator.deviceMemory||8)>=8?2e9:1.2e9;
-const asset=p=>new URL(p,location.href).href;
+// the desktop app maps its AI model files to the copies it fetches on first use (desktop/desktop.js)
+const asset=p=>(window.PRISM_ASSET&&PRISM_ASSET(p))||new URL(p,location.href).href;
 
