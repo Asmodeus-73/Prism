@@ -70,6 +70,10 @@ await test('masque IA : le nouveau réglage local est déjà dosé',async()=>{aw
     const cm=AI.categoryMask;AI.categoryMask=async()=>m;try{await PrismAIMask.apply('subj','layer');await PrismAIMask.apply('sky','layer')}finally{AI.categoryMask=cm}
     const z=DEV0(),moved=L=>Object.keys(z).filter(k=>typeof z[k]==='number'&&L.dev[k]!==z[k]).length,a=d.layers.slice(-2);return a.map(L=>[L.name,!!L.mask,moved(L)])});
   if(r[0][0]!=='Sujet (IA)'||r[1][0]!=='Ciel (IA)'||!r.every(x=>x[1]&&x[2]>0))throw new Error(JSON.stringify(r))});
+await test('avant / après : glisser la séparation ne sélectionne rien et reste sur la photo',async()=>{await sample();await ev(()=>{S.compare='off';toggleCompare()});await page.waitForTimeout(200);
+  const b=await page.locator('#split .knob').boundingBox();await page.mouse.move(b.x+16,b.y+16);await page.mouse.down();for(let i=1;i<=12;i++)await page.mouse.move(b.x+16-i*60,b.y+16+i*4);await page.mouse.up();
+  const r=await ev(()=>{const a=S.panX/S.vw,o={sel:getSelection().type,x:S.splitX,a};S.compare='off';markContent();return o});
+  if(r.sel==='Range'||r.x<r.a)throw new Error(JSON.stringify(r))});
 await test('impression : la page ne garde que la photo',async()=>{const r=await ev(async()=>{let called=0;window.print=()=>{called++};PrismPrint.dialog();await new Promise(r=>setTimeout(r,150));
     const info=document.querySelector('#prInfo').textContent;[...document.querySelectorAll('#scrim button')].find(b=>/Imprimer/.test(b.textContent)).click();
     for(let i=0;i<50&&!called;i++)await new Promise(r=>setTimeout(r,100));const img=document.querySelector('#printSheet img');return {called,img:!!(img&&img.naturalWidth),info}});
