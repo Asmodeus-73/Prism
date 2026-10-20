@@ -136,12 +136,13 @@ svg{flex:none}
 .tools .sep{height:1px;width:24px;background:var(--line-2);margin:5px 0;flex:none}
 .tools .fg{width:36px;height:36px;display:grid;place-items:center;flex:none}
 .tools .fg input{width:26px;height:26px}
-.stage{position:relative;overflow:hidden;background:var(--stage);touch-action:none;min-width:0}
+.stage{position:relative;overflow:hidden;background:var(--stage);touch-action:none;min-width:0;-webkit-user-select:none;user-select:none}
+.stage textarea,.stage input{-webkit-user-select:text;user-select:text}
 #view{position:absolute;inset:0;width:100%;height:100%;display:block}
 #view:focus-visible{outline:2px solid var(--accent-fg);outline-offset:-2px}
 
 /* overlays on the photo */
-.split{position:absolute;top:0;bottom:0;width:0;z-index:2;cursor:ew-resize}
+.split{position:absolute;top:0;bottom:0;width:0;z-index:2;cursor:ew-resize;-webkit-user-select:none;user-select:none;touch-action:none}
 .split::before{content:"";position:absolute;top:0;bottom:0;left:-1px;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
 .split .knob{position:absolute;top:50%;left:-16px;width:32px;height:32px;margin-top:-16px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4);display:grid;place-items:center;color:#222}
 .split .lbl{position:absolute;top:12px;font-size:11.5px;font-weight:600;background:rgba(0,0,0,.65);color:#fff;padding:3px 8px;border-radius:5px;white-space:nowrap}
@@ -1509,9 +1510,11 @@ function switchTab(t){$$('.tabs button').forEach(x=>x.classList.toggle('on',x.da
 $$('.tabs button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 
 /* ================= compare ================= */
-function toggleCompare(){if(!S.doc)return;S.compare=S.compare==='split'?'off':'split';markContent()}
+// the split stays over the photo, so both sides always show part of it
+function splitClamp(x){const d=S.doc;let lo=0.02,hi=0.98;if(d&&S.vw>0){const a=S.panX/S.vw,b=(S.panX+d.w*S.zoom)/S.vw;if(b-a>0.04){lo=Math.max(lo,a+0.01);hi=Math.min(hi,b-0.01)}}return clamp(x,lo,Math.max(lo,hi))}
+function toggleCompare(){if(!S.doc)return;S.compare=S.compare==='split'?'off':'split';if(S.compare==='split'&&S.vw>0)S.splitX=splitClamp((S.panX+S.doc.w*S.zoom/2)/S.vw);markContent()}
 function toggleMask(){S.showMask=!S.showMask;renderTarget();requestRender()}
-(()=>{const sp=$('#split');let drag=false;sp.addEventListener('pointerdown',e=>{drag=true;sp.setPointerCapture(e.pointerId);e.stopPropagation()});sp.addEventListener('pointermove',e=>{if(!drag)return;const r=stage.getBoundingClientRect();S.splitX=clamp((e.clientX-r.left)/r.width,0.02,0.98);requestRender()});sp.addEventListener('pointerup',()=>drag=false);sp.addEventListener('pointercancel',()=>drag=false);sp.tabIndex=0;sp.setAttribute('role','slider');sp.setAttribute('aria-label','Séparation avant / après');sp.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();S.splitX=clamp(S.splitX+(e.key==='ArrowLeft'?-0.02:0.02),0.02,0.98);requestRender()}})})();
+(()=>{const sp=$('#split');let drag=false;sp.addEventListener('pointerdown',e=>{e.preventDefault();try{getSelection().removeAllRanges()}catch(_){}drag=true;sp.setPointerCapture(e.pointerId);e.stopPropagation()});sp.addEventListener('pointermove',e=>{if(!drag)return;const r=stage.getBoundingClientRect();S.splitX=splitClamp((e.clientX-r.left)/r.width);requestRender()});sp.addEventListener('pointerup',()=>drag=false);sp.addEventListener('pointercancel',()=>drag=false);sp.tabIndex=0;sp.setAttribute('role','slider');sp.setAttribute('aria-label','Séparation avant / après');sp.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();S.splitX=splitClamp(S.splitX+(e.key==='ArrowLeft'?-0.02:0.02));requestRender()}})})();
 
 /* ================= AI (runs locally in the browser) ================= */
 const AI={state:{seg:'idle',up:'idle'},subjectCache:null,_ort:null,_seg:null,_tf:null,_up:{}};
@@ -9073,7 +9076,7 @@ upscaleCanvas=async function(src,scale,model,onP){
 }
 
 
-window.PRISM_VERSION="0.6.0";
+window.PRISM_VERSION="0.6.1";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {
