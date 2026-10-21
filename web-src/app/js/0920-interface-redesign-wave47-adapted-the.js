@@ -414,9 +414,9 @@ function paintSave(){
   const sy=document.getElementById('bSync');let tip=sy&&sy.title?sy.title.replace(/\s*·\s*Ouvrir mes projets\s*$/,''):saveWord();
   if(S.doc)docname.title=`${S.doc.name} · ${tip}`}
 function drawChipThumb(c){
-  const d=S.doc;if(!d)return;const L=d.layers.find(l=>l.kind==='pixel'&&l.canvas);if(!L)return;
-  const g=c.getContext('2d'),cw=c.width,ch=c.height,sw=L.canvas.width,sh=L.canvas.height;if(!sw||!sh)return;
-  const k=Math.max(cw/sw,ch/sh),w=sw*k,h=sh*k;g.clearRect(0,0,cw,ch);g.imageSmoothingQuality='high';g.drawImage(L.canvas,(cw-w)/2,(ch-h)/2,w,h)}
+  const d=S.doc;if(!d)return;const L=d.layers.find(l=>l.kind==='pixel'&&lcv(l));if(!L)return;const src=lcv(L),sp=src.__sp;
+  const g=c.getContext('2d'),cw=c.width,ch=c.height,sw=sp?d.w:src.width,sh=sp?d.h:src.height;if(!sw||!sh)return;
+  const k=Math.max(cw/sw,ch/sh),w=sw*k,h=sh*k;g.clearRect(0,0,cw,ch);g.imageSmoothingQuality='high';if(sp)g.drawImage(src,(cw-w)/2+src.__sx*k,(ch-h)/2+src.__sy*k,src.width*k,src.height*k);else g.drawImage(src,(cw-w)/2,(ch-h)/2,w,h)}
 function paintChip47(){
   const d=S.doc;if(!d||!docname)return;
   const tags=[...docname.querySelectorAll('.tag')].map(t=>t.textContent.trim()).filter(Boolean);

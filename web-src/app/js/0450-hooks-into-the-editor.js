@@ -17,5 +17,5 @@ document.addEventListener('keydown',e=>{if(S.tool!=='pen'||!S.doc||$('#library')
 document.addEventListener('keydown',e=>{const tg=e.target;if($('#library')||(tg.closest&&tg.closest('input,textarea,select,[contenteditable]')))return;const mod=(e.metaKey||e.ctrlKey)&&!(e.getModifierState&&e.getModifierState('AltGraph'));
   if(mod&&e.code==='KeyY'&&e.shiftKey&&S.doc){e.preventDefault();e.stopPropagation();proofToggle();return}
   if(mod&&e.altKey&&e.code==='KeyR'&&S.doc){e.preventDefault();e.stopPropagation();refineDialog()}},true);
-const _restore=restore;restore=function(i){_restore(i);const d=S.doc;if(!d)return;const L=d.layers.find(l=>l.canvas);const cs=(L&&L.canvas._cs)||'srgb';if(cs!==(d.space||'srgb')||cs!==CS){d.space=cs;setCS(cs);markComp();updateDocName()}};
+const _restore=restore;restore=function(i){_restore(i);const d=S.doc;if(!d)return;const L=d.layers.find(l=>lcv(l));const cs=(L&&lcv(L)._cs)||'srgb';if(cs!==(d.space||'srgb')||cs!==CS){d.space=cs;setCS(cs);markComp();updateDocName()}};
 

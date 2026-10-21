@@ -1,5 +1,9 @@
 mod ai;
+mod models;
+mod raw;
+mod sd;
 mod sync;
+mod tether;
 mod update;
 
 use std::path::PathBuf;
@@ -59,11 +63,14 @@ pub fn run() {
         .manage(sync::SyncState::default())
         .manage(update::Pending::default())
         .manage(ai::AiState::default())
+        .manage(sd::SdState::default())
+        .manage(tether::TetherState::default())
         .setup(|app| {
             sync::load(app.handle());
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("prismsync", sync::protocol)
+        .register_asynchronous_uri_scheme_protocol("prismmodel", models::protocol)
         .invoke_handler(tauri::generate_handler![
             save_file,
             print_page,
@@ -82,7 +89,17 @@ pub fn run() {
             ai::ai_status,
             ai::ai_load,
             ai::ai_unload,
-            ai::ai_run
+            ai::ai_run,
+            sd::sd_status,
+            sd::sd_prepare,
+            sd::sd_generate,
+            sd::sd_cancel,
+            sd::sd_unload,
+            raw::raw_decode,
+            tether::tether_folder,
+            tether::tether_start,
+            tether::tether_stop,
+            tether::tether_read
         ])
         .run(tauri::generate_context!())
         .expect("error while running Prism");

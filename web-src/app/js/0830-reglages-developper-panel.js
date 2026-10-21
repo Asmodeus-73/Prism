@@ -328,7 +328,7 @@ let gcRun=null,gcAgain=false;
 async function gcOnce(){
   const all=await IDB.keys('blobs');
   const ms=await IDB.all('projects'),keep=new Set();ms.forEach(m=>manifestKeys(m).forEach(k=>keep.add(k)));PIN.forEach(k=>keep.add(k));
-  if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [L.canvas,L.mask,L.fbase,L.so&&L.so.src]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}
+  if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [lcv(L),L.mask,L.fbase,L.so&&L.so.src]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}
   const hk=await (window.PrismHist?PrismHist.keep(keep,ms):[]);
   for(const k of all)if(!keep.has(k)&&!PIN.has(k)&&!String(k).startsWith('icc_')&&!hk.includes(k)){await IDB.del('blobs',k);await IDB.del('amap',k).catch(()=>{})}}
 gcBlobs=function(){gcAgain=true;if(gcRun)return gcRun;

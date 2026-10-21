@@ -751,7 +751,8 @@ let _FO;const filterOK=()=>_FO===undefined?(_FO=(()=>{try{const t=mk(9,1),c=cx(t
 const IS_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 let MAX_PX=IS_IOS?16777216:(navigator.deviceMemory||8)>=8?120e6:60e6;
 const HIST_BUDGET=IS_IOS?2.5e8:(navigator.deviceMemory||8)>=8?2e9:1.2e9;
-const asset=p=>new URL(p,location.href).href;
+// the desktop app maps its AI model files to the copies it fetches on first use (desktop/desktop.js)
+const asset=p=>(window.PRISM_ASSET&&PRISM_ASSET(p))||new URL(p,location.href).href;
 
 /* ================= float blur (CPU fallback & tools) ================= */
 function boxesForGauss(s,n){const wI=Math.sqrt(12*s*s/n+1);let wl=Math.floor(wI);if(wl%2===0)wl--;const wu=wl+2;const m=Math.round((12*s*s-n*wl*wl-4*n*wl-3*n)/(-4*wl-4));const r=[];for(let i=0;i<n;i++)r.push(i<m?wl:wu);return r}
@@ -914,26 +915,103 @@ function setDoc(src,name,opts={}){setCS(opts.space||(src._raw&&src._cs)||'srgb')
 function updateDocName(){const d=S.doc;$('#docname').innerHTML=d?`<b>${esc(d.name)}</b> · ${d.w|0} × ${d.h|0}${S.meta?' · '+esc(S.meta):''}`:''}
 
 /* ================= history (copy-on-write) ================= */
-function snapLayer(L){return{...L,dev:L.dev?JSON.parse(JSON.stringify(L.dev)):undefined,preview:undefined,maskPreview:undefined,dx:0,dy:0}}
+function snapLayer(L){return Object.assign(spCopy(L),{dev:L.dev?JSON.parse(JSON.stringify(L.dev)):undefined,preview:undefined,maskPreview:undefined,dx:0,dy:0})}
 function snap(label){const d=S.doc;return{label,w:d.w,h:d.h,active:d.active,sel:d.sel,layers:d.layers.map(snapLayer)}}
-function pushHistory(label){const h=S.history.slice(0,S.hi+1);h.push(snap(label));while(h.length>S.maxHist)h.shift();S.history=h;S.hi=h.length-1;renderHistory();updateUndo();scheduleSave()}
+function pushHistory(label){const h=S.history.slice(0,S.hi+1);h.push(snap(label));while(h.length>S.maxHist)h.shift();S.history=h;S.hi=h.length-1;renderHistory();updateUndo();scheduleSave();spSchedule(null,true)}
 function restore(i){if(i<0||i>=S.history.length)return;const s=S.history[i],d=S.doc;S.hi=i;scheduleSave();const sz=d.w!==s.w||d.h!==s.h;d.w=s.w;d.h=s.h;d.layers=s.layers.map(snapLayer);d.active=Math.min(s.active,d.layers.length-1);d.sel=s.sel;
   selChanged();markComp();if(sz){fit();if(S.tool==='crop')initCrop();updateDocName()}syncAll()}
 function undo(){if(S.stroke||S.drag||!S.doc)return;if(S.hi>0){const l=S.history[S.hi].label;restore(S.hi-1);toast('Annulé : '+l)}}
 function redo(){if(S.stroke||S.drag||!S.doc)return;if(S.hi<S.history.length-1){restore(S.hi+1);toast('Rétabli : '+S.history[S.hi].label)}}
 function updateUndo(){$('#bUndo').disabled=!(S.hi>0);$('#bRedo').disabled=!(S.hi<S.history.length-1)}
-function editCanvas(L){L.canvas=cloneC(L.canvas);return cx(L.canvas)}
+function editCanvas(L){L.canvas=spEditable(L);return cx(L.canvas)}
 function editMask(L){L.mask=L.mask?cloneC(L.mask):(()=>{const m=mk(S.doc.w,S.doc.h),g=cx(m);g.fillStyle='#fff';g.fillRect(0,0,m.width,m.height);return m})();return cx(L.mask)}
 function fullMask(){const m=mk(S.doc.w,S.doc.h),g=cx(m);g.fillStyle='#fff';g.fillRect(0,0,m.width,m.height);return m}
 
+/* ================= sparse layers (calques épars) ================= */
+/* A pixel layer that is mostly empty (text, shape, a few strokes, a small paste) keeps only the area that has content once edits settle:
+   a canvas cropped to its non-transparent box (+2 px), placed at an offset. L.canvas stays the public contract: on a compacted layer it is an accessor
+   that rebuilds the full-size canvas the first time code that does not know about sparse layers reads it, and the layer is an ordinary one again.
+   Sparse-aware code (rendering, thumbnails, history, saving) reads lcv(L) and never triggers a rebuild.
+   The store is immutable and shared by the live layer and its history snapshots (same copy-on-write rule as full canvases).
+   While the original full canvas is still referenced elsewhere (a tool or a dialog that kept it), a rebuild returns that very canvas, so identity checks keep working. */
+const SPM=new WeakMap(),SPCHK=new WeakMap();
+const SPARSE={on:true,ratio:.5,pad:2,delay:1500,t:null,act:0,down:false,stats:{compact:0,expand:0,scan:0,slice:0},log:null};
+function lcv(L){const s=SPM.get(L);return s?s.c:L.canvas}
+const spOf=L=>SPM.get(L)||null;
+function spPlain(o,v){SPM.delete(o);Object.defineProperty(o,'canvas',{value:v,writable:true,enumerable:true,configurable:true})}
+function spExpand(s){const c=mk(s.w,s.h);if(s.c._cs)c._cs=s.c._cs;else delete c._cs;cx(c).drawImage(s.c,s.x,s.y);return c}
+function spFull(s,fresh){const r=!fresh&&s.ref&&s.ref.deref();if(r&&r.width===s.w&&r.height===s.h)return r;SPARSE.stats.expand++;if(SPARSE.log)SPARSE.log.push(new Error('expand').stack);return spExpand(s)}
+function spAttach(o,s){SPM.set(o,s);Object.defineProperty(o,'canvas',{configurable:true,enumerable:true,get(){const t=SPM.get(o);if(!t)return undefined;const c=spFull(t);spPlain(o,c);return c},set(v){spPlain(o,v)}})}
+/* a copy of a layer object that keeps it sparse ({...L} would read the accessor and rebuild the canvas) */
+function spCopy(L){const s=SPM.get(L);if(!s)return{...L};const o={};for(const k of Object.keys(L))if(k!=='canvas')o[k]=L[k];spAttach(o,s);return o}
+/* a canvas of this layer the caller may draw into (copy-on-write) */
+function spEditable(L){const s=SPM.get(L);if(!s)return cloneC(L.canvas);const c=spFull(s,true);spPlain(L,c);return c}
+/* exact box of the pixels with alpha > 0, read in strips: rows from the top, rows from the bottom, then only the side columns still unknown */
+/* (a generator: the idle compactor reads one strip at a time and never blocks the page for long) */
+function* spBoxGen(c){const W=c.width,H=c.height,g=rx(c),B=128;SPARSE.stats.scan++;
+  const scan=(x,y,w,h)=>{if(w<=0||h<=0)return null;const a=new Uint32Array(g.getImageData(x,y,w,h).data.buffer);let X0=w,X1=-1,Y0=-1,Y1=-1;
+    for(let j=0;j<h;j++){const o=j*w;let i=0;while(i<w&&!(a[o+i]>>>24))i++;if(i===w)continue;if(Y0<0)Y0=j;Y1=j;if(i<X0)X0=i;let k=w-1;while(k>X1&&!(a[o+k]>>>24))k--;if(k>X1)X1=k}
+    return Y0<0?null:{x0:x+X0,x1:x+X1,y0:y+Y0,y1:y+Y1}};
+  let b=null,ty=0;for(;ty<H;ty+=B){b=scan(0,ty,W,Math.min(B,H-ty));if(b)break;yield}if(!b)return null;
+  let by=Math.floor((H-1)/B)*B;for(;by>ty;by-=B){yield;const r=scan(0,by,W,Math.min(B,H-by));if(r){b.y1=r.y1;b.x0=Math.min(b.x0,r.x0);b.x1=Math.max(b.x1,r.x1);break}}
+  const ys=ty+B,ye=by>ty?by:ty+B;if(ye>ys){for(let x=0;x<b.x0;x+=B){yield;const r=scan(x,ys,Math.min(B,b.x0-x),ye-ys);if(r){b.x0=r.x0;break}}
+    for(let x=W;x>b.x1+1;x-=B){yield;const x0=Math.max(b.x1+1,x-B),r=scan(x0,ys,x-x0,ye-ys);if(r){b.x1=r.x1;break}}}
+  return b}
+function spBox(c){const it=spBoxGen(c);let r;while(!(r=it.next()).done);return r.value}
+/* builds the sparse store of a full canvas (b: its content box), or null when the content covers too much of it */
+function spMake(C,b){if(b===undefined)b=spBox(C);const W=C.width,H=C.height;let x=0,y=0,w=1,h=1;
+  if(b){const p=SPARSE.pad;x=Math.max(0,b.x0-p);y=Math.max(0,b.y0-p);w=Math.min(W,b.x1+1+p)-x;h=Math.min(H,b.y1+1+p)-y;if(w*h>W*H*SPARSE.ratio)return null}
+  const c=document.createElement('canvas');c.width=w;c.height=h;if(C._cs)c._cs=C._cs;if(b)cx(c).drawImage(C,-x,-y);c.__sp=1;c.__sx=x;c.__sy=y;
+  return{c,x,y,w:W,h:H,ref:typeof WeakRef==='function'?new WeakRef(C):null}}
+/* a store built from saved tiles that only cover part of the photo (a sparse layer saved by this version) */
+async function spDecode(tiles,W,H,getBlob){let x0=W,y0=H,x1=0,y1=0;for(const t of tiles){x0=Math.min(x0,t.x);y0=Math.min(y0,t.y);x1=Math.max(x1,t.x+t.w);y1=Math.max(y1,t.y+t.h)}
+  x0=Math.max(0,x0);y0=Math.max(0,y0);x1=Math.min(W,x1);y1=Math.min(H,y1);if(!(x1>x0&&y1>y0)||(x1-x0)*(y1-y0)>W*H*SPARSE.ratio)return null;
+  const c=mk(x1-x0,y1-y0),g=cx(c);for(const t of tiles){const b=await getBlob(t);if(!b)throw new Error('tuile manquante');const bm=await createImageBitmap(b);g.drawImage(bm,t.x-x0,t.y-y0);bm.close&&bm.close()}
+  c.__sp=1;c.__sx=x0;c.__sy=y0;return{c,x:x0,y:y0,w:W,h:H,ref:null}}
+/* loading a layer's pixels: sparse when the saved tiles allow it (and nothing ties other data to the canvas identity) */
+async function loadLayerCanvas(L,e,W,H,getBlob){const tiles=e.canvas,s=!(e.so||e.fbase||e.hi||e.bif||e.qmask)&&e.kind==='pixel'?await spDecode(tiles,W,H,getBlob):null;
+  if(s){spAttach(L,s);encCache.set(s.c,tiles);return}L.canvas=await decodeTiles(tiles,W,H,getBlob);encCache.set(L.canvas,tiles)}
+/* every layer object of the open document: the live stack, undo history, snapshots */
+function spAllLayers(){const d=S.doc,out=[];if(!d)return out;const add=(ls,w,h)=>{if(ls)for(const o of ls)out.push([o,w,h])};add(d.layers,d.w,d.h);
+  for(const h of S.history||[])if(h&&h.layers)add(h.layers,h.w,h.h);try{if(window.PrismB)PrismB.snaps(d).forEach(e=>e.s&&e.s.layers&&add(e.s.layers,e.s.w,e.s.h))}catch(e){}return out}
+function spOK(o,w,h){if(o.kind!=='pixel'||SPM.has(o)||o.hi||o.hiP||o.so||o.fbase||o.bif||o.qmask||o.preview||o.dx||o.dy)return false;const c=Object.getOwnPropertyDescriptor(o,'canvas');
+  return !!(c&&'value' in c&&c.value&&c.value.getContext&&!c.value.__sp&&c.value.width===w&&c.value.height===h)}
+/* the canvases worth looking at, each with every layer object that holds it */
+function spCandidates(){const m=new Map(),bad=new Set();const d=S.doc,keep=new Set([d&&d.sel]);
+  for(const [o,w,h] of spAllLayers()){const c=Object.getOwnPropertyDescriptor(o,'canvas');const C=c&&c.value;if(o.mask)keep.add(o.mask);if(!C||SPM.has(o))continue;if(!spOK(o,w,h)){bad.add(C);continue}let a=m.get(C);if(!a)m.set(C,a=[]);a.push(o)}
+  const out=[];for(const [C,a] of m){if(bad.has(C)||keep.has(C))continue;const k=SPCHK.get(C);if(k!=null&&k===(C._v|0))continue;out.push([C,a])}return out}
+function spCompact(C,refs,b){const s=spMake(C,b);if(!s){SPCHK.set(C,C._v|0);return false}for(const o of refs)spAttach(o,s);SPARSE.stats.compact++;return true}
+/* the editor is idle: nothing is being drawn, dragged, transformed, saved, computed or edited in a dialog */
+function spIdle(){if(!S.doc||S.stroke||S.drag||S.tf||S.sliding||SPARSE.down||(typeof SAVE!=='undefined'&&SAVE.running))return false;if($('#scrim'))return false;const b=$('#busy');if(b&&!b.hidden)return false;return true}
+function spSchedule(ms,act){if(act)SPARSE.act=performance.now();if(!SPARSE.on)return;clearTimeout(SPARSE.t);SPARSE.t=setTimeout(spRun,ms==null?SPARSE.delay:ms)}
+function spRun(){SPARSE.t=null;if(!SPARSE.on||!S.doc)return;if(!spIdle()||performance.now()-SPARSE.act<SPARSE.delay){SPARSE.job=null;spSchedule(500);return}
+  const t0=performance.now();while(performance.now()-t0<12){let j=SPARSE.job;
+    if(!j){const c=spCandidates();if(!c.length)return;const C=c[0][0];j=SPARSE.job={C,v:C._v|0,doc:S.doc,it:spBoxGen(C)}}
+    if(j.doc!==S.doc||(j.C._v|0)!==j.v){SPARSE.job=null;continue}
+    const r=j.it.next();if(!r.done)continue;SPARSE.job=null;const e=spCandidates().find(x=>x[0]===j.C);if(e)spCompact(j.C,e[1],r.value)}
+  SPARSE.stats.slice=Math.max(SPARSE.stats.slice,performance.now()-t0);spSchedule(16)}
+/* new pixels for content that a sparse store holds (a text redrawn once its font arrives): every layer object sharing the store follows, as they shared the canvas before */
+function spReplace(s,C){const ns=spMake(C);for(const [o] of spAllLayers())if(SPM.get(o)===s){if(ns)spAttach(o,ns);else spPlain(o,C)}}
+SPARSE.compactAll=async()=>{SPARSE.job=null;let n=0;for(const [C,refs] of spCandidates())if(spCompact(C,refs))n++;return n};
+SPARSE.run=spRun;SPARSE.schedule=spSchedule;
+/* alpha of one pixel of a layer, without rebuilding a sparse one */
+function lAlpha(L,x,y){const c=lcv(L);if(!c)return 0;if(c.__sp){x-=c.__sx;y-=c.__sy;if(x<0||y<0||x>=c.width||y>=c.height)return 0}return rx(c).getImageData(x,y,1,1).data[3]}
+/* memory held by a layer's pixels (cropped canvas when sparse) */
+function layerBytes(L){const c=lcv(L);let b=c&&c.width?c.width*c.height*4:0;if(L.mask)b+=L.mask.width*L.mask.height*4;if(L.hi)b+=L.hi.byteLength||0;return b}
+SPARSE.bytes=(d=S.doc)=>{if(!d)return 0;const seen=new Set();let b=0;const add=c=>{if(c&&!seen.has(c)){seen.add(c);b+=(c.width*c.height*4)||0}};
+  for(const L of d.layers){add(lcv(L));add(L.mask);if(L.hi&&!seen.has(L.hi)){seen.add(L.hi);b+=L.hi.byteLength}}return b};
+addEventListener('pointerdown',()=>{SPARSE.down=true;SPARSE.act=performance.now()},true);
+addEventListener('pointerup',()=>{SPARSE.down=false;SPARSE.act=performance.now();spSchedule()},true);
+addEventListener('pointercancel',()=>{SPARSE.down=false},true);addEventListener('blur',()=>{SPARSE.down=false});
+addEventListener('keydown',()=>{SPARSE.act=performance.now()},true);
 /* ================= stack rendering ================= */
-function markComp(){S.docVer++;S.contentDirty=true;requestRender();scheduleThumbs()}
+function markComp(){S.docVer++;S.contentDirty=true;requestRender();scheduleThumbs();spSchedule(null,true)}
 function markContent(){S.contentDirty=true;requestRender()}
 // panning: when a full redraw is slow, the last frame slides with the pointer and the photo is redrawn at a steady pace (and once the pointer stops)
 function panTo(nx,ny){const dx=nx-S.panX,dy=ny-S.panY;S.panX=nx;S.panY=ny;const now=performance.now();
   if(S.workPos&&(S.contentMs||0)>24&&now-(S.panRedraw||0)<160){S.workPos.x+=Math.round(dx*S.pr);S.workPos.y+=Math.round(dy*S.pr);requestRender();clearTimeout(S.panT);S.panT=setTimeout(markContent,90);return}
   S.panRedraw=now;markContent()}
-function layerSrc(L){if(L.preview)return L.preview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='pixel')return st.liveCanvas();return L.canvas}
+function layerSrc(L){if(L.preview)return L.preview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='pixel')return st.liveCanvas();return lcv(L)}
 function maskSrc(L){if(L.maskPreview)return L.maskPreview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='mask')return st.liveCanvas();return L.mask}
 const scratch={};function scr(name,w,h){let c=scratch[name];if(!c||c.width!==w||c.height!==h){c=scratch[name]=mk(w,h)}return c}
 const stackCache={key:'',c:null};
@@ -948,9 +1026,9 @@ function renderStack(tc,W,H,T,o){const d=S.doc;tc.setTransform(1,0,0,1,0,0);tc.g
     if(L.kind==='adjust'){if(o.before||devIsId(L.dev))continue;const ms=maskSrc(L);let mc=null;if(ms){mc=scr('am',W,H);const g=cx(mc);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.imageSmoothingEnabled=true;g.setTransform(...T);drawMip(g,ms,0,0,o.scale,ms===L.mask);g.setTransform(1,0,0,1,0,0)}
       applyAdjust(tc,W,H,L,mc,o);continue}
     const src=layerSrc(L),ms=L.mask?maskSrc(L):null;tc.setTransform(...T);
-    if(ms){const t=scr('lm',W,H),g=cx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.setTransform(...T);drawMip(g,src,L.dx||0,L.dy||0,o.scale,src===L.canvas||src.__fx);g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,L.dx||0,L.dy||0,o.scale,ms===L.mask);g.globalCompositeOperation='source-over';g.setTransform(1,0,0,1,0,0);
+    if(ms){const t=scr('lm',W,H),g=cx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.setTransform(...T);drawMip(g,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx);g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,L.dx||0,L.dy||0,o.scale,ms===L.mask);g.globalCompositeOperation='source-over';g.setTransform(1,0,0,1,0,0);
       tc.setTransform(1,0,0,1,0,0);tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;tc.drawImage(t,0,0)}
-    else{tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;drawMip(tc,src,L.dx||0,L.dy||0,o.scale,src===L.canvas||src.__fx)}
+    else{tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;drawMip(tc,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx)}
     tc.globalAlpha=1;tc.globalCompositeOperation='source-over';tc.setTransform(1,0,0,1,0,0)}}
 function applyAdjust(tc,W,H,L,mc,o){const po={scale:o.scale,ox:o.ox,oy:o.oy,docW:S.doc.w,docH:S.doc.h};
   if(GPU.ok&&W<=GPU.max&&H<=GPU.max&&W*H<=(GPU.area||Infinity)){try{const out=GPU.develop(tc.canvas,L.dev,mc,L.opacity,po);tc.setTransform(1,0,0,1,0,0);tc.globalCompositeOperation='copy';tc.drawImage(out,0,0);tc.globalCompositeOperation='source-over';return}catch(e){console.warn(e);GPU.ok=false}}
@@ -1065,11 +1143,11 @@ function beginStroke(p,e){const d=S.doc,t=S.tool,A=AL();if(!A)return;const o=S.o
   if((t==='brush'||t==='eraser')&&((A.kind==='adjust'&&A.mask)||(A.mask&&A.editMask))){L=A;target='mask'}
   else{L=pixelTarget();if(!L){toast('Aucun calque de pixels à retoucher');return}}
   if(!L.visible){toast('Ce calque est masqué');return}
-  const st={tool:t,layer:L,target,last:p,bounds:{x0:p.x,y0:p.y,x1:p.x,y1:p.y},pressure:1};
+  const st={tool:t,layer:L,target,last:p,bounds:{x0:p.x,y0:p.y,x1:p.x,y1:p.y},pressure:1,col:S.color};
   if(t==='clone'||(t==='heal'&&o.mode==='source')){if(!S.cloneSrc){toast(ALT+'+clic pour définir la zone source');return}if(t==='heal'||!o.aligned||!S.cloneOff)S.cloneOff={x:S.cloneSrc.x-p.x,y:S.cloneSrc.y-p.y};st.off={...S.cloneOff}}
-  if(t==='dodge'){editCanvas(L);st.selData=null;st.selC=d.sel?rx(d.sel):null;st.ctx=rx(L.canvas);S.stroke=st;dab(st,p);markComp();return}
+  if(t==='dodge'){st.hiL=hiTake(L);editCanvas(L);st.selData=null;st.selC=d.sel?rx(d.sel):null;st.ctx=rx(L.canvas);S.stroke=st;dab(st,p);markComp();return}
   st.canvas=mk(d.w,d.h);st.g=cx(st.canvas);st.live=true;st.opacity=o.opacity??1;
-  if(t==='clone'){st.src=S.opts.clone.all?cloneC(flatSync()):L.canvas;st.dabC=mk(Math.ceil(o.size)+2,Math.ceil(o.size)+2);st.mask=stampFor(o.size,o.hardness,'#000')}
+  if(t==='clone'){st.self=!S.opts.clone.all;st.src=st.self?L.canvas:cloneC(flatSync());st.dabC=mk(Math.ceil(o.size)+2,Math.ceil(o.size)+2);st.mask=stampFor(o.size,o.hardness,'#000')}
   else if(t==='heal'||t==='remove'){st.target='heal';st.live=false;st.stamp=stampFor(o.size,t==='remove'?0.9:o.hardness,'#ffffff');st.opacity=1}
   else st.stamp=stampFor(o.size,o.hardness,(t==='eraser'||target==='mask')?'#ffffff':S.color);
   // the layer as it will be once the stroke is applied; after the first frame only the area the new dabs touched is recomposed
@@ -1094,11 +1172,15 @@ function pixelDab(st,p){const d=S.doc,o=S.opts.dodge,r=o.size/2,x0=Math.max(0,Ma
   st.ctx.putImageData(img,x0,y0)}
 async function endStroke(){const st=S.stroke;if(!st)return;S.stroke=null;const L=st.layer;
   if(st.tool==='dodge'){markComp();pushHistory({dodge:'Densité −',burn:'Densité +',blur:'Goutte d’eau',sharpen:'Netteté',saturate:'Éponge (saturer)',desaturate:'Éponge (désaturer)'}[S.opts.dodge.mode]);return}
-  if(st.tool==='heal'){busy(true,'Correction…');await tick();let ok=true;const prevC=L.canvas;try{editCanvas(L);ok=healRegion(L,st.canvas,st.bounds,S.opts.heal.mode==='source'?st.off:null)!==false}finally{busy(false)}if(!ok){L.canvas=prevC;markComp();return}markComp();pushHistory(S.opts.heal.mode==='spot'?'Correcteur localisé':'Correcteur');return}
+  if(st.tool==='heal'){busy(true,'Correction…');await tick();let ok=true;const prevC=L.canvas;try{const H=hiTake(L);editCanvas(L);ok=healRegion(L,st.canvas,st.bounds,S.opts.heal.mode==='source'?st.off:null,H)!==false}finally{busy(false)}if(!ok){L.canvas=prevC;markComp();return}markComp();pushHistory(S.opts.heal.mode==='spot'?'Correcteur localisé':'Correcteur');return}
   if(st.tool==='remove'){requestRender();await removeObject(L,st.canvas,st.bounds);return}
   const m=maskedStroke(st);if(st.target==='mask'){const g=editMask(L);g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(m,0,0)}
-  else{const g=editCanvas(L);g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(m,0,0)}
+  else{const H=hiTake(L),g=editCanvas(L);g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(m,0,0);if(H)hiStroke(st,L,m)}
   [st.tmp,st.m].forEach(c=>{if(c&&c!==L.canvas&&c!==L.mask){c.width=c.height=0}});st.live=false;markComp();pushHistory(st.target==='mask'?(st.tool==='eraser'?'Masque : retirer':'Masque : ajouter'):{brush:'Pinceau',eraser:'Gomme',clone:'Tampon de duplication'}[st.tool]);syncLayers()}
+/* 16-bit layer: the same composite in float over its 16-bit pixels (the brush keeps its exact colour, the clone stamp copies the 16-bit source) */
+function hiStroke(st,L,m){const b=st.bounds,pad=Math.max(st.stamp?st.stamp.width:0,st.dabC?st.dabC.width:0,S.opts[st.tool].size||0)/2+4,ox=st.off?Math.round(st.off.x):0,oy=st.off?Math.round(st.off.y):0;
+  const src=st.tool==='clone'?hiSrc(m,null,st.self?(x,y,w,h)=>hiRead(L,x+ox,y+oy,w,h):null):hiSrc(m,st.tool==='eraser'?[0,0,0]:hexRGB(st.col||S.color));
+  hiComp(L,{x0:b.x0-pad,y0:b.y0-pad,x1:b.x1+pad,y1:b.y1+pad},src,st.opacity,st.tool==='eraser')}
 function cancelDrag(){const dr=S.drag;S.drag=null;if(!dr)return;if(dr.type==='move'&&dr.L){dr.L.dx=0;dr.L.dy=0}if(dr.type==='gradient'&&dr.target){delete dr.target.preview;delete dr.target.maskPreview}if(dr.type==='pen'&&typeof penCancelDrag==='function')penCancelDrag(dr);if(dr.type==='shape'&&dr.L){const d=S.doc,i=d?d.layers.indexOf(dr.L):-1;if(i>=0){d.layers.splice(i,1);d.active=Math.max(0,Math.min(d.active-1,d.layers.length-1))}delete dr.L.preview;PV.delete(dr.L.id);syncAll()}markComp()}
 function cancelStroke(){if(!S.stroke)return;const st=S.stroke;S.stroke=null;if(st.tool==='dodge')restore(S.hi);markComp()}
 
@@ -1494,8 +1576,8 @@ function syncLayers(){const p=$('#pane-layers'),d=S.doc;if(!d){p.innerHTML='<p c
     <button class="ib" data-la="del" title="Supprimer" aria-label="Supprimer le calque" style="margin-left:auto"><svg viewBox="0 0 20 20"><path d="M4 6h12M8 6V4h4v2M5.5 6l.8 10.5h7.4L14.5 6"/></svg></button></div>
     <p class="note">Les calques de réglage modifient tout ce qui se trouve en dessous et restent modifiables à tout moment. Cliquez sur la vignette noire et blanche pour peindre le masque. Double-clic sur un nom pour le renommer.</p>`;
   const op=$('#lyOp');op.oninput=()=>{L.opacity=op.value/100;op.nextElementSibling.textContent=op.value+' %';markComp()};op.onchange=()=>{pushHistory('Opacité du calque');syncLayers()};$('#lyBlend').onchange=e=>{L.blend=e.target.value;markComp();pushHistory('Mode de fusion');syncLayers()};drawLayerThumbs()}
-const THC=new WeakMap();function drawLayerThumbs(){const d=S.doc;if(!d)return;const fitDraw=(c,src,bg)=>{const g=cx(c);g.clearRect(0,0,c.width,c.height);if(bg){g.fillStyle=bg;g.fillRect(0,0,c.width,c.height)}const key=c.width+'x'+c.height+'|'+(bg||'')+'|'+d.w+'x'+d.h,ce=THC.get(src);if(ce&&ce.key===key){g.drawImage(ce.c,0,0);return}const s=Math.min(c.width/d.w,c.height/d.h);g.imageSmoothingQuality='high';g.drawImage(mipLevel(src,s),(c.width-d.w*s)/2,(c.height-d.h*s)/2,d.w*s,d.h*s);const tc=mk(c.width,c.height);cx(tc).drawImage(c,0,0);THC.set(src,{key,c:tc})};
-  $$('[data-th]').forEach(c=>{const L=d.layers[+c.dataset.th];if(L&&L.canvas)fitDraw(c,L.canvas)});$$('[data-mth]').forEach(c=>{const L=d.layers[+c.dataset.mth];if(L&&L.mask)fitDraw(c,L.mask,'#000')})}
+const THC=new WeakMap();function drawLayerThumbs(){const d=S.doc;if(!d)return;const fitDraw=(c,src,bg)=>{const g=cx(c);g.clearRect(0,0,c.width,c.height);if(bg){g.fillStyle=bg;g.fillRect(0,0,c.width,c.height)}const key=c.width+'x'+c.height+'|'+(bg||'')+'|'+d.w+'x'+d.h,ce=THC.get(src);if(ce&&ce.key===key){g.drawImage(ce.c,0,0);return}const s=Math.min(c.width/d.w,c.height/d.h);g.imageSmoothingQuality='high';const ox=(c.width-d.w*s)/2,oy=(c.height-d.h*s)/2;if(src.__sp)g.drawImage(mipLevel(src,s),ox+src.__sx*s,oy+src.__sy*s,src.width*s,src.height*s);else g.drawImage(mipLevel(src,s),ox,oy,d.w*s,d.h*s);const tc=mk(c.width,c.height);cx(tc).drawImage(c,0,0);THC.set(src,{key,c:tc})};
+  $$('[data-th]').forEach(c=>{const L=d.layers[+c.dataset.th];if(L&&lcv(L))fitDraw(c,lcv(L))});$$('[data-mth]').forEach(c=>{const L=d.layers[+c.dataset.mth];if(L&&L.mask)fitDraw(c,L.mask,'#000')})}
 $('#pane-layers').addEventListener('click',e=>{const d=S.doc;if(!d)return;const ey=e.target.closest('[data-eye]');if(ey){const L=d.layers[+ey.dataset.eye];L.visible=!L.visible;markComp();pushHistory(L.visible?'Afficher le calque':'Masquer le calque');syncLayers();return}
   const la=e.target.closest('[data-la]');if(la){({add:addLayer,adj:()=>addAdjust('global'),mask:()=>addMask(true),dup:dupLayer,up:()=>moveLayer(1),down:()=>moveLayer(-1),merge:mergeDown,del:delLayer})[la.dataset.la]();return}
   const li=e.target.closest('.lyr');if(li&&!e.target.closest('input')){const nm=e.target.closest('[data-nm]');if(e.detail===2&&nm){clearTimeout(lthT);startRename(+nm.dataset.nm);return}const was=d.active,L0=AL(),em=L0&&L0.editMask;d.active=+li.dataset.i;const L=AL();const pk=e.target.closest('[data-pick]');if(L.kind==='pixel'&&L.mask&&pk)L.editMask=pk.dataset.pick==='mask';if(was!==d.active||L.editMask!==em)syncAll()}});
@@ -1713,17 +1795,18 @@ const TILE=2048,encCache=new WeakMap(),PIN=new Set();let PINLOG=null;const pin=k
 function checkDims(m){if(!m||!(Number.isInteger(m.w)&&Number.isInteger(m.h)&&m.w>0&&m.h>0&&m.w<=65536&&m.h<=65536))throw new Error('projet illisible (dimensions invalides)');return m}
 const toBlob=(c,type='image/png',q)=>new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('encodage')),type,q));
 async function encodeCanvas(c){const hit=encCache.get(c);if(hit)return hit;const tiles=[];
-  for(let y=0;y<c.height;y+=TILE)for(let x=0;x<c.width;x+=TILE){const w=Math.min(TILE,c.width-x),h=Math.min(TILE,c.height-y),t=mk(w,h);cx(t).drawImage(c,x,y,w,h,0,0,w,h);const key='t_'+uid8();pin(key);await IDB.put('blobs',key,await toBlob(t));tiles.push({x,y,w,h,key});await tick()}
+  const ox=c.__sp?c.__sx:0,oy=c.__sp?c.__sy:0; // a sparse layer's cropped canvas: its tiles are placed in photo coordinates, so older versions load it too
+  for(let y=0;y<c.height;y+=TILE)for(let x=0;x<c.width;x+=TILE){const w=Math.min(TILE,c.width-x),h=Math.min(TILE,c.height-y),t=mk(w,h);cx(t).drawImage(c,x,y,w,h,0,0,w,h);const key='t_'+uid8();pin(key);await IDB.put('blobs',key,await toBlob(t));tiles.push({x:x+ox,y:y+oy,w,h,key});await tick()}
   encCache.set(c,tiles);return tiles}
 async function decodeTiles(tiles,w,h,getBlob){const c=mk(w,h),g=cx(c);for(const t of tiles){const b=await getBlob(t);if(!b)throw new Error('tuile manquante');const bm=await createImageBitmap(b);g.drawImage(bm,t.x,t.y);bm.close&&bm.close()}return c}
 async function projectThumb(){const d=S.doc,s=Math.min(1,480/Math.max(d.w,d.h));const c=await renderDoc(s);const o=mk(c.width,c.height),g=cx(o);g.fillStyle='#808080';g.fillRect(0,0,o.width,o.height);g.drawImage(c,0,0);return toBlob(o,'image/jpeg',0.82)}
 async function buildManifest(d=S.doc){const layers=[],meta=S.meta||'',name=d.name,active=d.active,src=d.layers.slice(),W=d.w,H=d.h,thumbB=await projectThumb(); // snapshot: d can change across the awaits
   for(const L of src){const e={id:L.id,kind:L.kind,name:L.name,visible:L.visible!==false,opacity:L.opacity,blend:L.blend,editMask:!!L.editMask,...xtra(L)};
-    if(L.kind==='adjust')e.dev=JSON.parse(JSON.stringify(L.dev));if(L.canvas)e.canvas=await encodeCanvas(L.canvas);if(L.hi){try{e.hi=await encodeHi(L)}catch(err){console.warn(err)}}e.mask=L.mask?await encodeCanvas(L.mask):null;if(L.so&&L.so.out===L.canvas){try{e.so={t:await encodeCanvas(L.so.src),m:{...L.so.m}}}catch(err){console.warn(err)}}if(L.fbase&&L.filters&&L.filters.length&&L.fout===L.canvas){try{e.fbase=await encodeCanvas(L.fbase);e.filters=JSON.parse(JSON.stringify(L.filters))}catch(err){console.warn(err)}}layers.push(e)}
+    if(L.kind==='adjust')e.dev=JSON.parse(JSON.stringify(L.dev));if(lcv(L))e.canvas=await encodeCanvas(lcv(L));if(L.hi){try{e.hi=await encodeHi(L)}catch(err){console.warn(err)}}e.mask=L.mask?await encodeCanvas(L.mask):null;if(L.so&&L.so.out===L.canvas){try{e.so={t:await encodeCanvas(L.so.src),m:{...L.so.m}}}catch(err){console.warn(err)}}if(L.fbase&&L.filters&&L.filters.length&&L.fout===L.canvas){try{e.fbase=await encodeCanvas(L.fbase);e.filters=JSON.parse(JSON.stringify(L.filters))}catch(err){console.warn(err)}}layers.push(e)}
   const tk='t_'+uid8();pin(tk);await IDB.put('blobs',tk,thumbB);
   return{v:1,app:'revelateur',id:d.pid,name,w:W,h:H,active,meta,space:d.space||'srgb',lib:d.lib||null,exif:d.exif?b64enc(d.exif):null,path:d.path?JSON.parse(JSON.stringify(d.path)):null,raw:d.raw?{key:d.raw.key,name:d.raw.name,set:d.raw.set,w:d.raw.w,h:d.raw.h}:null,updatedAt:Date.now(),device:DEVICE,sync:!!d.sync,thumb:tk,guides:(d.guides&&(d.guides.v.length||d.guides.h.length))?{v:d.guides.v.slice(),h:d.guides.h.slice()}:null,layers}}
 function manifestKeys(m){const k=new Set();if(m.thumb)k.add(m.thumb);if(m.raw&&m.raw.key)k.add(m.raw.key);(m.layers||[]).forEach(L=>{(L.canvas||[]).forEach(t=>k.add(t.key));(L.mask||[]).forEach(t=>k.add(t.key));(L.hi||[]).forEach(t=>k.add(t.key));(L.fbase||[]).forEach(t=>k.add(t.key));((L.so&&L.so.t)||[]).forEach(t=>k.add(t.key))});return k}
-async function gcBlobs(){const ms=await IDB.all('projects'),keep=new Set();ms.forEach(m=>manifestKeys(m).forEach(k=>keep.add(k)));PIN.forEach(k=>keep.add(k));if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [L.canvas,L.mask,L.fbase,L.so&&L.so.src]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}const hk=await (window.PrismHist?PrismHist.keep(keep,ms):[]);const all=await IDB.keys('blobs');for(const k of all)if(!keep.has(k)&&!String(k).startsWith('icc_')&&!hk.includes(k)){await IDB.del('blobs',k);await IDB.del('amap',k).catch(()=>{})}}
+async function gcBlobs(){const ms=await IDB.all('projects'),keep=new Set();ms.forEach(m=>manifestKeys(m).forEach(k=>keep.add(k)));PIN.forEach(k=>keep.add(k));if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [lcv(L),L.mask,L.fbase,L.so&&L.so.src]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}const hk=await (window.PrismHist?PrismHist.keep(keep,ms):[]);const all=await IDB.keys('blobs');for(const k of all)if(!keep.has(k)&&!String(k).startsWith('icc_')&&!hk.includes(k)){await IDB.del('blobs',k);await IDB.del('amap',k).catch(()=>{})}}
 
 const SAVE={timer:null,running:false,again:false,state:'idle',err:''};
 function scheduleSave(ms=2500){const d=S.doc;if(!d||d.nosave||(S.sample&&S.hi<1&&!d.saved))return;clearTimeout(SAVE.timer);SAVE.timer=setTimeout(()=>{SAVE.timer=null;saveNow()},ms);setSaveState('pending')}
@@ -1735,7 +1818,7 @@ async function saveNow(quiet=true){clearTimeout(SAVE.timer);SAVE.timer=null;cons
   finally{PINLOG=null;SAVE.running=false;if(SAVE.again){SAVE.again=false;scheduleSave(400)}}}
 async function loadManifest(m,getBlob){checkDims(m);busy(true,'Ouverture du projet…',0);const cs0=CS;setCS(m.space||'srgb');try{const layers=[];let i=0;
     for(const e of m.layers){const L={id:S.nextId++,kind:e.kind,name:e.name,visible:e.visible!==false,opacity:e.opacity??1,blend:e.blend||'source-over',editMask:!!e.editMask,mask:null,...xtra(e)};
-      if(e.kind==='adjust')L.dev=Object.assign(DEV0(),e.dev||{});if(e.canvas){L.canvas=await decodeTiles(e.canvas,m.w,m.h,getBlob);encCache.set(L.canvas,e.canvas)}
+      if(e.kind==='adjust')L.dev=Object.assign(DEV0(),e.dev||{});if(e.canvas)await loadLayerCanvas(L,e,m.w,m.h,getBlob);
       if(e.mask){L.mask=await decodeTiles(e.mask,m.w,m.h,getBlob);encCache.set(L.mask,e.mask)}if(e.so&&L.canvas){try{const sc=await decodeTiles(e.so.t,m.w,m.h,getBlob);encCache.set(sc,e.so.t);L.so={src:sc,m:e.so.m,out:L.canvas}}catch(err){console.warn(err)}}if(e.fbase&&e.filters&&L.canvas){try{L.fbase=await decodeTiles(e.fbase,m.w,m.h,getBlob);encCache.set(L.fbase,e.fbase);L.filters=e.filters;L.fout=L.canvas}catch(err){console.warn(err)}}if(e.hi&&L.canvas){try{L.hi=await decodeHi(e.hi,m.w,m.h,getBlob);L.hiC=L.canvas;hiEnc.set(L.hi,e.hi)}catch(err){console.warn(err)}}layers.push(L);busy(true,'Ouverture du projet…',++i/m.layers.length)}
     S.doc={w:m.w,h:m.h,name:m.name,layers,active:clamp(m.active??layers.length-1,0,layers.length-1),sel:null,pid:m.id,sync:!!m.sync,saved:true,guides:m.guides?{v:(m.guides.v||[]).slice(),h:(m.guides.h||[]).slice()}:null,updatedAt:m.updatedAt,lib:m.lib||null,exif:m.exif?b64dec(m.exif):null,space:CS,path:m.path||null,raw:m.raw&&m.raw.key?{...m.raw}:null};
     S.sample=false;S.meta=m.meta||'';S.history=[];S.hi=-1;S.crop=null;S.cloneSrc=null;S.cloneOff=null;S.maxHist=clamp(Math.floor(HIST_BUDGET/(m.w*m.h*4)),3,40);AI.subjectCache=null;
@@ -1816,7 +1899,7 @@ async function renderProjects(){const g=$('#projGrid'),sy=$('#pjSync');if(!g)ret
     if(act==='open'){closeDialog();await flushSave();if(p.local)await openLocalProject(id);else await Cloud.open(id);return}
     if(act==='rename'){const n=prompt('Nouveau nom du projet',p.name);if(!n||!n.trim())return;if(S.doc&&S.doc.pid===id){S.doc.name=n.trim();updateDocName();await saveNow()}else if(p.local){p.local.name=n.trim();p.local.updatedAt=Date.now();await IDB.put('projects',id,p.local);if(p.local.sync)Cloud.push(p.local)}else if(p.cloud){await Cloud.col.doc(id).update({name:n.trim()})}renderProjects();return}
     if(act==='del'){if(!await askConfirm(`Supprimer « ${p.name} »${p.cloud?' de cet appareil et de votre compte':''} ? Cette action est définitive.`,{ok:'Supprimer',danger:true}))return;
-      await IDB.del('projects',id).catch(()=>{});if(p.cloud)await Cloud.remove(id).catch(e=>toast('Suppression du compte impossible : '+(e.code||e.message)));if(S.doc&&S.doc.pid===id){clearTimeout(SAVE.timer);SAVE.timer=null;for(const L of S.doc.layers){L.canvas&&encCache.delete(L.canvas);L.mask&&encCache.delete(L.mask)}S.doc.pid=uid8();S.doc.saved=false;S.doc.sync=false;S.doc.raw=null;setSaveState('idle')}gcBlobs().catch(()=>{});renderProjects();return}
+      await IDB.del('projects',id).catch(()=>{});if(p.cloud)await Cloud.remove(id).catch(e=>toast('Suppression du compte impossible : '+(e.code||e.message)));if(S.doc&&S.doc.pid===id){clearTimeout(SAVE.timer);SAVE.timer=null;for(const L of S.doc.layers){lcv(L)&&encCache.delete(lcv(L));L.mask&&encCache.delete(L.mask)}S.doc.pid=uid8();S.doc.saved=false;S.doc.sync=false;S.doc.raw=null;setSaveState('idle')}gcBlobs().catch(()=>{});renderProjects();return}
     if(act==='sync'){const on=!(p.cloud||(p.local&&p.local.sync));if(S.doc&&S.doc.pid===id){S.doc.sync=on;if(on)await saveNow();else{await saveNow();await Cloud.remove(id).catch(()=>{})}}
       else if(p.local){p.local.sync=on;await IDB.put('projects',id,p.local);if(on)await Cloud.push(p.local);else await Cloud.remove(id).catch(()=>{})}
       else if(p.cloud&&!on){if(!await cloudToLocal(id))return;await Cloud.remove(id).catch(()=>{})}
@@ -2073,8 +2156,8 @@ function convertSpace(cs){const d=S.doc;if(!d)return;if(cs==='display-p3'&&!P3_O
 const MIP=new WeakMap();
 function mipLevel(src,scale){if(scale>=0.5||src.width*src.height<4e6)return src;let e=MIP.get(src);if(!e){e=[];MIP.set(src,e)}
   let cur=src,k=0;while(scale<0.5/(1<<k)&&cur.width>64&&cur.height>64){let n=e[k];if(!n){n=mk(Math.max(1,cur.width>>1),Math.max(1,cur.height>>1));const g=cx(n);g.imageSmoothingQuality='high';g.drawImage(cur,0,0,n.width,n.height);e[k]=n}cur=n;k++}return cur}
-function drawMip(g,src,x,y,scale,ok){const s=ok?mipLevel(src,scale):src;if(s===src)g.drawImage(src,x,y);else g.drawImage(s,0,0,s.width,s.height,x,y,src.width,src.height)}
-function mipForget(){const L=AL();if(L&&L.kind==='pixel'){L.canvas&&MIP.delete(L.canvas);L.mask&&MIP.delete(L.mask)}const st=S.stroke;if(st&&st.layer){st.layer.canvas&&MIP.delete(st.layer.canvas);st.layer.mask&&MIP.delete(st.layer.mask)}}
+function drawMip(g,src,x,y,scale,ok){if(src.__sp){x+=src.__sx;y+=src.__sy}const s=ok?mipLevel(src,scale):src;if(s===src)g.drawImage(src,x,y);else g.drawImage(s,0,0,s.width,s.height,x,y,src.width,src.height)}
+function mipForget(){const L=AL();if(L&&L.kind==='pixel'){lcv(L)&&MIP.delete(lcv(L));L.mask&&MIP.delete(L.mask)}const st=S.stroke;if(st&&st.layer){lcv(st.layer)&&MIP.delete(lcv(st.layer));st.layer.mask&&MIP.delete(st.layer.mask)}}
 
 /* ================= soft proofing (LittleCMS) ================= */
 function iccP3(){/* minimal ICC v4 Display P3 matrix/TRC profile */
@@ -2266,7 +2349,7 @@ async function rawDialog(){const d=S.doc;if(!d||!d.raw){toast('Disponible pour l
     buttons:[{label:'Annuler',onClick:end},{label:'Appliquer',primary:true,onClick:async el=>{closed=true;clearTimeout(t);if($('#rwDef',el).checked)PREF.set('rawDef',{...set});busy(true,'Développement en pleine résolution…',null);await tick();
       try{const c=rawDevelop(R,set,true);delete L.preview;const sp=c._cs||'srgb';if(sp!==prevSpace){setCS(sp);d.layers.forEach((X,i)=>{if(i>0&&X.canvas){const n=mk(X.canvas.width,X.canvas.height);cx(n).drawImage(X.canvas,0,0);X.canvas=n}});d.space=CS}
         let lc=c;if(c.width!==d.w||c.height!==d.h){lc=mk(d.w,d.h);const g=cx(lc);g.imageSmoothingQuality='high';g.drawImage(c,0,0,d.w,d.h)}else if((c._cs||'srgb')!==CS){lc=mk(d.w,d.h);cx(lc).drawImage(c,0,0)}
-        L.canvas=lc;if(c._hi&&c.width===d.w&&c.height===d.h){L.hi=c._hi;L.hiC=lc}else{L.hi=null;L.hiC=null}d.raw.set={...set};markComp();pushHistory('Développement RAW');updateDocName();toast('RAW redéveloppé'+(sp==='display-p3'?' en Display P3':''))}
+        L.canvas=lc;if(c._hi&&c.width===d.w&&c.height===d.h){L.hi=c._hi;L.hiP=null;L.hiC=lc}else{L.hi=null;L.hiP=null;L.hiC=null}d.raw.set={...set};markComp();pushHistory('Développement RAW');updateDocName();toast('RAW redéveloppé'+(sp==='display-p3'?' en Display P3':''))}
       catch(e){console.error(e);end();toast('Développement impossible : '+(e.message||e),5000)}finally{busy(false)}}}]})}
 
 /* ================= hooks into the editor ================= */
@@ -2288,22 +2371,69 @@ document.addEventListener('keydown',e=>{if(S.tool!=='pen'||!S.doc||$('#library')
 document.addEventListener('keydown',e=>{const tg=e.target;if($('#library')||(tg.closest&&tg.closest('input,textarea,select,[contenteditable]')))return;const mod=(e.metaKey||e.ctrlKey)&&!(e.getModifierState&&e.getModifierState('AltGraph'));
   if(mod&&e.code==='KeyY'&&e.shiftKey&&S.doc){e.preventDefault();e.stopPropagation();proofToggle();return}
   if(mod&&e.altKey&&e.code==='KeyR'&&S.doc){e.preventDefault();e.stopPropagation();refineDialog()}},true);
-const _restore=restore;restore=function(i){_restore(i);const d=S.doc;if(!d)return;const L=d.layers.find(l=>l.canvas);const cs=(L&&L.canvas._cs)||'srgb';if(cs!==(d.space||'srgb')||cs!==CS){d.space=cs;setCS(cs);markComp();updateDocName()}};
+const _restore=restore;restore=function(i){_restore(i);const d=S.doc;if(!d)return;const L=d.layers.find(l=>lcv(l));const cs=(L&&lcv(L)._cs)||'srgb';if(cs!==(d.space||'srgb')||cs!==CS){d.space=cs;setCS(cs);markComp();updateDocName()}};
 
 /* ================= 16-bit precision pipeline ================= */
 /* A pixel layer may carry L.hi (Uint16 RGBA, doc size, top-down) next to its 8-bit canvas. L.hiC is the canvas that matched L.hi when it was made:
-   pixels later edited in 8 bits (brush, heal…) differ from L.hiC and are taken from the canvas, everything else keeps its 16-bit value.
+   pixels later edited in 8 bits (filters…) differ from L.hiC and are taken from the canvas, everything else keeps its 16-bit value.
+   L.hiP (optional) holds HT px tiles painted at 16 bits over L.hi (see 16-bit painting below).
    Rendering runs in 32-bit float from the first layer to the last adjustment, and is dithered once at the end. */
 const PREC={on:PREF.get('hiPrec',true),fail:false};
 const precOK=()=>PREC.on&&!PREC.fail&&GPU.ok&&GPU.float;
 const docHasHi=d=>!!(d&&d.layers.some(L=>L.hi));
 const EFF=new Map();/* canvas -> merged hi, small LRU */
-function effHi(L){if(!L.hi)return null;if(L.canvas===L.hiC||!L.hiC)return L.hi;const hit=EFF.get(L.canvas);if(hit&&hit.hi===L.hi)return hit.a;
-  const w=L.canvas.width,h=L.canvas.height;if(L.hiC.width!==w||L.hiC.height!==h||L.hi.length!==w*h*4)return null;
-  const A=rx(L.canvas).getImageData(0,0,w,h).data,B=rx(L.hiC).getImageData(0,0,w,h).data,src=L.hi,o=new Uint16Array(src.length);
-  for(let i=0;i<A.length;i+=4){if(A[i]!==B[i]||A[i+1]!==B[i+1]||A[i+2]!==B[i+2]||A[i+3]!==B[i+3]){/* an 8-bit edit: add its change to the 16-bit value, so the fine detail around it survives */let v;v=src[i]+(A[i]-B[i])*257;o[i]=v<0?0:v>65535?65535:v;v=src[i+1]+(A[i+1]-B[i+1])*257;o[i+1]=v<0?0:v>65535?65535:v;v=src[i+2]+(A[i+2]-B[i+2])*257;o[i+2]=v<0?0:v>65535?65535:v;v=src[i+3]+(A[i+3]-B[i+3])*257;o[i+3]=v<0?0:v>65535?65535:v}else{o[i]=src[i];o[i+1]=src[i+1];o[i+2]=src[i+2];o[i+3]=src[i+3]}}
-  EFF.set(L.canvas,{hi:L.hi,a:o});while(EFF.size>2)EFF.delete(EFF.keys().next().value);return o}
-function hiForget(){const L=AL();if(L&&L.canvas)EFF.delete(L.canvas)}
+function effHi(L){if(!L.hi)return null;const P=L.hiP||null;if(!P&&(L.canvas===L.hiC||!L.hiC))return L.hi;const hit=EFF.get(L.canvas);if(hit&&hit.hi===L.hi&&hit.p===P)return hit.a;
+  const w=L.canvas.width,h=L.canvas.height;if(L.hi.length!==w*h*4||(L.hiC&&(L.hiC.width!==w||L.hiC.height!==h)))return null;
+  let src=L.hi,o;if(P){src=L.hi.slice();hiOver(src,P,w,h)}
+  if(L.canvas===L.hiC||!L.hiC)o=src;else{o=P?src:new Uint16Array(src.length);const A=rx(L.canvas).getImageData(0,0,w,h).data,B=rx(L.hiC).getImageData(0,0,w,h).data;
+  for(let i=0;i<A.length;i+=4){if(A[i]!==B[i]||A[i+1]!==B[i+1]||A[i+2]!==B[i+2]||A[i+3]!==B[i+3]){/* an 8-bit edit: add its change to the 16-bit value, so the fine detail around it survives */let v;v=src[i]+(A[i]-B[i])*257;o[i]=v<0?0:v>65535?65535:v;v=src[i+1]+(A[i+1]-B[i+1])*257;o[i+1]=v<0?0:v>65535?65535:v;v=src[i+2]+(A[i+2]-B[i+2])*257;o[i+2]=v<0?0:v>65535?65535:v;v=src[i+3]+(A[i+3]-B[i+3])*257;o[i+3]=v<0?0:v>65535?65535:v}else{o[i]=src[i];o[i+1]=src[i+1];o[i+2]=src[i+2];o[i+3]=src[i+3]}}}
+  EFF.set(L.canvas,{hi:L.hi,p:P,a:o});while(EFF.size>2)EFF.delete(EFF.keys().next().value);return o}
+function hiForget(){const L=AL(),c=L&&lcv(L);if(c)EFF.delete(c)}
+/* 16-bit painting: a tool on a 16-bit layer computes in float from the 16-bit pixels (0..255 scale) and stores the result as HT px Uint16 tiles in L.hiP,
+   copied on write, so history steps share every tile a stroke did not touch. The 8-bit canvas takes the rounded value wherever the 16-bit one changed,
+   then L.hiC moves to it: there is no 8-bit change left to merge, and soft strokes keep their fractions of a level. */
+const HT=256;
+function hiOver(a,P,w,h){for(const[k,t]of P.t){const tx=k%65536,ty=(k-tx)/65536,x0=tx*HT,y0=ty*HT,tw=Math.min(HT,w-x0),th=Math.min(HT,h-y0);for(let r=0;r<th;r++)a.set(t.subarray(r*HT*4,(r*HT+tw)*4),((y0+r)*w+x0)*4)}}
+/* call before editCanvas: the layer's pending 8-bit edits are folded into L.hi first. Returns L when the layer paints at 16 bits */
+function hiTake(L){const d=S.doc;if(!L||!L.hi||L.kind!=='pixel'||!d||!L.canvas||L.canvas.width!==d.w||L.canvas.height!==d.h||L.hi.length!==d.w*d.h*4)return null;
+  if(L.hiC&&L.canvas!==L.hiC){const e=effHi(L);if(!e)return null;L.hi=e;L.hiP=null}L.hiC=L.canvas;return L}
+/* the 16-bit pixels of a rectangle as floats 0..255 (0 outside the layer) */
+function hiRead(L,x0,y0,w,h,out){const W=L.canvas.width,H=L.canvas.height,A=L.hi,P=L.hiP&&L.hiP.t,k=1/257;out=out||new Float32Array(w*h*4);
+  for(let y=0;y<h;y++){const Y=y0+y,o=y*w*4;if(Y<0||Y>=H){out.fill(0,o,o+w*4);continue}const ty=(Y/HT)|0;
+    for(let x=0;x<w;){const X=x0+x;if(X<0||X>=W){const j=o+x*4;out[j]=out[j+1]=out[j+2]=out[j+3]=0;x++;continue}const tx=(X/HT)|0,e=Math.min(w,(tx+1)*HT-x0,W-x0),t=P&&P.get(ty*65536+tx);
+      let si=t?((Y-ty*HT)*HT+X-tx*HT)*4:(Y*W+X)*4;const s=t||A;for(let j=o+x*4,je=o+e*4;j<je;j++)out[j]=s[si++]*k;x=e}}return out}
+/* a write transaction: hiWrite(T,…) as many rectangles as needed (inside the layer; F floats 0..255, row stride fs px), then hiEnd(T) */
+function hiTx(L){return{L,m:new Map(L.hiP?L.hiP.t:undefined),own:new Set(),ch:false}}
+function hiWrite(T,x0,y0,w,h,F,fs){const L=T.L,W=L.canvas.width,H=L.canvas.height,A=L.hi;fs=fs||w;if(x0<0||y0<0||x0+w>W||y0+h>H||w<=0||h<=0)return;const g=rx(L.canvas),id=g.getImageData(x0,y0,w,h),c8=id.data;let any=false;
+  for(let ty=(y0/HT)|0;ty*HT<y0+h;ty++)for(let tx=(x0/HT)|0;tx*HT<x0+w;tx++){const k=ty*65536+tx,X0=Math.max(x0,tx*HT),Y0=Math.max(y0,ty*HT),X1=Math.min(x0+w,(tx+1)*HT,W),Y1=Math.min(y0+h,(ty+1)*HT,H);
+    let t=T.m.get(k),own=T.own.has(k);const bx=tx*HT,by=ty*HT;
+    for(let Y=Y0;Y<Y1;Y++){let f=((Y-y0)*fs+X0-x0)*4,j=((Y-y0)*w+X0-x0)*4,q=((Y-by)*HT+X0-bx)*4,p=(Y*W+X0)*4;
+      for(let X=X0;X<X1;X++,f+=4,j+=4,q+=4,p+=4){let v0=F[f]*257+.5,v1=F[f+1]*257+.5,v2=F[f+2]*257+.5,v3=F[f+3]*257+.5;
+        v0=v0<=0?0:v0>=65535?65535:v0|0;v1=v1<=0?0:v1>=65535?65535:v1|0;v2=v2<=0?0:v2>=65535?65535:v2|0;v3=v3<=0?0:v3>=65535?65535:v3|0;
+        if(t){if(v0===t[q]&&v1===t[q+1]&&v2===t[q+2]&&v3===t[q+3])continue}else if(v0===A[p]&&v1===A[p+1]&&v2===A[p+2]&&v3===A[p+3])continue;
+        if(!own){const n=new Uint16Array(HT*HT*4);if(t)n.set(t);else{const tw=Math.min(HT,W-bx),th=Math.min(HT,H-by);for(let r=0;r<th;r++)n.set(A.subarray(((by+r)*W+bx)*4,((by+r)*W+bx+tw)*4),r*HT*4)}t=n;T.m.set(k,t);T.own.add(k);own=true}
+        t[q]=v0;t[q+1]=v1;t[q+2]=v2;t[q+3]=v3;c8[j]=(v0*255+32895)>>>16;c8[j+1]=(v1*255+32895)>>>16;c8[j+2]=(v2*255+32895)>>>16;c8[j+3]=(v3*255+32895)>>>16;any=true}}}
+  if(any){g.putImageData(id,x0,y0);T.ch=true}}
+function hiEnd(T){const L=T.L;if(T.ch)L.hiP={t:T.m};L.hiC=L.canvas}
+/* composite a source over the 16-bit pixels inside box b, tile by tile: src(x,y,w,h) gives straight colour 0..255 and alpha 0..1 (or null where empty);
+   source-over with opacity op, or destination-out when erase, as the 8-bit canvas does */
+function hiComp(L,b,src,op,erase){const W=L.canvas.width,H=L.canvas.height,x0=Math.max(0,Math.floor(b.x0)),y0=Math.max(0,Math.floor(b.y0)),x1=Math.min(W,Math.ceil(b.x1)),y1=Math.min(H,Math.ceil(b.y1)),T=hiTx(L);let F=null;
+  for(let ty=(y0/HT)|0;ty*HT<y1;ty++)for(let tx=(x0/HT)|0;tx*HT<x1;tx++){const X0=Math.max(x0,tx*HT),Y0=Math.max(y0,ty*HT),w=Math.min(x1,(tx+1)*HT)-X0,h=Math.min(y1,(ty+1)*HT)-Y0;if(w<=0||h<=0)continue;
+    const C=src(X0,Y0,w,h);if(!C)continue;F=hiRead(L,X0,Y0,w,h,F&&F.length===w*h*4?F:null);
+    for(let j=0;j<F.length;j+=4){const sa=C[j+3]*op;if(sa<=0)continue;if(erase){F[j+3]*=1-sa;continue}
+      if(F[j+3]>=255){const t=1-sa;F[j]=C[j]*sa+F[j]*t;F[j+1]=C[j+1]*sa+F[j+1]*t;F[j+2]=C[j+2]*sa+F[j+2]*t;continue}
+      const da=F[j+3]/255,oa=sa+da*(1-sa),t=da*(1-sa);F[j]=(C[j]*sa+F[j]*t)/oa;F[j+1]=(C[j+1]*sa+F[j+1]*t)/oa;F[j+2]=(C[j+2]*sa+F[j+2]*t)/oa;F[j+3]=oa*255}
+    hiWrite(T,X0,Y0,w,h,F)}hiEnd(T)}
+/* source for hiComp from an 8-bit canvas: its alpha, with a flat colour col ([r,g,b]), the colours of cs(x,y,w,h) (floats), or its own colours */
+function hiSrc(m,col,cs){const g=rx(m);return(x,y,w,h)=>{const a=g.getImageData(x,y,w,h).data;let any=false;for(let j=3;j<a.length;j+=4)if(a[j]){any=true;break}if(!any)return null;
+  const o=new Float32Array(a.length),C=cs?cs(x,y,w,h):null;for(let j=0;j<a.length;j+=4){if(!a[j+3])continue;o[j+3]=a[j+3]/255;if(col){o[j]=col[0];o[j+1]=col[1];o[j+2]=col[2]}else if(C){o[j]=C[j];o[j+1]=C[j+1];o[j+2]=C[j+2]}else{o[j]=a[j];o[j+1]=a[j+1];o[j+2]=a[j+2]}}return o}}
+const hexRGB=h=>{const n=parseInt(String(h).slice(1),16);return[n>>16&255,n>>8&255,n&255]};
+/* stroke-time float copy of the 16-bit pixels (tiles loaded on demand) for tools that read what they just painted (smudge); commit() stores it */
+function hiWork(L){const m=new Map(),W=L.canvas.width,H=L.canvas.height,tile=k=>{let t=m.get(k);if(!t){const tx=k%65536,ty=(k-tx)/65536;t=hiRead(L,tx*HT,ty*HT,HT,HT);m.set(k,t)}return t};
+  const walk=(x0,y0,w,h,F,put)=>{for(let y=0;y<h;y++){const Y=y0+y;if(Y<0||Y>=H)continue;const ty=(Y/HT)|0;for(let x=0;x<w;){const X=x0+x;if(X<0||X>=W){x++;continue}const tx=(X/HT)|0,e=Math.min(w,(tx+1)*HT-x0,W-x0),t=tile(ty*65536+tx);
+    let q=((Y-ty*HT)*HT+X-tx*HT)*4;for(let j=(y*w+x)*4,je=(y*w+e)*4;j<je;j++,q++){if(put)t[q]=F[j];else F[j]=t[q]}x=e}}};
+  return{L,get(x0,y0,w,h,F){F=F||new Float32Array(w*h*4);walk(x0,y0,w,h,F,false);return F},set(x0,y0,w,h,F){walk(x0,y0,w,h,F,true)},
+    commit(){const T=hiTx(L);for(const[k,t]of m){const tx=k%65536,ty=(k-tx)/65536;hiWrite(T,tx*HT,ty*HT,Math.min(HT,W-tx*HT),Math.min(HT,H-ty*HT),t,HT)}hiEnd(T);m.clear()}}}
 /* half-size pyramid of a Uint16 RGBA image, for zoomed-out views */
 const HIMIP=new WeakMap();
 function hiLevel(a,w,h,scale){let lv=HIMIP.get(a);if(!lv){lv=[];HIMIP.set(a,lv)}let cur={a,w,h},k=0;while(scale<0.5/(1<<k)&&cur.w>64&&cur.h>64){let n=lv[k];
@@ -2320,8 +2450,8 @@ function sampleHi(a,dw,dh,T,W,H,dx,dy,out){const sc=Math.sqrt(Math.abs(T[0]*T[3]
       out[j]=A[p00]*w00+A[p10]*w10+A[p01]*w01+A[p11]*w11;out[j+1]=A[p00+1]*w00+A[p10+1]*w10+A[p01+1]*w01+A[p11+1]*w11;out[j+2]=A[p00+2]*w00+A[p10+2]*w10+A[p01+2]*w01+A[p11+2]*w11;out[j+3]=A[p00+3]*w00+A[p10+3]*w10+A[p01+3]*w01+A[p11+3]*w11}}return out}
 /* geometric ops: transform L.hi with the same matrix as the canvas (doc -> new doc) */
 let TFM=null;
-function hiXform(L,eff,ow,oh,nw,nh,M){if(!eff){L.hi=null;L.hiC=null;return}const F=sampleHi(eff,ow,oh,[M.a,M.b,M.c,M.d,M.e,M.f],nw,nh,0,0),o=new Uint16Array(nw*nh*4);
-  for(let y=0;y<nh;y++){const r=(nh-1-y)*nw*4,q=y*nw*4;for(let i=0;i<nw*4;i++){const v=F[r+i];o[q+i]=v<=0?0:v>=1?65535:(v*65535+0.5)|0}}L.hi=o;L.hiC=L.canvas}
+function hiXform(L,eff,ow,oh,nw,nh,M){if(!eff){L.hi=null;L.hiP=null;L.hiC=null;return}const F=sampleHi(eff,ow,oh,[M.a,M.b,M.c,M.d,M.e,M.f],nw,nh,0,0),o=new Uint16Array(nw*nh*4);
+  for(let y=0;y<nh;y++){const r=(nh-1-y)*nw*4,q=y*nw*4;for(let i=0;i<nw*4;i++){const v=F[r+i];o[q+i]=v<=0?0:v>=1?65535:(v*65535+0.5)|0}}L.hi=o;L.hiP=null;L.hiC=L.canvas}
 /* float buffers (bottom-up) <-> 8-bit */
 function floatFromCanvas(c,W,H,out){const a=rx(c).getImageData(0,0,W,H).data;out=out||new Float32Array(W*H*4);const k=1/255;for(let y=0;y<H;y++){const r=(H-1-y)*W*4,q=y*W*4;for(let i=0;i<W*4;i++)out[r+i]=a[q+i]*k}return out}
 let ditherSeed=1;
@@ -2352,10 +2482,10 @@ function renderStackF(tc,W,H,T,o){const d=S.doc,upto=o.upto==null?d.layers.lengt
     if(L.kind==='adjust'){if(devIsId(L.dev))continue;const ms=maskSrc(L);let mc=null;if(ms){mc=scr('am',W,H);const g=cx(mc);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.imageSmoothingEnabled=true;g.setTransform(...T);drawMip(g,ms,0,0,o.scale,ms===L.mask);g.setTransform(1,0,0,1,0,0)}
       if(empty)continue;if(!F)F=floatFromCanvas(tc.canvas,W,H);F=devFloat(F,W,H,L,mc,o);continue}
     const src=layerSrc(L),ms=L.mask?maskSrc(L):null,dx=L.dx||0,dy=L.dy||0,wasEmpty=empty;
-    empty=false;let S2=null;const eh=src===L.canvas?effHi(L):null;
+    empty=false;let S2=null;const eh=src===lcv(L)?effHi(L):null;
     if(eh){S2=sampleHi(eh,d.w,d.h,T,W,H,dx,dy);if(ms){const t=scr('lm',W,H),g=rx(t);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.setTransform(...T);drawMip(g,ms,dx,dy,o.scale,ms===L.mask);g.setTransform(1,0,0,1,0,0);const m=g.getImageData(0,0,W,H).data;
         for(let y=0;y<H;y++){const r=(H-1-y)*W*4,q=y*W*4;for(let x=3;x<W*4;x+=4)S2[r+x]*=m[q+x]/255}}}
-    else{const t=scr('lf',W,H),g=rx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.imageSmoothingQuality='high';g.setTransform(...T);drawMip(g,src,dx,dy,o.scale,src===L.canvas||src.__fx);
+    else{const t=scr('lf',W,H),g=rx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.imageSmoothingQuality='high';g.setTransform(...T);drawMip(g,src,dx,dy,o.scale,src===lcv(L)||src.__fx);
       if(ms){g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,dx,dy,o.scale,ms===L.mask);g.globalCompositeOperation='source-over'}g.setTransform(1,0,0,1,0,0);
       if(L.blend==='source-over'&&F){overF(F,g.getImageData(0,0,W,H).data,W,H,L.opacity);continue}
       S2=floatFromCanvas(t,W,H)}
@@ -3662,18 +3792,21 @@ const fxOn=f=>!!(f&&((f.shadow&&f.shadow.on)||(f.stroke&&f.stroke.on)||(f.glow&&
 const FXC=new WeakMap();
 /* tools that paint in place (dodge, smudge, liquify) keep the same canvas: a content version invalidates its styled cache */
 const _mcFx=markComp;markComp=function(){const st=S.stroke,dr=S.drag,c=(st&&st.ctx&&st.ctx.canvas)||(dr&&dr.ctx&&dr.ctx.canvas);if(c)c._v=(c._v|0)+1;return _mcFx.apply(this,arguments)};
-function fxBake(L){const d=S.doc,base=L.canvas,key=JSON.stringify(L.fx)+'|'+(base._v|0),ca=FXC.get(base);if(ca&&ca.key===key&&ca.w===d.w&&ca.h===d.h)return ca.c;
-  const f=L.fx,out=mk(d.w,d.h),g=cx(out);let region=null;const bb=L.txt&&L.txt.bbox||(L.shp&&shpBox(L.shp));if(bb){const pad=Math.ceil(((f.shadow&&f.shadow.on?f.shadow.blur*2+Math.abs(f.shadow.dx)+Math.abs(f.shadow.dy):0)+(f.glow&&f.glow.on?f.glow.blur*2:0)+(f.stroke&&f.stroke.on?f.stroke.w:0))+8);region=[Math.max(0,Math.floor(bb[0]-pad)),Math.max(0,Math.floor(bb[1]-pad)),0,0];region[2]=Math.min(d.w,Math.ceil(bb[0]+bb[2]+pad))-region[0];region[3]=Math.min(d.h,Math.ceil(bb[1]+bb[3]+pad))-region[1];if(region[2]<=0||region[3]<=0)region=null}
-  const [rx0,ry0,rw,rh]=region||[0,0,d.w,d.h];const W=rw,H=rh,wk=mk(W,H),w=cx(wk);w.drawImage(base,rx0,ry0,rw,rh,0,0,W,H);
+/* the styled result is kept cropped to the area the styles can reach (r); the full-size canvas (c) is only built for callers that need one (merge, PSD, blend-if) */
+function fxBake(L,sparse){const d=S.doc,base=lcv(L),key=JSON.stringify(L.fx)+'|'+(base._v|0);let ca=FXC.get(base);if(!(ca&&ca.key===key&&ca.w===d.w&&ca.h===d.h)){ca=fxBakeR(L,base,key);FXC.set(base,ca)}
+  if(sparse)return ca.r;if(!ca.c){const out=mk(d.w,d.h);cx(out).drawImage(ca.r,ca.r.__sx,ca.r.__sy);out.__fx=true;ca.c=out}return ca.c}
+function fxBakeR(L,base,key){const d=S.doc;
+  const f=L.fx;let region=null;const bb=L.txt&&L.txt.bbox||(L.shp&&shpBox(L.shp));if(bb){const pad=Math.ceil(((f.shadow&&f.shadow.on?f.shadow.blur*2+Math.abs(f.shadow.dx)+Math.abs(f.shadow.dy):0)+(f.glow&&f.glow.on?f.glow.blur*2:0)+(f.stroke&&f.stroke.on?f.stroke.w:0))+8);region=[Math.max(0,Math.floor(bb[0]-pad)),Math.max(0,Math.floor(bb[1]-pad)),0,0];region[2]=Math.min(d.w,Math.ceil(bb[0]+bb[2]+pad))-region[0];region[3]=Math.min(d.h,Math.ceil(bb[1]+bb[3]+pad))-region[1];if(region[2]<=0||region[3]<=0)region=null}
+  const [rx0,ry0,rw,rh]=region||[0,0,d.w,d.h];const W=rw,H=rh,wk=mk(W,H),w=cx(wk);w.drawImage(base,(base.__sx|0)-rx0,(base.__sy|0)-ry0);
   const tint=col=>{const t=mk(W,H),q=cx(t);q.drawImage(wk,0,0);q.globalCompositeOperation='source-in';q.fillStyle=col;q.fillRect(0,0,W,H);return t};
   const hexA=(h,a)=>{const n=parseInt(h.slice(1),16);return`rgba(${n>>16&255},${n>>8&255},${n&255},${a})`};
   const res=mk(W,H),r=cx(res);
   if(f.glow&&f.glow.on){const s=tint(f.glow.color);r.save();r.shadowColor=hexA(f.glow.color,f.glow.op);r.shadowBlur=f.glow.blur;for(let k=0;k<2;k++)r.drawImage(s,0,0);r.restore();r.globalCompositeOperation='destination-out';r.drawImage(wk,0,0);r.globalCompositeOperation='source-over'}
   if(f.shadow&&f.shadow.on){const sh=mk(W,H),q=cx(sh);q.shadowColor=hexA(f.shadow.color,f.shadow.op);q.shadowBlur=f.shadow.blur;q.shadowOffsetX=f.shadow.dx+W*4;q.shadowOffsetY=f.shadow.dy;q.drawImage(wk,-W*4,0);r.drawImage(sh,0,0)}
   if(f.stroke&&f.stroke.on){const s=tint(f.stroke.color),n=Math.max(12,Math.ceil(f.stroke.w*3));for(let ring=1;ring<=Math.ceil(f.stroke.w);ring+=Math.max(1,Math.floor(f.stroke.w/3)))for(let i=0;i<n;i++){const a=i*2*Math.PI/n;r.drawImage(s,Math.cos(a)*ring,Math.sin(a)*ring)}for(let i=0;i<n;i++){const a=i*2*Math.PI/n;r.drawImage(s,Math.cos(a)*f.stroke.w,Math.sin(a)*f.stroke.w)}}
-  r.drawImage(wk,0,0);g.drawImage(res,rx0,ry0);out.__fx=true;FXC.set(base,{key,w:d.w,h:d.h,c:out});return out}
+  r.drawImage(wk,0,0);res.__fx=true;if(region){res.__sp=1;res.__sx=rx0;res.__sy=ry0}return{key,w:d.w,h:d.h,r:res,c:region?null:res}}
 const shpBox=s=>{if(s.type==='compound'||s.type==='arrow')return shpBoxTS(s);const x0=Math.min(s.x,s.x+s.w),y0=Math.min(s.y,s.y+s.h);return[x0-s.sw,y0-s.sw,Math.abs(s.w)+s.sw*2,Math.abs(s.h)+s.sw*2]};
-const _layerSrc13=layerSrc;layerSrc=function(L){const s=_layerSrc13(L);if(L.kind==='pixel'&&fxOn(L.fx)&&s===L.canvas)return fxBake(L);return s};
+const _layerSrc13=layerSrc;layerSrc=function(L){const s=_layerSrc13(L);if(L.kind==='pixel'&&fxOn(L.fx)&&s===lcv(L))return fxBake(L,!L.bif);return s};
 function fxDialog(L){if(!L||L.kind!=='pixel'){toast('Choisissez un calque de pixels, de texte ou de forme');return}const d=S.doc,orig=L.fx;let f=Object.assign(FXD(),clone(L.fx||{}));f.shadow=Object.assign(FXD().shadow,f.shadow);f.stroke=Object.assign(FXD().stroke,f.stroke);f.glow=Object.assign(FXD().glow,f.glow);
   const rd=el=>{const g=id=>$('#'+id,el);f={shadow:{on:g('fsO').checked,color:g('fsC').value,op:+g('fsA').value/100,blur:+g('fsB').value,dx:+g('fsX').value,dy:+g('fsY').value},stroke:{on:g('fkO').checked,color:g('fkC').value,w:+g('fkW').value},glow:{on:g('fgO').checked,color:g('fgC').value,op:+g('fgA').value/100,blur:+g('fgB').value}};[['fsA','%'],['fsB',' px'],['fsX',' px'],['fsY',' px'],['fkW',' px'],['fgA','%'],['fgB',' px']].forEach(([id,u])=>{const o=$('#'+id+'-o',el);if(o)o.textContent=g(id).value+u})};
   const sec=(p,title,on,col,rows)=>`<fieldset style="border:1px solid var(--line,#8884);border-radius:10px;padding:8px 12px;margin:8px 0"><legend><label><input type="checkbox" id="${p}O" ${on?'checked':''}> ${title}</label></legend><div class="inline"><input type="color" class="swatch" id="${p}C" value="${esc(col)}" aria-label="Couleur"></div>${rows}</fieldset>`;
@@ -3915,7 +4048,7 @@ const _toast16=toast;toast=function(msg,ms){if(typeof msg==='string'){const m=/^
 /* the sync status line says what to do */
 const _ssState16=setSaveState;setSaveState=function(st){_ssState16(st);if(st==='syncerr'&&SAVE.err&&/réseau|connexion|fetch/i.test(SAVE.err))SAVE.err='connexion perdue, nouvel essai automatique'};
 /* memory guard for very large photos with many layers */
-function memEstimate(){const d=S.doc;if(!d)return 0;const px=d.w*d.h;let b=0;for(const L of d.layers){if(L.canvas)b+=px*4;if(L.mask)b+=px*4;if(L.hi)b+=px*8}if(d.sel)b+=px*4;return b}
+function memEstimate(){const d=S.doc;if(!d)return 0;const px=d.w*d.h;let b=0;for(const L of d.layers){const c=lcv(L);if(c)b+=c.__sp?c.width*c.height*4:px*4;if(L.mask)b+=px*4;if(L.hi)b+=px*8}if(d.sel)b+=px*4;return b}
 const memBudget=()=>IS_IOS?5e8:Math.min(3e9,(navigator.deviceMemory||4)*4e8);
 const _pushHistory16=pushHistory;pushHistory=function(){const r=_pushHistory16.apply(this,arguments);try{const d=S.doc;if(d&&!d._memWarned){const e=memEstimate(),bud=memBudget();if(e>bud*0.8){d._memWarned=true;toast(`Cette photo de ${(d.w*d.h/1e6).toFixed(0)} Mpx avec ${d.layers.length} calques occupe environ ${(e/1e9).toFixed(1).replace('.',',')} Go de mémoire. Fusionnez quelques calques (${MOD}E) pour garder de la fluidité.`,8000)}}}catch(e){}return r};
 
@@ -4250,6 +4383,14 @@ const _gc=gradientCanvas;gradientCanvas=function(dr,color){const d=S.doc;
  const m=mk(d.w,d.h),g=cx(m);let st;
  if(color===undefined){st=[{t:0,c:'#ffffff',a:1},{t:1,c:'#ffffff',a:0}];if(GO.reverse)st=[{t:0,c:'#ffffff',a:0},{t:1,c:'#ffffff',a:1}]}else st=stopsFor(color);
  paint(g,dr.shape,dr,st,d.w,d.h);return m};
+// 16-bit painting: the same gradient in float, fill(x,y,w,h,o) writes straight colour 0..255 and alpha 0..1 for the pixel centres of a rectangle
+window.gradF=function(dr,color){let st=stopsFor(color);const dx=dr.x1-dr.x0,dy=dr.y1-dr.y0,r=Math.max(1,Math.hypot(dx,dy)),L2=Math.max(1e-9,dx*dx+dy*dy),a0=Math.atan2(dy,dx),sh=dr.shape,N=65535;
+ if(sh==='radial'&&st.length===2&&st[0].c===st[1].c&&st[0].a===1&&st[1].a===0)st=[st[0],{...st[0],t:.45},st[1]];
+ const T=st.map(s=>clamp(s.t,0,1)),C=st.map(s=>{const n=parseInt(s.c.slice(1),16);return[n>>16&255,n>>8&255,n&255,s.a]}),n=st.length,lut=new Float32Array((N+1)*4);
+ for(let i=0,k=0;i<=N;i++){const t=i/N;while(k<n-1&&T[k+1]<t)k++;const A=C[k],B=C[Math.min(n-1,k+1)],f=k>=n-1||t<=T[k]?0:T[k+1]>T[k]?(t-T[k])/(T[k+1]-T[k]):1;for(let c=0;c<4;c++)lut[i*4+c]=A[c]+(B[c]-A[c])*f}
+ return{fill(x0,y0,w,h,o){for(let y=0;y<h;y++){const py=y0+y+.5-dr.y0;for(let x=0;x<w;x++){const px=x0+x+.5-dr.x0;let t;
+   if(sh==='radial')t=Math.sqrt(px*px+py*py)/r;else if(sh==='angular'){t=(Math.atan2(py,px)-a0)/(2*Math.PI);t-=Math.floor(t)}else{t=(px*dx+py*dy)/L2;if(sh==='reflect'&&t<0)t=-t}
+   const i=(t<=0?0:t>=1?N:(t*N+.5)|0)*4,j=(y*w+x)*4;o[j]=lut[i];o[j+1]=lut[i+1];o[j+2]=lut[i+2];o[j+3]=lut[i+3]}}}}};
 const gradCss=st=>'linear-gradient(90deg,'+st.map(s=>`${hexA(s.c,s.a)} ${Math.round(s.t*100)}%`).join(',')+')';
 function gradEditor(){const prev=JSON.parse(JSON.stringify(GO.stops));let sel=0;
  dialog({title:'Dégradé',body:`<label class="field">Modèle<select id="gdP">${Object.keys(GN).map(k=>`<option value="${k}" ${GO.preset===k?'selected':''}>${GN[k]}</option>`).join('')}</select></label>
@@ -4368,7 +4509,7 @@ function bucketAt(p){const d=S.doc,o=OB.bucket,A=AL(),L=pixelTarget();const x=Ma
  const src=o.all?flatSync():L.canvas,a=pixelsOf(src),m=U8(a,d.w,d.h,x,y,o.tol,o.contiguous);let n=0;for(let i=0;i<m.length;i+=7)n+=m[i];if(!n&&!m[y*d.w+x]){toast('Rien à remplir ici.');return}
  let mask=maskFromU8(m,d.w,d.h);if(o.soft){const g=cx(mask),t=cloneC(mask);for(const[ox,oy]of[[1,0],[-1,0],[0,1],[0,-1]])g.drawImage(t,ox,oy);mask=blurCanvas(mask,.6)}
  const tmp=mk(d.w,d.h),tg=cx(tmp);tg.fillStyle=S.color;tg.fillRect(0,0,d.w,d.h);tg.globalCompositeOperation='destination-in';tg.drawImage(mask,0,0);if(d.sel){tg.drawImage(d.sel,0,0)}
- const g=editCanvas(L);g.globalAlpha=o.opacity;g.drawImage(tmp,0,0);markComp();pushHistory('Pot de peinture');syncLayers()}
+ const H=hiTake(L),g=editCanvas(L);g.globalAlpha=o.opacity;g.drawImage(tmp,0,0);if(H)hiComp(L,{x0:0,y0:0,x1:d.w,y1:d.h},hiSrc(tmp,hexRGB(S.color)),o.opacity);markComp();pushHistory('Pot de peinture');syncLayers()}
 addTool('bucket','Pot de peinture','K',IC.bucket,'gradient','remplit par tolérance');
 // ---------- live wand: drag left/right after the click to change the tolerance ----------
 function wandData(){const d=S.doc,o=OB.wand,T=pixelTarget();if(!o.all&&!T)return null;const key=S.docVer+'|'+(o.all?'all':T.id);if(wandCache.key!==key){const src=o.all?flatSync():T.canvas;wandCache={key,data:rx(cloneC(src)).getImageData(0,0,d.w,d.h).data}}return wandCache.data}
@@ -4488,7 +4629,7 @@ function tfApply(){const T=S.tf;if(!T)return;const d=S.doc,L=T.L;if(!d||!d.layer
  const c=mk(d.w,d.h),g=cx(c);if(T.base)g.drawImage(T.base,0,0);drawWarped(g,T.src,T);delete L.preview;delete L.maskPreview;
  const affine=T.mode!=='warp'&&isPara(T.q)&&!T.selMask;let e=null;if(L.hi){if(affine)e=effHi(L)}
  L.canvas=c;
- if(L.hi){if(affine&&e){const q=T.q,M=new DOMMatrix([(q[1].x-q[0].x)/T.w,(q[1].y-q[0].y)/T.w,(q[3].x-q[0].x)/T.h,(q[3].y-q[0].y)/T.h,q[0].x,q[0].y]).translate(-T.bb.x0,-T.bb.y0);hiXform(L,e,d.w,d.h,d.w,d.h,M)}else{L.hi=null;L.hiC=null;toast('Cette transformation a converti le calque en 8 bits.')}}
+ if(L.hi){if(affine&&e){const q=T.q,M=new DOMMatrix([(q[1].x-q[0].x)/T.w,(q[1].y-q[0].y)/T.w,(q[3].x-q[0].x)/T.h,(q[3].y-q[0].y)/T.h,q[0].x,q[0].y]).translate(-T.bb.x0,-T.bb.y0);hiXform(L,e,d.w,d.h,d.w,d.h,M)}else{L.hi=null;L.hiP=null;L.hiC=null;toast('Cette transformation a converti le calque en 8 bits.')}}
  if(T.msrc){const mc=mk(d.w,d.h);drawWarped(cx(mc),T.msrc,T);L.mask=mc}
  if(T.selMask){const sm=mk(d.w,d.h),sg=cx(sm);const ms=mk(T.w,T.h);cx(ms).drawImage(d.sel,-T.bb.x0,-T.bb.y0);drawWarped(sg,ms,T);d.sel=sm;selChanged()}
  if(L.txt||L.shp){L.txt=null;L.shp=null}
@@ -4560,7 +4701,7 @@ const falloff=(dist,hard)=>{const t=Math.min(1,dist);const h=clamp(hard,0,1);ret
 let LQ={layer:null,orig:null};
 function ipBegin(tool,p,e){const d=S.doc,A=rtPixelTarget();if(!A)return false;
  lazy(tool==='liquify'?'liquify':'smudge',tool==='liquify'?120:60);
- editCanvas(A);const ctx=rx(A.canvas),st={type:'ip',tool,L:A,ctx,last:{x:p.x,y:p.y},sel:d.sel?rx(d.sel):null,carry:null,pressure:(e&&e.pointerType==='pen')?(e.pressure||1):1};S.drag=st;if(tool==='smudge')smudgeStep(st,p,true);markComp();return true}
+ const hl=tool==='smudge'?hiTake(A):null;editCanvas(A);const ctx=rx(A.canvas),st={type:'ip',tool,L:A,ctx,hw:hl?hiWork(A):null,last:{x:p.x,y:p.y},sel:d.sel?rx(d.sel):null,carry:null,pressure:(e&&e.pointerType==='pen')?(e.pressure||1):1};S.drag=st;if(tool==='smudge')smudgeStep(st,p,true);markComp();return true}
 function regionOf(st,p,r){const d=S.doc,x0=Math.max(0,Math.floor(p.x-r)),y0=Math.max(0,Math.floor(p.y-r)),x1=Math.min(d.w,Math.ceil(p.x+r)),y1=Math.min(d.h,Math.ceil(p.y+r));if(x1<=x0||y1<=y0)return null;return{x0,y0,w:x1-x0,h:y1-y0}}
 function liqStep(st,p,dx,dy){const o=OB.liquify,r=o.size/2,R=regionOf(st,p,r);if(!R)return;const img=st.ctx.getImageData(R.x0,R.y0,R.w,R.h),src=new Uint8ClampedArray(img.data),a=img.data,w=R.w,h=R.h,S0=o.strength*st.pressure;
  let sel=null;if(st.sel)sel=st.sel.getImageData(R.x0,R.y0,w,h).data;let orig=null;if(o.mode==='reconstruct'&&LQ.orig)orig=rx(LQ.orig).getImageData(R.x0,R.y0,w,h).data;
@@ -4588,7 +4729,7 @@ S.patch=null;
 const polyMask=pts=>{const d=S.doc,m=mk(d.w,d.h),g=cx(m);g.fillStyle='#fff';g.beginPath();pts.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y));g.closePath();g.fill();return m};
 const inPoly=(p,pts)=>{let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const a=pts[i],b=pts[j];if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)c=!c}return c};
 async function patchApply(){const P=S.patch;if(!P||P.phase!=='drag')return;const off=P.off;if(Math.hypot(off.x,off.y)<2){S.patch=null;requestRender();return}
- const d=S.doc,L=pixelTarget();if(!L||L.visible===false){if(L)toast('Ce calque est masqué');S.patch=null;requestRender();return}busy(true,'Correction…');await new Promise(r=>setTimeout(r,20));let ok=true;const prev=L.canvas;try{editCanvas(L);const bx={x0:P.bb.x0,y0:P.bb.y0,x1:P.bb.x1,y1:P.bb.y1};ok=healRegion(L,P.mask,bx,off)!==false}finally{busy(false)}
+ const d=S.doc,L=pixelTarget();if(!L||L.visible===false){if(L)toast('Ce calque est masqué');S.patch=null;requestRender();return}busy(true,'Correction…');await new Promise(r=>setTimeout(r,20));let ok=true;const prev=L.canvas;try{const H=hiTake(L);editCanvas(L);const bx={x0:P.bb.x0,y0:P.bb.y0,x1:P.bb.x1,y1:P.bb.y1};ok=healRegion(L,P.mask,bx,off,H)!==false}finally{busy(false)}
  S.patch=null;if(!ok){L.canvas=prev;markComp();return}markComp();pushHistory('Pièce');syncLayers()}
 // ---------- red eye ----------
 function redEyeAt(p){const d=S.doc,A=rtPixelTarget(),o=OB.redeye;lazy('redeye',40);if(!A)return;
@@ -4657,7 +4798,8 @@ document.fonts.load=function(f,t){
   return _load(f,t);
 };
 // redraws, in place (same canvas, so history stays consistent; no new step), the text layers drawn in the fallback font
-function redrawFont(n){const d=S.doc;let k=0;if(d)for(const L of d.layers){if(!L.txt||L.txt.font!==n||L.preview||!L.canvas||L.canvas.width!==d.w||L.canvas.height!==d.h)continue;const bb=drawTextTo(L.canvas,L.txt);L.txt=Object.assign({},L.txt,{bbox:bb});encCache.delete(L.canvas);L.canvas._v=(L.canvas._v|0)+1;k++}
+function redrawFont(n){const d=S.doc;let k=0;if(d)for(const L of d.layers){const sp=!L.preview&&L.txt&&L.txt.font===n&&spOf(L);if(sp){const c=mk(d.w,d.h),bb=drawTextTo(c,L.txt);spReplace(sp,c);L.txt=Object.assign({},L.txt,{bbox:bb});k++;continue}
+  if(!L.txt||L.txt.font!==n||L.preview||!L.canvas||L.canvas.width!==d.w||L.canvas.height!==d.h)continue;const bb=drawTextTo(L.canvas,L.txt);L.txt=Object.assign({},L.txt,{bbox:bb});encCache.delete(L.canvas);L.canvas._v=(L.canvas._v|0)+1;k++}
   if(k){markComp();scheduleSave()}else render()}
 // un calque texte rendu avant que sa police soit arrivée : on le redessine à l'arrivée
 const _draw=drawTextTo;
@@ -5664,7 +5806,7 @@ const _enc=encodeCanvas;
 encodeCanvas=async function(c){const hit=encCache.get(c);if(hit){try{let ok=true;for(const t of hit)if(!await tileOK(t)){ok=false;break}if(!ok)encCache.delete(c)}catch(e){encCache.delete(c)}}return _enc.call(this,c)};
 
 const HK=id=>'hist_'+id;
-const canv=L=>[L.canvas,L.mask,L.fbase,L.so&&L.so.src];
+const canv=L=>[lcv(L),L.mask,L.fbase,L.so&&L.so.src];
 /* keys that must survive garbage collection: tiles of every canvas still reachable from undo history or snapshots, plus saved history records */
 async function keep(keepSet,projects){
   const add=s=>{if(!s||!s.layers)return;for(const L of s.layers)for(const c of canv(L)){const t=c&&encCache.get(c);t&&t.forEach(x=>keepSet.add(x.key))}};
@@ -5679,10 +5821,10 @@ async function keep(keepSet,projects){
 async function decode(m){const get=t=>IDB.get('blobs',t.key),layers=[];
   for(const e of m.layers){const L={id:S.nextId++,kind:e.kind,name:e.name,visible:e.visible!==false,opacity:e.opacity??1,blend:e.blend||'source-over',editMask:!!e.editMask,mask:null,...xtra(e)};
     if(e.kind==='adjust')L.dev=Object.assign(DEV0(),e.dev||{});
-    if(e.canvas){L.canvas=await decodeTiles(e.canvas,m.w,m.h,get);encCache.set(L.canvas,e.canvas)}
+    if(e.canvas)await loadLayerCanvas(L,e,m.w,m.h,get);
     if(e.mask){L.mask=await decodeTiles(e.mask,m.w,m.h,get);encCache.set(L.mask,e.mask)}
     if(e.so&&L.canvas){try{const sc=await decodeTiles(e.so.t,m.w,m.h,get);encCache.set(sc,e.so.t);L.so={src:sc,m:e.so.m,out:L.canvas}}catch(err){}}
-    if(L.canvas&&e.fbase&&e.filters){try{L.fbase=await decodeTiles(e.fbase,m.w,m.h,get);encCache.set(L.fbase,e.fbase);L.filters=e.filters;L.fout=L.canvas}catch(err){}}
+    if(e.fbase&&e.filters&&L.canvas){try{L.fbase=await decodeTiles(e.fbase,m.w,m.h,get);encCache.set(L.fbase,e.fbase);L.filters=e.filters;L.fout=L.canvas}catch(err){}}
     layers.push(L);await tick()}
   return{w:m.w,h:m.h,active:Math.min(Math.max(0,m.active??layers.length-1),layers.length-1),sel:null,layers}}
 
@@ -6167,7 +6309,7 @@ let gcRun=null,gcAgain=false;
 async function gcOnce(){
   const all=await IDB.keys('blobs');
   const ms=await IDB.all('projects'),keep=new Set();ms.forEach(m=>manifestKeys(m).forEach(k=>keep.add(k)));PIN.forEach(k=>keep.add(k));
-  if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [L.canvas,L.mask,L.fbase,L.so&&L.so.src]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}
+  if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [lcv(L),L.mask,L.fbase,L.so&&L.so.src]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}
   const hk=await (window.PrismHist?PrismHist.keep(keep,ms):[]);
   for(const k of all)if(!keep.has(k)&&!PIN.has(k)&&!String(k).startsWith('icc_')&&!hk.includes(k)){await IDB.del('blobs',k);await IDB.del('amap',k).catch(()=>{})}}
 gcBlobs=function(){gcAgain=true;if(gcRun)return gcRun;
@@ -6558,7 +6700,7 @@ bakeMove=function(L,dx,dy){const d=S.doc;
   if(L&&(dx||dy)&&window.PrismSO&&PrismSO.valid(L)){L.dx=0;L.dy=0;const so=L.so,m={...so.m,dx:so.m.dx+dx/d.w*100,dy:so.m.dy+dy/d.h*100},c=PrismSO.render(so,m);L.so={...so,m,out:c};L.canvas=c;if(L.mask){const k=mk(d.w,d.h);cx(k).drawImage(L.mask,dx,dy);L.mask=k}return}
   return _bm.apply(this,arguments)};
 function layerAt(x,y){const d=S.doc;x=Math.floor(x);y=Math.floor(y);if(x<0||y<0||x>=d.w||y>=d.h)return -1;
-  for(let i=d.layers.length-1;i>=0;i--){const L=d.layers[i];if(L.kind!=='pixel'||L.visible===false||!L.canvas||!(L.opacity>0))continue;if(rx(L.canvas).getImageData(x,y,1,1).data[3]<=8)continue;if(L.mask&&rx(L.mask).getImageData(x,y,1,1).data[3]<=8)continue;return i}return -1}
+  for(let i=d.layers.length-1;i>=0;i--){const L=d.layers[i];if(L.kind!=='pixel'||L.visible===false||!lcv(L)||!(L.opacity>0))continue;if(lAlpha(L,x,y)<=8)continue;if(L.mask&&rx(L.mask).getImageData(x,y,1,1).data[3]<=8)continue;return i}return -1}
 const mates=L=>L&&L.link?S.doc.layers.filter(l=>l!==L&&l.link===L.link&&l.kind==='pixel'&&l.visible!==false):[];
 
 const _od=onDown;
@@ -6869,7 +7011,7 @@ const _dupL=dupLayer;
 dupLayer=function(){const d=S.doc,src=AL(),sel=!!(d&&d.sel),n0=d?d.layers.length:0;const r=_dupL.apply(this,arguments);
   const N=AL();if(d&&S.doc===d&&src&&N&&N!==src&&d.layers.length===n0+1){
     if(N.kind==='pixel'){
-      if(!sel&&src.hi&&N.canvas===src.canvas){N.hi=src.hi;N.hiC=src.hiC}
+      if(!sel&&src.hi&&N.canvas===src.canvas){N.hi=src.hi;N.hiP=src.hiP;N.hiC=src.hiC}
       if(sel&&src.mask&&!src.moff){const c=cloneC(N.canvas),g=cx(c);g.globalCompositeOperation='destination-in';g.drawImage(src.mask,0,0);N.canvas=c}
       if(src.moff&&N.mask)N.moff=true}
     if(!sel&&/ copie$/.test(N.name)){const root=src.name.replace(/ copie( \d+)?$/,'');N.name=uniqueName(d,root+' copie',N)}else N.name=uniqueName(d,N.name,N);
@@ -7052,7 +7194,10 @@ gradientPreview=function(dr){const L=dr.target;if(!L||Math.hypot(dr.x1-dr.x0,dr.
 gradientCommit=function(dr){const L=dr.target;if(!L)return;{const oP=L.preview,oM=L.maskPreview;delete L.maskPreview;delete L.preview;if(oP&&oP!==L.canvas)free(oP);if(oM&&oM!==L.mask)free(oM)}if(!S.doc.layers.includes(L)||Math.hypot(dr.x1-dr.x0,dr.y1-dr.y0)*S.zoom<4){markComp();return}
  if(onMaskOf(L)){const r=gradBuild(dr);L.mask=r.mask;markComp();pushHistory(dr.shape==='radial'?'Masque radial':'Masque dégradé');syncLayers();savePaint();return}
  if(L.kind!=='pixel'){markComp();return}
- toPixels(L);const r=gradBuild(dr),g=editCanvas(L);g.globalAlpha=r.op;g.drawImage(r.gc,0,0);g.globalAlpha=1;free(r.gc);markComp();pushHistory('Dégradé');syncLayers();savePaint()};
+ toPixels(L);const r=gradBuild(dr),H=hiTake(L),g=editCanvas(L);g.globalAlpha=r.op;g.drawImage(r.gc,0,0);g.globalAlpha=1;free(r.gc);
+ // 16-bit layer: the gradient is computed in float (the 8-bit one would band); the selection is applied twice, as on the canvas (gradientCanvas, then gradBuild)
+ if(H&&window.gradF){const d=S.doc,f=gradF(dr,S.color),sg=d.sel?rx(d.sel):null;hiComp(L,{x0:0,y0:0,x1:d.w,y1:d.h},(x,y,w,h)=>{const o=new Float32Array(w*h*4);f.fill(x,y,w,h,o);if(sg){const sa=sg.getImageData(x,y,w,h).data;for(let j=3;j<o.length;j+=4){const k=sa[j]/255;o[j]*=k*k}}return o},r.op)}
+ markComp();pushHistory('Dégradé');syncLayers();savePaint()};
 const _omP=onMove;onMove=function(e,p){const dr=S.drag;
  // the button went up somewhere we were not told about (window lost focus, menu...): finish instead of painting without a button
  if(dr&&(dr.type==='stroke'||dr.type==='gradient')&&PAINT_TOOLS.includes(S.tool)&&e&&e.type==='pointermove'&&e.buttons===0){onUp(e);return}
@@ -7231,10 +7376,10 @@ function solveMG(D,ins,w,h){const n=w*h;let m=0;for(let i=0;i<n;i++)if(ins[i])m+
  for(let y=0;y<h;y++){const fy=Math.min(h2-1,Math.max(0,(y-.5)/2)),y0=Math.floor(fy),y1=Math.min(h2-1,y0+1),ty=fy-y0;for(let x=0;x<w;x++){const i=y*w+x;if(!ins[i])continue;const fx=Math.min(w2-1,Math.max(0,(x-.5)/2)),x0=Math.floor(fx),x1=Math.min(w2-1,x0+1),tx=fx-x0;
   for(let c=0;c<D.length;c++){const A=D2[c];D[c][i]=(A[y0*w2+x0]*(1-tx)+A[y0*w2+x1]*tx)*(1-ty)+(A[y1*w2+x0]*(1-tx)+A[y1*w2+x1]*tx)*ty}}}
  relax(D,ins,w,h,Math.min(120,40+Math.round(Math.sqrt(m)*.3)),1.6)}
-function readClamped(g,sx,sy,w,h,W,H){if(sx>=0&&sy>=0&&sx+w<=W&&sy+h<=H)return g.getImageData(sx,sy,w,h).data;
- const rx0=clamp(sx,0,W-1),ry0=clamp(sy,0,H-1),rx1=clamp(sx+w,rx0+1,W),ry1=clamp(sy+h,ry0+1,H),rw=rx1-rx0,R=g.getImageData(rx0,ry0,rw,ry1-ry0).data,o=new Uint8ClampedArray(w*h*4);
+function readClamped(g,sx,sy,w,h,W,H,rd){const get=rd||((x,y,w,h)=>g.getImageData(x,y,w,h).data);if(sx>=0&&sy>=0&&sx+w<=W&&sy+h<=H)return get(sx,sy,w,h);
+ const rx0=clamp(sx,0,W-1),ry0=clamp(sy,0,H-1),rx1=clamp(sx+w,rx0+1,W),ry1=clamp(sy+h,ry0+1,H),rw=rx1-rx0,R=get(rx0,ry0,rw,ry1-ry0),o=rd?new Float32Array(w*h*4):new Uint8ClampedArray(w*h*4);
  for(let y=0;y<h;y++){const yy=clamp(sy+y,ry0,ry1-1)-ry0;for(let x=0;x<w;x++){const xx=clamp(sx+x,rx0,rx1-1)-rx0,j=(yy*rw+xx)*4,i=(y*w+x)*4;o[i]=R[j];o[i+1]=R[j+1];o[i+2]=R[j+2];o[i+3]=R[j+3]}}return o}
-healRegion=function(L,maskC,bx,manualOff){const d=S.doc,W=d.w,H=d.h,x0=Math.max(0,Math.floor(bx.x0)-3),y0=Math.max(0,Math.floor(bx.y0)-3),x1=Math.min(W,Math.ceil(bx.x1)+3),y1=Math.min(H,Math.ceil(bx.y1)+3),rw=x1-x0,rh=y1-y0;if(rw<3||rh<3)return false;
+healRegion=function(L,maskC,bx,manualOff,hl){const d=S.doc,W=d.w,H=d.h,x0=Math.max(0,Math.floor(bx.x0)-3),y0=Math.max(0,Math.floor(bx.y0)-3),x1=Math.min(W,Math.ceil(bx.x1)+3),y1=Math.min(H,Math.ceil(bx.y1)+3),rw=x1-x0,rh=y1-y0;if(rw<3||rh<3)return false;
  const g=rx(L.canvas),T=g.getImageData(x0,y0,rw,rh),td=T.data,M=rx(maskC).getImageData(x0,y0,rw,rh).data,n=rw*rh,ins=new Uint8Array(n);let cnt=0;for(let i=0;i<n;i++)if(M[i*4+3]>6){ins[i]=1;cnt++}if(!cnt)return false;
  let cur=ins.slice();for(let pass=0;pass<3;pass++){const nx=cur.slice();for(let y=0;y<rh;y++)for(let x=0;x<rw;x++){const i=y*rw+x;if(cur[i])continue;if((x>0&&cur[i-1])||(x<rw-1&&cur[i+1])||(y>0&&cur[i-rw])||(y<rh-1&&cur[i+rw]))nx[i]=1}cur=nx}
  const ringL=[];for(let i=0;i<n;i++)if(cur[i]&&!ins[i])ringL.push(i);let off=manualOff?{x:Math.round(manualOff.x),y:Math.round(manualOff.y)}:null;
@@ -7243,10 +7388,12 @@ healRegion=function(L,maskC,bx,manualOff){const d=S.doc,W=d.w,H=d.h,x0=Math.max(
    for(const i of ringL){const px=i%rw,py=(i/rw)|0,sj=((y0+py+dy-ay0)*aw+(x0+px+dx-ax0))*4,tj=i*4,e0=td[tj]-A[sj],e1=td[tj+1]-A[sj+1],e2=td[tj+2]-A[sj+2];cost+=e0*e0+e1*e1+e2*e2}cost/=Math.max(1,ringL.length);
    let ov=0;for(const i of insL){const px=(i%rw)+dx,py=((i/rw)|0)+dy;if(px>=0&&py>=0&&px<rw&&py<rh&&ins[py*rw+px])ov++}cost+=ov*400+f*40;if(cost<best){best=cost;off={x:dx,y:dy}}}
   if(!off){toast('Pas assez de matière autour pour corriger cette zone');return false}}
- const Sd=readClamped(g,x0+off.x,y0+off.y,rw,rh,W,H),D=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];
- for(let i=0;i<n;i++){if(ins[i])continue;for(let c=0;c<3;c++)D[c][i]=td[i*4+c]-Sd[i*4+c]}
+ // 16-bit layer (hl): the same solve on its 16-bit pixels, in float; the 8-bit canvas follows
+ const tF=hl?hiRead(L,x0,y0,rw,rh):td,Sd=readClamped(g,x0+off.x,y0+off.y,rw,rh,W,H,hl?(x,y,w,h)=>hiRead(L,x,y,w,h):null),D=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];
+ for(let i=0;i<n;i++){if(ins[i])continue;for(let c=0;c<3;c++)D[c][i]=tF[i*4+c]-Sd[i*4+c]}
  solveMG(D,ins,rw,rh);
- for(let i=0;i<n;i++){if(!ins[i])continue;const a=Math.min(1,M[i*4+3]/255*1.15),j=i*4;for(let c=0;c<3;c++){const v=Sd[j+c]+D[c][i];td[j+c]=clamp(td[j+c]+(v-td[j+c])*a,0,255)}if(Sd[j+3]>0)td[j+3]=td[j+3]+(Sd[j+3]-td[j+3])*a}
+ for(let i=0;i<n;i++){if(!ins[i])continue;const a=Math.min(1,M[i*4+3]/255*1.15),j=i*4;for(let c=0;c<3;c++){const v=Sd[j+c]+D[c][i];tF[j+c]=clamp(tF[j+c]+(v-tF[j+c])*a,0,255)}if(Sd[j+3]>0)tF[j+3]=tF[j+3]+(Sd[j+3]-tF[j+3])*a}
+ if(hl){const X=hiTx(L);hiWrite(X,x0,y0,rw,rh,tF);hiEnd(X);return true}
  g.putImageData(T,x0,y0);return true};
 
 // ---------- Densité: the tonal range only applies to the modes that show it (Éclaircir, Assombrir, Saturer, Désaturer) ----------
@@ -7340,7 +7487,7 @@ function lqPath(dr,p){const o=S.opts.liquify,sp=Math.max(1.5,o.size*.07),dx=p.x-
 // ---------- smudge: the paint picked up now travels with the brush (it stayed where it was taken, so the tool barely changed anything) ----------
 let SB=[new Float32Array(0),new Float32Array(0)];
 function smStep(dr,p){const d=S.doc,o=S.opts.smudge,r=o.size/2;if(r<.5)return;const x0=Math.max(0,Math.floor(p.x-r)),y0=Math.max(0,Math.floor(p.y-r)),x1=Math.min(d.w,Math.ceil(p.x+r)),y1=Math.min(d.h,Math.ceil(p.y+r));if(x1<=x0||y1<=y0)return;
- const w=x1-x0,h=y1-y0,n=w*h*4,img=dr.ctx.getImageData(x0,y0,w,h),a=img.data,C=dr.cy;
+ const w=x1-x0,h=y1-y0,n=w*h*4,img=dr.ctx.getImageData(x0,y0,w,h),hw=dr.hw,a=hw?hw.get(x0,y0,w,h):img.data,C=dr.cy;
  if(!C){const buf=new Float32Array(n);for(let i=0;i<n;i++)buf[i]=a[i];dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:0,ry:0,data:buf};return}
  const S0=clamp(o.strength*(dr.pressure||1),.02,1),q=Math.min(.985,Math.pow(S0,.3)),hard=clamp(o.hardness,0,1),sel=dr.sel?dr.sel.getImageData(x0,y0,w,h).data:null;
  const fx=p.x-C.px+C.rx,fy=p.y-C.py+C.ry,ix=Math.round(fx),iy=Math.round(fy);
@@ -7350,7 +7497,8 @@ function smStep(dr,p){const d=S.doc,o=S.opts.smudge,r=o.size/2;if(r<.5)return;co
   if(dist>=1||sx<0||sy<0||sx>=C.w||sy>=C.h){nc[j]=a[j];nc[j+1]=a[j+1];nc[j+2]=a[j+2];nc[j+3]=a[j+3];continue}
   const f=dist<=hard?1:Math.pow(1-(dist-hard)/(1-hard+1e-6),2),ws=sel?sel[j+3]/255:1,i=(sy*C.w+sx)*4,pk=1-(1-q)*f,k=f*S0*ws;
   for(let c=0;c<4;c++){const cur=a[j+c],v=cd[i+c]*pk+cur*(1-pk);nc[j+c]=v;if(k>0)a[j+c]=cur+(v-cur)*k}}}
- dr.ctx.putImageData(img,x0,y0);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
+ // 16-bit layer: the float pixels are kept, the canvas shows them rounded
+ if(hw){hw.set(x0,y0,w,h,a);img.data.set(a)}dr.ctx.putImageData(img,x0,y0);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
 function smPath(dr,p){const o=S.opts.smudge,sp=Math.max(1.5,o.size*.06),dx=p.x-dr.last.x,dy=p.y-dr.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;
  const n=Math.floor(dist/sp),sx=dx/dist*sp,sy=dy/dist*sp;let q={x:dr.last.x,y:dr.last.y};for(let k=1;k<=n;k++){q={x:q.x+sx,y:q.y+sy};smStep(dr,q)}dr.last=q;dr.moved=true;markComp()}
 const _od=onDown;onDown=function(e,p){const pre=new Map();if(S.tool==='liquify'&&S.doc){S.doc.layers.forEach(l=>pre.set(l,l.canvas));if(e&&e.altKey!=null)S.altDown=!!e.altKey}
@@ -7361,7 +7509,7 @@ const _od=onDown;onDown=function(e,p){const pre=new Map();if(S.tool==='liquify'&
    dr.timer=setInterval(()=>{if(S.drag!==dr){clearInterval(dr.timer);return}if(performance.now()-(dr.lastT||0)<60)return;lqStep(dr,dr.cur,0,0);markComp()},70)}}
  return r};
 const _om=onMove;onMove=function(e,p){const dr=S.drag;if(dr&&dr.type==='lqf'&&e&&e.altKey!=null)S.altDown=!!e.altKey;if(dr&&(dr.type==='lqf'||dr.type==='smg')){if(e&&e.pointerType==='pen')dr.pressure=e.pressure||dr.pressure;if(dr.type==='lqf')lqPath(dr,p);else smPath(dr,p);return}return _om.apply(this,arguments)};
-const _ou=onUp;onUp=function(e){const dr=S.drag;if(dr&&dr.type==='smg'){S.drag=null;SB=[new Float32Array(0),new Float32Array(0)];if(!dr.moved){if(S.doc&&S.hi>=0)restore(S.hi);requestRender();return}/* a click without moving is not a step */markComp();pushHistory('Doigt');return}
+const _ou=onUp;onUp=function(e){const dr=S.drag;if(dr&&dr.type==='smg'){S.drag=null;SB=[new Float32Array(0),new Float32Array(0)];if(!dr.moved){if(S.doc&&S.hi>=0)restore(S.hi);requestRender();return}/* a click without moving is not a step */if(dr.hw)dr.hw.commit();markComp();pushHistory('Doigt');return}
  if(dr&&dr.type==='lqf'){S.drag=null;if(dr.timer)clearInterval(dr.timer);markComp();pushHistory('Fluidité');if(LQF&&LQF.layer===dr.L)LQF.hist=S.history[S.hi];return}return _ou.apply(this,arguments)};
 const SHORT={remove:1,clone:1,dodge:1};
 const _st=setTool;setTool=function(t){if(t!=='liquify')LQF=null;const r=_st.apply(this,arguments);
@@ -8181,9 +8329,9 @@ function paintSave(){
   const sy=document.getElementById('bSync');let tip=sy&&sy.title?sy.title.replace(/\s*·\s*Ouvrir mes projets\s*$/,''):saveWord();
   if(S.doc)docname.title=`${S.doc.name} · ${tip}`}
 function drawChipThumb(c){
-  const d=S.doc;if(!d)return;const L=d.layers.find(l=>l.kind==='pixel'&&l.canvas);if(!L)return;
-  const g=c.getContext('2d'),cw=c.width,ch=c.height,sw=L.canvas.width,sh=L.canvas.height;if(!sw||!sh)return;
-  const k=Math.max(cw/sw,ch/sh),w=sw*k,h=sh*k;g.clearRect(0,0,cw,ch);g.imageSmoothingQuality='high';g.drawImage(L.canvas,(cw-w)/2,(ch-h)/2,w,h)}
+  const d=S.doc;if(!d)return;const L=d.layers.find(l=>l.kind==='pixel'&&lcv(l));if(!L)return;const src=lcv(L),sp=src.__sp;
+  const g=c.getContext('2d'),cw=c.width,ch=c.height,sw=sp?d.w:src.width,sh=sp?d.h:src.height;if(!sw||!sh)return;
+  const k=Math.max(cw/sw,ch/sh),w=sw*k,h=sh*k;g.clearRect(0,0,cw,ch);g.imageSmoothingQuality='high';if(sp)g.drawImage(src,(cw-w)/2+src.__sx*k,(ch-h)/2+src.__sy*k,src.width*k,src.height*k);else g.drawImage(src,(cw-w)/2,(ch-h)/2,w,h)}
 function paintChip47(){
   const d=S.doc;if(!d||!docname)return;
   const tags=[...docname.querySelectorAll('.tag')].map(t=>t.textContent.trim()).filter(Boolean);
@@ -9091,7 +9239,7 @@ upscaleCanvas=async function(src,scale,model,onP){
 }
 
 
-window.PRISM_VERSION="0.6.1";
+window.PRISM_VERSION="0.7.0";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {
@@ -9662,6 +9810,117 @@ UPX.canvas=async(src,scale,m,onP)=>{const W=src.width,H=src.height,N=4,T=m.T,P=m
   try{await _u.apply(this,arguments);if(CANCEL)toast('Agrandissement annulé')}catch(e){if(!CANCEL)throw e;toast('Agrandissement annulé')}finally{AI._fBusy=false;CANCEL=false;removeEventListener('keydown',onKey,true);busy(false)}}}
 window.__x4p.onnx=UPX;
 }
+
+}
+
+/* ===== feat: feat/genfill.js ===== */
+{
+/* ================= Remplissage génératif (application de bureau seulement) ================= */
+/* Stable Diffusion 1.5 inpainting, exécuté par le moteur IA natif (src-tauri/src/sd.rs) : le modèle (1,9 Go) est téléchargé une fois puis lu sur le disque, jamais envoyé à la page. */
+/* La page découpe une fenêtre autour de la sélection (environ 512 px), la donne au moteur avec le masque et la description, puis pose le résultat en nouveau calque avec masque progressif. */
+const GF={WORK:512,MINCTX:256,GROW:6,STEPS:{rapide:12,standard:20,soignee:30},busyNow:false,abort:false,last:null,OVR:{},
+  NEG:'blurry, deformed, low quality, text, watermark'};
+GF.T=()=>window.__TAURI__||null;
+GF.inv=(cmd,a,o)=>GF.T().core.invoke(cmd,a,o);
+GF.listen=async(ev,fn)=>{try{return await GF.T().event.listen(ev,e=>fn(e.payload))}catch(e){return()=>{}}};
+GF.fmtT=ms=>{const s=Math.round(ms/1000);return s<90?s+' s':Math.round(s/60)+' min'};
+/* fenêtre de travail autour de la zone : carrée si l'image le permet, au moins MINCTX px et deux fois la zone (le contexte guide le modèle), recalée dans l'image ; mise à l'échelle pour que son grand côté fasse WORK px (multiples de 8) */
+GF.plan=(bx,W,H,work)=>{work=work||GF.WORK;const bw=bx.x1-bx.x0,bh=bx.y1-bx.y0,side=Math.max(GF.MINCTX,Math.round(Math.max(bw,bh)*2));
+  const axis=(a,b,N)=>{const s=Math.min(N,side);let c=Math.round((a+b)/2),x0=Math.round(c-s/2);x0=Math.max(0,Math.min(N-s,x0));return[x0,x0+s]};
+  const[x0,x1]=axis(bx.x0,bx.x1,W),[y0,y1]=axis(bx.y0,bx.y1,H),w=x1-x0,h=y1-y0,f=work/Math.max(w,h);
+  const r8=v=>Math.max(64,Math.round(v/8)*8),rw=r8(w*f),rh=r8(h*f);
+  return{x0,y0,x1,y1,w,h,rw,rh,f:rw/w,fx:rw/w,fy:rh/h}};
+/* agrandit un masque 0/1 de r pixels (maximum séparable) : le modèle remplit un peu au-delà de la sélection, le fondu du calque s'y appuie */
+GF.grow=(a,w,h,r)=>{if(r<1)return a;const t=new Uint8Array(w*h),o=new Uint8Array(w*h);
+  for(let y=0;y<h;y++){const q=y*w;for(let x=0;x<w;x++){let v=0;for(let k=Math.max(0,x-r),e=Math.min(w-1,x+r);k<=e;k++)if(a[q+k]){v=1;break}t[q+x]=v}}
+  for(let x=0;x<w;x++)for(let y=0;y<h;y++){let v=0;for(let k=Math.max(0,y-r),e=Math.min(h-1,y+r);k<=e;k++)if(t[k*w+x]){v=1;break}o[y*w+x]=v}
+  return o};
+/* masque du calque : la sélection de la fenêtre, plus un fondu vers l'extérieur (l'intérieur reste plein, le modèle a rempli au-delà du bord) */
+GF.layerMask=(sel,P,W,H)=>{const{x0,y0,w,h,f}=P,crop=mk(w,h);cx(crop).drawImage(sel,x0,y0,w,h,0,0,w,h);
+  const soft=blurCanvas(crop,Math.max(1.2,Math.min(30,GF.GROW*0.6/f))),g=cx(soft);g.drawImage(crop,0,0);
+  const m=mk(W,H);cx(m).drawImage(soft,x0,y0);return m};
+GF.busyCancel=on=>{const b=document.querySelector('#busy>div');if(!b)return;let e=b.querySelector('.gf-cancel');if(on&&!e){e=document.createElement('button');e.className='btn sm gf-cancel';e.textContent='Annuler';e.style.marginTop='10px';e.onclick=()=>{e.disabled=true;e.textContent='Annulation…';GF.cancel()};b.appendChild(e)}else if(!on&&e)e.remove()};
+GF.cancel=()=>{GF.abort=true;try{GF.inv('sd_cancel').catch(()=>{})}catch(e){}};
+GF.onKey=e=>{if(e.key==='Escape'&&GF.busyNow){GF.cancel();e.stopPropagation()}};
+GF.show=(msg,p)=>{busy(true,msg,p);GF.busyCancel(true)};
+/* télécharge (une fois) puis charge le modèle ; renvoie false si impossible ou annulé */
+GF.prepare=async()=>{const st=await GF.inv('sd_status');
+  if(!st.ok){toast('Le moteur IA natif est indisponible : la génération ne peut pas démarrer.',5000);return false}
+  if(st.loaded){return true}
+  const gb=(st.total/1e9).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1})+' Go';
+  const un=await GF.listen('sd-download',e=>{if(GF.abort)return;
+    if(e.phase==='verify')GF.show('Vérification du modèle de génération…',null);
+    else if(e.phase==='load')GF.show('Chargement du modèle de génération…',null);
+    else{const p=e.total?e.done/e.total:0,g=(e.done/1e9).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1});GF.show(`Téléchargement du modèle de génération (${gb}, une seule fois)… ${Math.round(p*100)} % (${g} Go)`,p)}});
+  GF.show(st.cached?'Chargement du modèle de génération…':`Téléchargement du modèle de génération (${gb}, une seule fois)…`,st.cached?null:0);
+  try{const r=await GF.inv('sd_prepare');GF.ep=r.ep;return true}
+  catch(e){const m=String(e&&e.message||e);if(m==='annulé'||GF.abort)return false;
+    toast(/^Téléchargement impossible/.test(m)?'Le modèle de génération n’a pas pu être téléchargé : vérifiez votre connexion internet puis réessayez. ('+m.replace(/^Téléchargement impossible : /,'').slice(0,140)+')':'Le modèle de génération n’a pas pu se charger : '+m.slice(0,200),7000);return false}
+  finally{un()}};
+/* cœur : génère la fenêtre ; renvoie {res(canvas rw×rh), plan} ou null (annulé / échec) */
+GF.generate=async(sel,opts)=>{const d=S.doc,bx=maskBBox(sel);if(!bx)return null;
+  const P=GF.plan(bx,d.w,d.h,opts.work),{x0,y0,w,h,rw,rh}=P,n=rw*rh;
+  if(P.f<0.4)toast('Zone très grande : le résultat sera moins détaillé. Une sélection plus petite donne plus de précision.',5000);
+  const flat=flatSync(),src=mk(rw,rh),sg=rx(src);sg.fillStyle='#808080';sg.fillRect(0,0,rw,rh);sg.imageSmoothingQuality='high';sg.drawImage(flat,x0,y0,w,h,0,0,rw,rh);
+  const mc=mk(rw,rh),mg=rx(mc);mg.imageSmoothingQuality='high';mg.drawImage(sel,x0,y0,w,h,0,0,rw,rh);
+  const sd=sg.getImageData(0,0,rw,rh).data,md=mg.getImageData(0,0,rw,rh).data;let hole=new Uint8Array(n),hc=0;
+  for(let i=0;i<n;i++)if(md[i*4+3]>127){hole[i]=1;hc++}
+  if(!hc){toast('La sélection est trop petite');return null}
+  hole=GF.grow(hole,rw,rh,GF.GROW);
+  const body=new Uint8Array(n*4);for(let i=0;i<n;i++){body[i*3]=sd[i*4];body[i*3+1]=sd[i*4+1];body[i*3+2]=sd[i*4+2];body[n*3+i]=hole[i]?255:0}
+  const seed=opts.seed!=null?opts.seed:Math.floor(Math.random()*4294967295),steps=opts.steps||GF.STEPS.standard;
+  const prm={w:rw,h:rh,prompt:opts.prompt||'',negative:opts.negative==null?GF.NEG:opts.negative,steps,guidance:opts.guidance||7.5,seed};
+  GF.show('Chargement du modèle de génération…',null);
+  if(!(await GF.prepare())||GF.abort)return null;
+  const t0=performance.now();let tStep=null;
+  const un=await GF.listen('sd-progress',e=>{if(GF.abort)return;
+    if(e.phase==='denoise'){if(e.step===1)tStep=performance.now();
+      const left=e.step>1&&tStep?(steps-e.step)*((performance.now()-tStep)/(e.step-1)):null;
+      GF.show(`Génération… étape ${Math.min(e.step+1,e.total)} sur ${e.total}${left!=null?' (environ '+GF.fmtT(left)+' restantes)':''} · Échap pour annuler`,0.03+0.94*e.step/e.total)}
+    else GF.show(e.phase==='decode'?'Finalisation de l’image…':'Préparation de la zone…',e.phase==='decode'?0.97:0.02)});
+  let out;try{out=await GF.inv('sd_generate',body,{headers:{'x-params':encodeURIComponent(JSON.stringify(prm))}})}
+  catch(e){const m=String(e&&e.message||e);if(m!=='annulé'&&!GF.abort){console.warn('genfill',e);toast('La génération a échoué : '+m.slice(0,200),7000)}return null}finally{un()}
+  if(GF.abort)return null;
+  const u8=out instanceof Uint8Array?out:new Uint8Array(out);if(u8.length!==n*3){toast('Réponse inattendue du moteur de génération');return null}
+  const res=mk(rw,rh),rg=cx(res),im=rg.createImageData(rw,rh);for(let i=0;i<n;i++){im.data[i*4]=u8[i*3];im.data[i*4+1]=u8[i*3+1];im.data[i*4+2]=u8[i*3+2];im.data[i*4+3]=255}rg.putImageData(im,0,0);
+  GF.last={ms:Math.round(performance.now()-t0),w:rw,h:rh,steps,seed,ep:GF.ep};return{res,plan:P,seed}};
+/* génère puis pose le résultat en calque + masque (annulable avec Ctrl+Z) */
+GF.fill=async(opts)=>{opts=opts||{};const d=S.doc;if(!d)return false;
+  if(!GF.T()){toast('Le remplissage génératif est disponible dans l’application de bureau.',4500);return false}
+  const sel=d.sel;if(!sel||!maskBBox(sel)){toast('Sélectionnez d’abord la zone à remplir (lasso, rectangle…).',4500);return false}
+  if(GF.busyNow)return false;GF.busyNow=true;GF.abort=false;document.addEventListener('keydown',GF.onKey,true);
+  const h0=S.history[S.hi];let r=null;
+  try{r=await GF.generate(sel,opts)}catch(e){console.warn('genfill',e);toast('La génération a échoué : '+String(e&&e.message||e).slice(0,200),7000)}
+  finally{GF.busyNow=false;document.removeEventListener('keydown',GF.onKey,true);busy(false);GF.busyCancel(false)}
+  if(GF.abort){toast('Génération annulée');return false}
+  if(!r)return false;
+  if(S.doc!==d||S.history[S.hi]!==h0){toast('Génération abandonnée : le document a changé');return false}
+  const{res,plan:P}=r,{x0,y0,w,h}=P,cv=mk(d.w,d.h),g=cx(cv);g.imageSmoothingQuality='high';g.drawImage(res,0,0,res.width,res.height,x0,y0,w,h);
+  const L=newPixel('Remplissage génératif',cv);L.mask=GF.layerMask(sel,P,d.w,d.h);L.editMask=true;
+  insertLayer(L,'Remplissage génératif',true);
+  toast(`Remplissage terminé en ${GF.fmtT(GF.last.ms)}. Peignez le masque pour retoucher les bords, ou annulez (Ctrl+Z) et relancez pour une autre variante.`,7000);return true};
+GF.dialog=async()=>{const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}
+  if(!GF.T()){toast('Le remplissage génératif est disponible dans l’application de bureau.',4500);return}
+  if(!d.sel||!maskBBox(d.sel)){toast('Sélectionnez d’abord la zone à remplir (lasso, rectangle…), puis relancez.',5000);return}
+  let st=null,gpu=null;try{st=await GF.inv('sd_status');const a=await GF.inv('ai_status');gpu=a&&a.gpu}catch(e){}
+  const notes=[];if(st&&!st.cached)notes.push(`Premier usage : le modèle (${((st.total||2.1e9)/1e9).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1})} Go) est téléchargé une seule fois.`);
+  if(!gpu)notes.push('Sans carte graphique prise en charge, la génération prend plusieurs minutes.');
+  const q=PREF.get('gfQual','standard');
+  dialog({title:'Remplissage génératif',body:`<label class="field">Que doit-il apparaître dans la zone ?<textarea id="gfP" rows="3" placeholder="Ex. : a red balloon · green grass and wild flowers · (vide : prolonge le décor)">${esc(PREF.get('gfPrompt',''))}</textarea></label>
+    <p class="muted">Écrivez en anglais : le modèle comprend bien mieux l’anglais que le français. Laissez vide pour combler la zone avec le décor environnant.</p>
+    <label class="field">À éviter (anglais)<input type="text" id="gfN" value="${esc(PREF.get('gfNeg',GF.NEG))}"></label>
+    <label class="field">Qualité<select id="gfQ"><option value="rapide" ${q==='rapide'?'selected':''}>Rapide (${GF.STEPS.rapide} étapes)</option><option value="standard" ${q==='standard'?'selected':''}>Standard (${GF.STEPS.standard} étapes)</option><option value="soignee" ${q==='soignee'?'selected':''}>Soignée (${GF.STEPS.soignee} étapes)</option></select></label>
+    <p class="muted">Le calcul se fait sur votre appareil : la photo n’est pas envoyée. Le résultat arrive dans un nouveau calque avec masque, modifiable et annulable.${notes.length?' '+esc(notes.join(' ')):''}</p>`,
+    onOpen:el=>{setTimeout(()=>{const t=$('#gfP',el);if(t)t.focus()},30)},
+    buttons:[{label:'Annuler'},{label:'Générer',primary:true,onClick:el=>{const prompt=$('#gfP',el).value.trim(),neg=$('#gfN',el).value.trim(),ql=$('#gfQ',el).value;
+      PREF.set('gfPrompt',prompt);PREF.set('gfNeg',neg);PREF.set('gfQual',ql);setTimeout(()=>GF.fill({prompt,negative:neg,steps:GF.STEPS[ql]||GF.STEPS.standard,...GF.OVR}),30)}}]})};
+window.PrismGF=GF;
+/* menu Image, palette de commandes (elle reprend les commandes des menus) et carte de l'onglet IA (application de bureau) */
+{const _mi=MENU2.image.items;MENU2.image.items=()=>{const a=_mi();if(!a.some(x=>x&&x.label==='Remplissage génératif…'))a.push(MI('Remplissage génératif…',{icon:'subject',fn:GF.dialog,dis:docDis()}));return a}}
+{const CARD=`<div class="card gf-card"><h4><svg viewBox="0 0 20 20"><rect x="2.5" y="2.5" width="15" height="15" rx="3" stroke-dasharray="2 2"/><path d="M10 6v8M6 10h8"/></svg>Remplissage génératif</h4><p>Sélectionnez une zone, décrivez en anglais ce qui doit y apparaître : l’IA le crée et le fond dans la photo, dans un calque avec masque. Le calcul se fait sur votre appareil.</p><div class="acts"><button class="btn sm primary" data-gf-go="1">Remplir la sélection…</button></div></div>`;
+  const inject=()=>{const p=document.getElementById('pane-ai');if(!p||!GF.T()||p.querySelector('.gf-card'))return;const cards=[...p.querySelectorAll('.card')],ref=cards.find(c=>/Gomme/.test(c.querySelector('h4')?.textContent||''));
+    const t=document.createElement('div');t.innerHTML=CARD;const c=t.firstChild;if(ref&&ref.nextSibling)ref.parentNode.insertBefore(c,ref.nextSibling);else p.appendChild(c)};
+  const p=document.getElementById('pane-ai');if(p){p.addEventListener('click',e=>{if(e.target.closest('[data-gf-go]')){e.stopPropagation();GF.dialog()}},true);new MutationObserver(inject).observe(p,{childList:true});inject()}}
 
 }
 
@@ -11083,6 +11342,43 @@ window.PrismPrint={dialog:printDialog,layout};
 
 }
 
+/* ===== feat: feat/rawnative.js ===== */
+{
+/* RAW natif (application de bureau) : le fichier est développé en Rust (src-tauri/src/raw.rs, rawler),
+   bien plus vite que LibRaw en WebAssembly (web/raw). LibRaw reste le recours pour tout ce que la
+   version native refuse (boîtier non pris en charge, fichier abîmé…) et la voie de la version web.
+   rawDecode16 garde exactement la même forme de résultat : {data, w, h, meta, white, info}.
+   Réponse de raw_decode : "PRW1", largeur, hauteur, longueur du JSON (u32 LE), le JSON
+   {make, model, iso, shutter, aperture, focal, lens}, des zéros jusqu'à un multiple de 8, puis
+   les pixels u16 R V B, ProPhoto avec la courbe BT.709 que LibRaw applique toujours (même rendu
+   que la voie LibRaw), déjà redressés. */
+const T=window.__TAURI__;
+if(T&&T.core&&typeof rawDecode16==='function'){
+  const call=(...a)=>(window.PRISM_DESKTOP&&window.PRISM_DESKTOP.invoke||T.core.invoke)(...a);
+  const MSG='Développement du fichier RAW (16 bits)…';
+  const parse=out=>{const b=out instanceof ArrayBuffer?out:new Uint8Array(out).buffer,dv=new DataView(b);
+    if(b.byteLength<16||new TextDecoder().decode(new Uint8Array(b,0,4))!=='PRW1')throw new Error('réponse RAW native illisible');
+    const w=dv.getUint32(4,true),h=dv.getUint32(8,true),n=dv.getUint32(12,true),meta=JSON.parse(new TextDecoder().decode(new Uint8Array(b,16,n))),at=Math.ceil((16+n)/8)*8;
+    if(!w||!h||b.byteLength<at+w*h*6)throw new Error('réponse RAW native incomplète');
+    return{w,h,meta,data:new Uint16Array(b,at,w*h*3)}};
+  const native=async(file,wb)=>{const buf=new Uint8Array(await file.arrayBuffer());
+    const{w:W,h:H,meta:m,data}=parse(await call('raw_decode',buf,{headers:{'x-wb':wb==='auto'?'auto':'camera'}}));
+    /* point blanc, texte et infos d'objectif : mêmes calculs que la voie LibRaw (0440) */
+    const hist=[new Uint32Array(1024),new Uint32Array(1024),new Uint32Array(1024)];const step=Math.max(1,Math.floor(W*H/400000));let cnt=0;for(let i=0;i<W*H;i+=step){hist[0][data[i*3]>>6]++;hist[1][data[i*3+1]>>6]++;hist[2][data[i*3+2]>>6]++;cnt++}
+    let white=0;for(let c=0;c<3;c++){let tot=0,v=1023;for(;v>0;v--){tot+=hist[c][v];if(tot>cnt*0.01)break}white=Math.max(white,(v+1)/1024)}
+    const bits=[];const mk_=m.make||'',md_=m.model||'';if(mk_||md_)bits.push([mk_,md_].filter(Boolean).join(' ').trim());if(m.iso)bits.push('ISO '+Math.round(m.iso));if(m.shutter)bits.push(m.shutter>=1?m.shutter+' s':'1/'+Math.round(1/m.shutter)+' s');if(m.aperture)bits.push('f/'+(+m.aperture).toFixed(1));if(m.focal)bits.push(Math.round(m.focal)+' mm');
+    const info={make:mk_,model:md_,focal:+m.focal||0,fn:+m.aperture||0,lens:''};try{const t=tiffRead(buf),s=t&&exifSummary(t);if(s){info.lens=s.lens||'';if(!info.focal&&s.focal)info.focal=s.focal}}catch(e){}if(!info.lens)info.lens=m.lens||'';
+    return{data,w:W,h:H,meta:bits.join(' · '),white:clamp(white,1/16,1),info}};
+  const viaLibRaw=rawDecode16;
+  rawDecode16=async function(file,wb){if(PREF.get('rawNative',true)!==false){busy(true,MSG,null);
+      try{return await native(file,wb)}catch(e){console.info('RAW natif indisponible, LibRaw prend le relais :',e&&e.message||e)}finally{busy(false)}}
+    return viaLibRaw(file,wb)};
+  /* le premier développement charge la base des boîtiers de rawler : on la prépare à l'avance, au calme */
+  setTimeout(()=>{call('raw_decode',new Uint8Array(4),{headers:{'x-wb':'camera'}}).catch(()=>{})},4000);
+}
+
+}
+
 /* ===== feat: feat/samsel.js ===== */
 {
 /* ===== 0.6: object selection in one click (Segment Anything ViT-B, Meta AI, Apache 2.0).
@@ -11644,39 +11940,19 @@ function blurPlanes(P,w,h,s){const k=gaussK(s),r=(k.length-1)/2,tmp=new Float32A
     for(let x=0;x<w;x++)for(let y=0;y<h;y++){let v=0;for(let i=-r;i<=r;i++){const Y=y+i<0?0:y+i>=h?h-1:y+i;v+=tmp[Y*w+x]*k[i+r]}A[y*w+x]=v}}
   return P}
 
-pixelDab=function(st,p){
-  const d=S.doc,o=S.opts.dodge,mode=o.mode;
-  if(!st.base){const c=BR.pre;if(!c||!st.layer||st.layer.canvas===c)return _pdBR.apply(this,arguments);st.base=c}
-  if(!st.acc){st.acc=new Map();st.bctx=rx(st.base)}
-  const r=o.size/2,x0=Math.max(0,Math.floor(p.x-r)),y0=Math.max(0,Math.floor(p.y-r)),x1=Math.min(d.w,Math.ceil(p.x+r)),y1=Math.min(d.h,Math.ceil(p.y+r));if(x1<=x0||y1<=y0)return;
-  const w=x1-x0,h=y1-y0;
-  // per-dab amount: about five dabs overlap each pixel (spacing 20 % of the size); one pass at strength s gives about s at the centre
-  const s=Math.min(.97,Math.max(.01,o.strength)),a0=1-Math.pow(1-s,1/2.6);
-  const sel=st.selC?st.selC.getImageData(x0,y0,w,h).data:null;
-  const needBlur=mode==='blur'||mode==='sharpen';
-  const sig=mode==='sharpen'?Math.max(.9,Math.min(2.2,Math.max(d.w,d.h)/4000)):Math.max(1.2,Math.min(10,o.size/36));
-  const m=needBlur?Math.ceil(sig*3)+2:0,bx0=Math.max(0,x0-m),by0=Math.max(0,y0-m),bw=Math.min(d.w,x1+m)-bx0,bh=Math.min(d.h,y1+m)-by0;
-  const B=st.bctx.getImageData(bx0,by0,bw,bh).data;
-  // coverage update
-  const cov=new Float32Array(w*h),T=BR.T;
-  for(let y=0;y<h;y++){const Y=y0+y,ty=(Y/T)|0,ly=Y-ty*T;let tile=null,ttx=-1;
-    for(let x=0;x<w;x++){const X=x0+x,dx=X+.5-p.x,dy=Y+.5-p.y,q=(dx*dx+dy*dy)/(r*r);
-      const tx=(X/T)|0;if(tx!==ttx){ttx=tx;tile=null}
-      if(q>=1){if(!tile)tile=st.acc.get(ty*65536+tx)||null;cov[y*w+x]=tile?tile[ly*T+(X-tx*T)]:0;continue}
-      let f=(1-q);f*=f;if(sel)f*=sel[(y*w+x)*4+3]/255;
-      if(mode!=='blur'&&mode!=='sharpen'){const j=((Y-by0)*bw+(X-bx0))*4;f*=toneW(B[j],B[j+1],B[j+2])}
-      if(!tile)tile=accTile(st,tx,ty);const ii=ly*T+(X-tx*T);let a=tile[ii];if(f>0.0005){a+=a0*f*(1-a);tile[ii]=a}cov[y*w+x]=a}}
-  // result, always from the photo as it was before the stroke
-  const img=st.ctx.getImageData(x0,y0,w,h),out=img.data;
+const sigOf=(mode,o,d)=>mode==='sharpen'?Math.max(.9,Math.min(2.2,Math.max(d.w,d.h)/4000)):Math.max(1.2,Math.min(10,o.size/36));
+// the result for the pixels of a rectangle (x0,y0,w,h), from the photo as it was before the stroke (B: RGBA over bx0,by0,bw,bh, 8-bit or float 0..255)
+// and the coverage cov (row stride cs); circ limits it to the dab's disc
+function shade(B,bx0,by0,bw,bh,x0,y0,w,h,cov,cs,out,mode,sig,circ){
   let Pb=null;
-  if(needBlur){const n=bw*bh;
+  if(mode==='blur'||mode==='sharpen'){const n=bw*bh;
     if(mode==='blur'){Pb=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];for(let i=0;i<n;i++){Pb[0][i]=B[i*4];Pb[1][i]=B[i*4+1];Pb[2][i]=B[i*4+2]}}
     else{Pb=[new Float32Array(n)];for(let i=0;i<n;i++)Pb[0][i]=0.2126*B[i*4]+0.7152*B[i*4+1]+0.0722*B[i*4+2]}
     blurPlanes(Pb,bw,bh,sig)}
   const EV=0.85,amt=1.2,thr=4,OV=4;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-    const X=x0+x,Y=y0+y,dx=X+.5-p.x,dy=Y+.5-p.y;if(dx*dx+dy*dy>=r*r)continue;
-    const c=cov[y*w+x],j=(y*w+x)*4,bi=(Y-by0)*bw+(X-bx0),k=bi*4;
+    const X=x0+x,Y=y0+y;if(circ){const dx=X+.5-circ.x,dy=Y+.5-circ.y;if(dx*dx+dy*dy>=circ.r*circ.r)continue}
+    const c=cov[y*cs+x],j=(y*w+x)*4,bi=(Y-by0)*bw+(X-bx0),k=bi*4;
     const R=B[k],G=B[k+1],Bl=B[k+2];out[j+3]=B[k+3];
     if(c<=0){out[j]=R;out[j+1]=G;out[j+2]=Bl;continue}
     if(mode==='dodge'||mode==='burn'){const gm=mode==='dodge'?1/(1+c*EV):1+c*EV;out[j]=255*Math.pow(R/255,gm);out[j+1]=255*Math.pow(G/255,gm);out[j+2]=255*Math.pow(Bl/255,gm)}
@@ -11689,8 +11965,45 @@ pixelDab=function(st,p){
       let mn=255,mx=0;const lx=X-bx0,ly=Y-by0;
       for(let yy=-1;yy<=1;yy++){const YY=ly+yy;if(YY<0||YY>=bh)continue;for(let xx=-1;xx<=1;xx++){const XX=lx+xx;if(XX<0||XX>=bw)continue;const kk=(YY*bw+XX)*4,v=0.2126*B[kk]+0.7152*B[kk+1]+0.0722*B[kk+2];if(v<mn)mn=v;if(v>mx)mx=v}}
       if(l+dd>mx+OV)dd=Math.max(0,mx+OV-l);else if(l+dd<mn-OV)dd=Math.min(0,mn-OV-l);
-      out[j]=R+dd;out[j+1]=G+dd;out[j+2]=Bl+dd}}
+      out[j]=R+dd;out[j+1]=G+dd;out[j+2]=Bl+dd}}}
+const margin=(mode,sig)=>mode==='blur'||mode==='sharpen'?Math.ceil(sig*3)+2:0;
+// a 16-bit layer (st.hiL) reads the photo before the stroke from its 16-bit pixels: the canvas shows the result rounded, and the stroke's end stores it at 16 bits
+const baseOf=(st,x,y,w,h)=>st.hiL?hiRead(st.hiL,x,y,w,h):st.bctx.getImageData(x,y,w,h).data;
+
+pixelDab=function(st,p){
+  const d=S.doc,o=S.opts.dodge,mode=o.mode;
+  if(!st.base){const c=BR.pre;if(!c||!st.layer||st.layer.canvas===c)return _pdBR.apply(this,arguments);st.base=c}
+  if(!st.acc){st.acc=new Map();st.bctx=rx(st.base)}
+  const r=o.size/2,x0=Math.max(0,Math.floor(p.x-r)),y0=Math.max(0,Math.floor(p.y-r)),x1=Math.min(d.w,Math.ceil(p.x+r)),y1=Math.min(d.h,Math.ceil(p.y+r));if(x1<=x0||y1<=y0)return;
+  const w=x1-x0,h=y1-y0;
+  // per-dab amount: about five dabs overlap each pixel (spacing 20 % of the size); one pass at strength s gives about s at the centre
+  const s=Math.min(.97,Math.max(.01,o.strength)),a0=1-Math.pow(1-s,1/2.6);
+  const sel=st.selC?st.selC.getImageData(x0,y0,w,h).data:null;
+  const sig=sigOf(mode,o,d);
+  const m=margin(mode,sig),bx0=Math.max(0,x0-m),by0=Math.max(0,y0-m),bw=Math.min(d.w,x1+m)-bx0,bh=Math.min(d.h,y1+m)-by0;
+  const B=baseOf(st,bx0,by0,bw,bh);
+  // coverage update
+  const cov=new Float32Array(w*h),T=BR.T;
+  for(let y=0;y<h;y++){const Y=y0+y,ty=(Y/T)|0,ly=Y-ty*T;let tile=null,ttx=-1;
+    for(let x=0;x<w;x++){const X=x0+x,dx=X+.5-p.x,dy=Y+.5-p.y,q=(dx*dx+dy*dy)/(r*r);
+      const tx=(X/T)|0;if(tx!==ttx){ttx=tx;tile=null}
+      if(q>=1){if(!tile)tile=st.acc.get(ty*65536+tx)||null;cov[y*w+x]=tile?tile[ly*T+(X-tx*T)]:0;continue}
+      let f=(1-q);f*=f;if(sel)f*=sel[(y*w+x)*4+3]/255;
+      if(mode!=='blur'&&mode!=='sharpen'){const j=((Y-by0)*bw+(X-bx0))*4;f*=toneW(B[j],B[j+1],B[j+2])}
+      if(!tile)tile=accTile(st,tx,ty);const ii=ly*T+(X-tx*T);let a=tile[ii];if(f>0.0005){a+=a0*f*(1-a);tile[ii]=a}cov[y*w+x]=a}}
+  // result, always from the photo as it was before the stroke
+  const img=st.ctx.getImageData(x0,y0,w,h);
+  shade(B,bx0,by0,bw,bh,x0,y0,w,h,cov,w,img.data,mode,sig,{x:p.x,y:p.y,r});
   st.ctx.putImageData(img,x0,y0)};
+// end of a stroke on a 16-bit layer: every pixel the coverage reached, recomputed in float and stored at 16 bits
+const _esBR=endStroke;
+endStroke=function(){const st=S.stroke;
+  if(st&&st.tool==='dodge'&&st.hiL&&st.acc&&st.layer===st.hiL){try{const d=S.doc,o=S.opts.dodge,mode=o.mode,sig=sigOf(mode,o,d),m=margin(mode,sig),T=BR.T,X=hiTx(st.hiL);
+    for(const[k,cv]of st.acc){const tx=k%65536,ty=(k-tx)/65536,x0=tx*T,y0=ty*T,w=Math.min(T,d.w-x0),h=Math.min(T,d.h-y0);if(w<=0||h<=0)continue;
+      const bx0=Math.max(0,x0-m),by0=Math.max(0,y0-m),bw=Math.min(d.w,x0+w+m)-bx0,bh=Math.min(d.h,y0+h+m)-by0,out=new Float32Array(w*h*4);
+      shade(hiRead(st.hiL,bx0,by0,bw,bh),bx0,by0,bw,bh,x0,y0,w,h,cv,T,out,mode,sig,null);hiWrite(X,x0,y0,w,h,out)}
+    hiEnd(X)}catch(e){console.warn(e)}}
+  return _esBR.apply(this,arguments)};
 
 }
 

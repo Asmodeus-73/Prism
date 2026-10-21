@@ -11,7 +11,37 @@ permissions:
   contents: write
 
 jobs:
+  # The app no longer carries its AI model files: it fetches each one on first use
+  # from the "modeles" release, where every file is stored once under its SHA-256.
+  # Files already there are kept, so every version of Prism finds its own.
+  models:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Modèles d'IA téléchargés à la demande
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          node scripts/prepare.mjs
+          gh release view modeles >/dev/null 2>&1 || gh release create modeles --prerelease --title "Modèles d'IA" --notes "Fichiers des modèles d'IA que Prism télécharge la première fois qu'il en a besoin. Rien à télécharger ici à la main."
+          gh release view modeles --json assets --jq '.assets[].name' > have.txt
+          mkdir -p up
+          node -e 'const m=require("./dist/models.json");for(const [p,h] of Object.entries(m))console.log(h+" "+p)' | while read -r hash rel; do
+            grep -qx "$hash" have.txt && continue
+            echo "$hash  web/$rel" | sha256sum -c --quiet
+            cp "web/$rel" "up/$hash"
+          done
+          if [ -n "$(ls up)" ]; then gh release upload modeles up/* ; fi
+          echo "$(ls up | wc -l) fichier(s) ajouté(s)"
+
   build:
+    needs: models
     strategy:
       fail-fast: false
       matrix:

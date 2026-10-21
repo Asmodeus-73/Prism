@@ -10,7 +10,7 @@ function bucketAt(p){const d=S.doc,o=OB.bucket,A=AL(),L=pixelTarget();const x=Ma
  const src=o.all?flatSync():L.canvas,a=pixelsOf(src),m=U8(a,d.w,d.h,x,y,o.tol,o.contiguous);let n=0;for(let i=0;i<m.length;i+=7)n+=m[i];if(!n&&!m[y*d.w+x]){toast('Rien à remplir ici.');return}
  let mask=maskFromU8(m,d.w,d.h);if(o.soft){const g=cx(mask),t=cloneC(mask);for(const[ox,oy]of[[1,0],[-1,0],[0,1],[0,-1]])g.drawImage(t,ox,oy);mask=blurCanvas(mask,.6)}
  const tmp=mk(d.w,d.h),tg=cx(tmp);tg.fillStyle=S.color;tg.fillRect(0,0,d.w,d.h);tg.globalCompositeOperation='destination-in';tg.drawImage(mask,0,0);if(d.sel){tg.drawImage(d.sel,0,0)}
- const g=editCanvas(L);g.globalAlpha=o.opacity;g.drawImage(tmp,0,0);markComp();pushHistory('Pot de peinture');syncLayers()}
+ const H=hiTake(L),g=editCanvas(L);g.globalAlpha=o.opacity;g.drawImage(tmp,0,0);if(H)hiComp(L,{x0:0,y0:0,x1:d.w,y1:d.h},hiSrc(tmp,hexRGB(S.color)),o.opacity);markComp();pushHistory('Pot de peinture');syncLayers()}
 addTool('bucket','Pot de peinture','K',IC.bucket,'gradient','remplit par tolérance');
 // ---------- live wand: drag left/right after the click to change the tolerance ----------
 function wandData(){const d=S.doc,o=OB.wand,T=pixelTarget();if(!o.all&&!T)return null;const key=S.docVer+'|'+(o.all?'all':T.id);if(wandCache.key!==key){const src=o.all?flatSync():T.canvas;wandCache={key,data:rx(cloneC(src)).getImageData(0,0,d.w,d.h).data}}return wandCache.data}

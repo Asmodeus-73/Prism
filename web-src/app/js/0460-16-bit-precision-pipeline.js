@@ -1,17 +1,64 @@
 /* ================= 16-bit precision pipeline ================= */
 /* A pixel layer may carry L.hi (Uint16 RGBA, doc size, top-down) next to its 8-bit canvas. L.hiC is the canvas that matched L.hi when it was made:
-   pixels later edited in 8 bits (brush, heal…) differ from L.hiC and are taken from the canvas, everything else keeps its 16-bit value.
+   pixels later edited in 8 bits (filters…) differ from L.hiC and are taken from the canvas, everything else keeps its 16-bit value.
+   L.hiP (optional) holds HT px tiles painted at 16 bits over L.hi (see 16-bit painting below).
    Rendering runs in 32-bit float from the first layer to the last adjustment, and is dithered once at the end. */
 const PREC={on:PREF.get('hiPrec',true),fail:false};
 const precOK=()=>PREC.on&&!PREC.fail&&GPU.ok&&GPU.float;
 const docHasHi=d=>!!(d&&d.layers.some(L=>L.hi));
 const EFF=new Map();/* canvas -> merged hi, small LRU */
-function effHi(L){if(!L.hi)return null;if(L.canvas===L.hiC||!L.hiC)return L.hi;const hit=EFF.get(L.canvas);if(hit&&hit.hi===L.hi)return hit.a;
-  const w=L.canvas.width,h=L.canvas.height;if(L.hiC.width!==w||L.hiC.height!==h||L.hi.length!==w*h*4)return null;
-  const A=rx(L.canvas).getImageData(0,0,w,h).data,B=rx(L.hiC).getImageData(0,0,w,h).data,src=L.hi,o=new Uint16Array(src.length);
-  for(let i=0;i<A.length;i+=4){if(A[i]!==B[i]||A[i+1]!==B[i+1]||A[i+2]!==B[i+2]||A[i+3]!==B[i+3]){/* an 8-bit edit: add its change to the 16-bit value, so the fine detail around it survives */let v;v=src[i]+(A[i]-B[i])*257;o[i]=v<0?0:v>65535?65535:v;v=src[i+1]+(A[i+1]-B[i+1])*257;o[i+1]=v<0?0:v>65535?65535:v;v=src[i+2]+(A[i+2]-B[i+2])*257;o[i+2]=v<0?0:v>65535?65535:v;v=src[i+3]+(A[i+3]-B[i+3])*257;o[i+3]=v<0?0:v>65535?65535:v}else{o[i]=src[i];o[i+1]=src[i+1];o[i+2]=src[i+2];o[i+3]=src[i+3]}}
-  EFF.set(L.canvas,{hi:L.hi,a:o});while(EFF.size>2)EFF.delete(EFF.keys().next().value);return o}
-function hiForget(){const L=AL();if(L&&L.canvas)EFF.delete(L.canvas)}
+function effHi(L){if(!L.hi)return null;const P=L.hiP||null;if(!P&&(L.canvas===L.hiC||!L.hiC))return L.hi;const hit=EFF.get(L.canvas);if(hit&&hit.hi===L.hi&&hit.p===P)return hit.a;
+  const w=L.canvas.width,h=L.canvas.height;if(L.hi.length!==w*h*4||(L.hiC&&(L.hiC.width!==w||L.hiC.height!==h)))return null;
+  let src=L.hi,o;if(P){src=L.hi.slice();hiOver(src,P,w,h)}
+  if(L.canvas===L.hiC||!L.hiC)o=src;else{o=P?src:new Uint16Array(src.length);const A=rx(L.canvas).getImageData(0,0,w,h).data,B=rx(L.hiC).getImageData(0,0,w,h).data;
+  for(let i=0;i<A.length;i+=4){if(A[i]!==B[i]||A[i+1]!==B[i+1]||A[i+2]!==B[i+2]||A[i+3]!==B[i+3]){/* an 8-bit edit: add its change to the 16-bit value, so the fine detail around it survives */let v;v=src[i]+(A[i]-B[i])*257;o[i]=v<0?0:v>65535?65535:v;v=src[i+1]+(A[i+1]-B[i+1])*257;o[i+1]=v<0?0:v>65535?65535:v;v=src[i+2]+(A[i+2]-B[i+2])*257;o[i+2]=v<0?0:v>65535?65535:v;v=src[i+3]+(A[i+3]-B[i+3])*257;o[i+3]=v<0?0:v>65535?65535:v}else{o[i]=src[i];o[i+1]=src[i+1];o[i+2]=src[i+2];o[i+3]=src[i+3]}}}
+  EFF.set(L.canvas,{hi:L.hi,p:P,a:o});while(EFF.size>2)EFF.delete(EFF.keys().next().value);return o}
+function hiForget(){const L=AL(),c=L&&lcv(L);if(c)EFF.delete(c)}
+/* 16-bit painting: a tool on a 16-bit layer computes in float from the 16-bit pixels (0..255 scale) and stores the result as HT px Uint16 tiles in L.hiP,
+   copied on write, so history steps share every tile a stroke did not touch. The 8-bit canvas takes the rounded value wherever the 16-bit one changed,
+   then L.hiC moves to it: there is no 8-bit change left to merge, and soft strokes keep their fractions of a level. */
+const HT=256;
+function hiOver(a,P,w,h){for(const[k,t]of P.t){const tx=k%65536,ty=(k-tx)/65536,x0=tx*HT,y0=ty*HT,tw=Math.min(HT,w-x0),th=Math.min(HT,h-y0);for(let r=0;r<th;r++)a.set(t.subarray(r*HT*4,(r*HT+tw)*4),((y0+r)*w+x0)*4)}}
+/* call before editCanvas: the layer's pending 8-bit edits are folded into L.hi first. Returns L when the layer paints at 16 bits */
+function hiTake(L){const d=S.doc;if(!L||!L.hi||L.kind!=='pixel'||!d||!L.canvas||L.canvas.width!==d.w||L.canvas.height!==d.h||L.hi.length!==d.w*d.h*4)return null;
+  if(L.hiC&&L.canvas!==L.hiC){const e=effHi(L);if(!e)return null;L.hi=e;L.hiP=null}L.hiC=L.canvas;return L}
+/* the 16-bit pixels of a rectangle as floats 0..255 (0 outside the layer) */
+function hiRead(L,x0,y0,w,h,out){const W=L.canvas.width,H=L.canvas.height,A=L.hi,P=L.hiP&&L.hiP.t,k=1/257;out=out||new Float32Array(w*h*4);
+  for(let y=0;y<h;y++){const Y=y0+y,o=y*w*4;if(Y<0||Y>=H){out.fill(0,o,o+w*4);continue}const ty=(Y/HT)|0;
+    for(let x=0;x<w;){const X=x0+x;if(X<0||X>=W){const j=o+x*4;out[j]=out[j+1]=out[j+2]=out[j+3]=0;x++;continue}const tx=(X/HT)|0,e=Math.min(w,(tx+1)*HT-x0,W-x0),t=P&&P.get(ty*65536+tx);
+      let si=t?((Y-ty*HT)*HT+X-tx*HT)*4:(Y*W+X)*4;const s=t||A;for(let j=o+x*4,je=o+e*4;j<je;j++)out[j]=s[si++]*k;x=e}}return out}
+/* a write transaction: hiWrite(T,…) as many rectangles as needed (inside the layer; F floats 0..255, row stride fs px), then hiEnd(T) */
+function hiTx(L){return{L,m:new Map(L.hiP?L.hiP.t:undefined),own:new Set(),ch:false}}
+function hiWrite(T,x0,y0,w,h,F,fs){const L=T.L,W=L.canvas.width,H=L.canvas.height,A=L.hi;fs=fs||w;if(x0<0||y0<0||x0+w>W||y0+h>H||w<=0||h<=0)return;const g=rx(L.canvas),id=g.getImageData(x0,y0,w,h),c8=id.data;let any=false;
+  for(let ty=(y0/HT)|0;ty*HT<y0+h;ty++)for(let tx=(x0/HT)|0;tx*HT<x0+w;tx++){const k=ty*65536+tx,X0=Math.max(x0,tx*HT),Y0=Math.max(y0,ty*HT),X1=Math.min(x0+w,(tx+1)*HT,W),Y1=Math.min(y0+h,(ty+1)*HT,H);
+    let t=T.m.get(k),own=T.own.has(k);const bx=tx*HT,by=ty*HT;
+    for(let Y=Y0;Y<Y1;Y++){let f=((Y-y0)*fs+X0-x0)*4,j=((Y-y0)*w+X0-x0)*4,q=((Y-by)*HT+X0-bx)*4,p=(Y*W+X0)*4;
+      for(let X=X0;X<X1;X++,f+=4,j+=4,q+=4,p+=4){let v0=F[f]*257+.5,v1=F[f+1]*257+.5,v2=F[f+2]*257+.5,v3=F[f+3]*257+.5;
+        v0=v0<=0?0:v0>=65535?65535:v0|0;v1=v1<=0?0:v1>=65535?65535:v1|0;v2=v2<=0?0:v2>=65535?65535:v2|0;v3=v3<=0?0:v3>=65535?65535:v3|0;
+        if(t){if(v0===t[q]&&v1===t[q+1]&&v2===t[q+2]&&v3===t[q+3])continue}else if(v0===A[p]&&v1===A[p+1]&&v2===A[p+2]&&v3===A[p+3])continue;
+        if(!own){const n=new Uint16Array(HT*HT*4);if(t)n.set(t);else{const tw=Math.min(HT,W-bx),th=Math.min(HT,H-by);for(let r=0;r<th;r++)n.set(A.subarray(((by+r)*W+bx)*4,((by+r)*W+bx+tw)*4),r*HT*4)}t=n;T.m.set(k,t);T.own.add(k);own=true}
+        t[q]=v0;t[q+1]=v1;t[q+2]=v2;t[q+3]=v3;c8[j]=(v0*255+32895)>>>16;c8[j+1]=(v1*255+32895)>>>16;c8[j+2]=(v2*255+32895)>>>16;c8[j+3]=(v3*255+32895)>>>16;any=true}}}
+  if(any){g.putImageData(id,x0,y0);T.ch=true}}
+function hiEnd(T){const L=T.L;if(T.ch)L.hiP={t:T.m};L.hiC=L.canvas}
+/* composite a source over the 16-bit pixels inside box b, tile by tile: src(x,y,w,h) gives straight colour 0..255 and alpha 0..1 (or null where empty);
+   source-over with opacity op, or destination-out when erase, as the 8-bit canvas does */
+function hiComp(L,b,src,op,erase){const W=L.canvas.width,H=L.canvas.height,x0=Math.max(0,Math.floor(b.x0)),y0=Math.max(0,Math.floor(b.y0)),x1=Math.min(W,Math.ceil(b.x1)),y1=Math.min(H,Math.ceil(b.y1)),T=hiTx(L);let F=null;
+  for(let ty=(y0/HT)|0;ty*HT<y1;ty++)for(let tx=(x0/HT)|0;tx*HT<x1;tx++){const X0=Math.max(x0,tx*HT),Y0=Math.max(y0,ty*HT),w=Math.min(x1,(tx+1)*HT)-X0,h=Math.min(y1,(ty+1)*HT)-Y0;if(w<=0||h<=0)continue;
+    const C=src(X0,Y0,w,h);if(!C)continue;F=hiRead(L,X0,Y0,w,h,F&&F.length===w*h*4?F:null);
+    for(let j=0;j<F.length;j+=4){const sa=C[j+3]*op;if(sa<=0)continue;if(erase){F[j+3]*=1-sa;continue}
+      if(F[j+3]>=255){const t=1-sa;F[j]=C[j]*sa+F[j]*t;F[j+1]=C[j+1]*sa+F[j+1]*t;F[j+2]=C[j+2]*sa+F[j+2]*t;continue}
+      const da=F[j+3]/255,oa=sa+da*(1-sa),t=da*(1-sa);F[j]=(C[j]*sa+F[j]*t)/oa;F[j+1]=(C[j+1]*sa+F[j+1]*t)/oa;F[j+2]=(C[j+2]*sa+F[j+2]*t)/oa;F[j+3]=oa*255}
+    hiWrite(T,X0,Y0,w,h,F)}hiEnd(T)}
+/* source for hiComp from an 8-bit canvas: its alpha, with a flat colour col ([r,g,b]), the colours of cs(x,y,w,h) (floats), or its own colours */
+function hiSrc(m,col,cs){const g=rx(m);return(x,y,w,h)=>{const a=g.getImageData(x,y,w,h).data;let any=false;for(let j=3;j<a.length;j+=4)if(a[j]){any=true;break}if(!any)return null;
+  const o=new Float32Array(a.length),C=cs?cs(x,y,w,h):null;for(let j=0;j<a.length;j+=4){if(!a[j+3])continue;o[j+3]=a[j+3]/255;if(col){o[j]=col[0];o[j+1]=col[1];o[j+2]=col[2]}else if(C){o[j]=C[j];o[j+1]=C[j+1];o[j+2]=C[j+2]}else{o[j]=a[j];o[j+1]=a[j+1];o[j+2]=a[j+2]}}return o}}
+const hexRGB=h=>{const n=parseInt(String(h).slice(1),16);return[n>>16&255,n>>8&255,n&255]};
+/* stroke-time float copy of the 16-bit pixels (tiles loaded on demand) for tools that read what they just painted (smudge); commit() stores it */
+function hiWork(L){const m=new Map(),W=L.canvas.width,H=L.canvas.height,tile=k=>{let t=m.get(k);if(!t){const tx=k%65536,ty=(k-tx)/65536;t=hiRead(L,tx*HT,ty*HT,HT,HT);m.set(k,t)}return t};
+  const walk=(x0,y0,w,h,F,put)=>{for(let y=0;y<h;y++){const Y=y0+y;if(Y<0||Y>=H)continue;const ty=(Y/HT)|0;for(let x=0;x<w;){const X=x0+x;if(X<0||X>=W){x++;continue}const tx=(X/HT)|0,e=Math.min(w,(tx+1)*HT-x0,W-x0),t=tile(ty*65536+tx);
+    let q=((Y-ty*HT)*HT+X-tx*HT)*4;for(let j=(y*w+x)*4,je=(y*w+e)*4;j<je;j++,q++){if(put)t[q]=F[j];else F[j]=t[q]}x=e}}};
+  return{L,get(x0,y0,w,h,F){F=F||new Float32Array(w*h*4);walk(x0,y0,w,h,F,false);return F},set(x0,y0,w,h,F){walk(x0,y0,w,h,F,true)},
+    commit(){const T=hiTx(L);for(const[k,t]of m){const tx=k%65536,ty=(k-tx)/65536;hiWrite(T,tx*HT,ty*HT,Math.min(HT,W-tx*HT),Math.min(HT,H-ty*HT),t,HT)}hiEnd(T);m.clear()}}}
 /* half-size pyramid of a Uint16 RGBA image, for zoomed-out views */
 const HIMIP=new WeakMap();
 function hiLevel(a,w,h,scale){let lv=HIMIP.get(a);if(!lv){lv=[];HIMIP.set(a,lv)}let cur={a,w,h},k=0;while(scale<0.5/(1<<k)&&cur.w>64&&cur.h>64){let n=lv[k];
@@ -28,8 +75,8 @@ function sampleHi(a,dw,dh,T,W,H,dx,dy,out){const sc=Math.sqrt(Math.abs(T[0]*T[3]
       out[j]=A[p00]*w00+A[p10]*w10+A[p01]*w01+A[p11]*w11;out[j+1]=A[p00+1]*w00+A[p10+1]*w10+A[p01+1]*w01+A[p11+1]*w11;out[j+2]=A[p00+2]*w00+A[p10+2]*w10+A[p01+2]*w01+A[p11+2]*w11;out[j+3]=A[p00+3]*w00+A[p10+3]*w10+A[p01+3]*w01+A[p11+3]*w11}}return out}
 /* geometric ops: transform L.hi with the same matrix as the canvas (doc -> new doc) */
 let TFM=null;
-function hiXform(L,eff,ow,oh,nw,nh,M){if(!eff){L.hi=null;L.hiC=null;return}const F=sampleHi(eff,ow,oh,[M.a,M.b,M.c,M.d,M.e,M.f],nw,nh,0,0),o=new Uint16Array(nw*nh*4);
-  for(let y=0;y<nh;y++){const r=(nh-1-y)*nw*4,q=y*nw*4;for(let i=0;i<nw*4;i++){const v=F[r+i];o[q+i]=v<=0?0:v>=1?65535:(v*65535+0.5)|0}}L.hi=o;L.hiC=L.canvas}
+function hiXform(L,eff,ow,oh,nw,nh,M){if(!eff){L.hi=null;L.hiP=null;L.hiC=null;return}const F=sampleHi(eff,ow,oh,[M.a,M.b,M.c,M.d,M.e,M.f],nw,nh,0,0),o=new Uint16Array(nw*nh*4);
+  for(let y=0;y<nh;y++){const r=(nh-1-y)*nw*4,q=y*nw*4;for(let i=0;i<nw*4;i++){const v=F[r+i];o[q+i]=v<=0?0:v>=1?65535:(v*65535+0.5)|0}}L.hi=o;L.hiP=null;L.hiC=L.canvas}
 /* float buffers (bottom-up) <-> 8-bit */
 function floatFromCanvas(c,W,H,out){const a=rx(c).getImageData(0,0,W,H).data;out=out||new Float32Array(W*H*4);const k=1/255;for(let y=0;y<H;y++){const r=(H-1-y)*W*4,q=y*W*4;for(let i=0;i<W*4;i++)out[r+i]=a[q+i]*k}return out}
 let ditherSeed=1;
@@ -60,10 +107,10 @@ function renderStackF(tc,W,H,T,o){const d=S.doc,upto=o.upto==null?d.layers.lengt
     if(L.kind==='adjust'){if(devIsId(L.dev))continue;const ms=maskSrc(L);let mc=null;if(ms){mc=scr('am',W,H);const g=cx(mc);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.imageSmoothingEnabled=true;g.setTransform(...T);drawMip(g,ms,0,0,o.scale,ms===L.mask);g.setTransform(1,0,0,1,0,0)}
       if(empty)continue;if(!F)F=floatFromCanvas(tc.canvas,W,H);F=devFloat(F,W,H,L,mc,o);continue}
     const src=layerSrc(L),ms=L.mask?maskSrc(L):null,dx=L.dx||0,dy=L.dy||0,wasEmpty=empty;
-    empty=false;let S2=null;const eh=src===L.canvas?effHi(L):null;
+    empty=false;let S2=null;const eh=src===lcv(L)?effHi(L):null;
     if(eh){S2=sampleHi(eh,d.w,d.h,T,W,H,dx,dy);if(ms){const t=scr('lm',W,H),g=rx(t);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.setTransform(...T);drawMip(g,ms,dx,dy,o.scale,ms===L.mask);g.setTransform(1,0,0,1,0,0);const m=g.getImageData(0,0,W,H).data;
         for(let y=0;y<H;y++){const r=(H-1-y)*W*4,q=y*W*4;for(let x=3;x<W*4;x+=4)S2[r+x]*=m[q+x]/255}}}
-    else{const t=scr('lf',W,H),g=rx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.imageSmoothingQuality='high';g.setTransform(...T);drawMip(g,src,dx,dy,o.scale,src===L.canvas||src.__fx);
+    else{const t=scr('lf',W,H),g=rx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.imageSmoothingQuality='high';g.setTransform(...T);drawMip(g,src,dx,dy,o.scale,src===lcv(L)||src.__fx);
       if(ms){g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,dx,dy,o.scale,ms===L.mask);g.globalCompositeOperation='source-over'}g.setTransform(1,0,0,1,0,0);
       if(L.blend==='source-over'&&F){overF(F,g.getImageData(0,0,W,H).data,W,H,L.opacity);continue}
       S2=floatFromCanvas(t,W,H)}

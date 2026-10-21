@@ -20,7 +20,8 @@ document.fonts.load=function(f,t){
   return _load(f,t);
 };
 // redraws, in place (same canvas, so history stays consistent; no new step), the text layers drawn in the fallback font
-function redrawFont(n){const d=S.doc;let k=0;if(d)for(const L of d.layers){if(!L.txt||L.txt.font!==n||L.preview||!L.canvas||L.canvas.width!==d.w||L.canvas.height!==d.h)continue;const bb=drawTextTo(L.canvas,L.txt);L.txt=Object.assign({},L.txt,{bbox:bb});encCache.delete(L.canvas);L.canvas._v=(L.canvas._v|0)+1;k++}
+function redrawFont(n){const d=S.doc;let k=0;if(d)for(const L of d.layers){const sp=!L.preview&&L.txt&&L.txt.font===n&&spOf(L);if(sp){const c=mk(d.w,d.h),bb=drawTextTo(c,L.txt);spReplace(sp,c);L.txt=Object.assign({},L.txt,{bbox:bb});k++;continue}
+  if(!L.txt||L.txt.font!==n||L.preview||!L.canvas||L.canvas.width!==d.w||L.canvas.height!==d.h)continue;const bb=drawTextTo(L.canvas,L.txt);L.txt=Object.assign({},L.txt,{bbox:bb});encCache.delete(L.canvas);L.canvas._v=(L.canvas._v|0)+1;k++}
   if(k){markComp();scheduleSave()}else render()}
 // un calque texte rendu avant que sa police soit arrivée : on le redessine à l'arrivée
 const _draw=drawTextTo;

@@ -39,7 +39,7 @@ function tfApply(){const T=S.tf;if(!T)return;const d=S.doc,L=T.L;if(!d||!d.layer
  const c=mk(d.w,d.h),g=cx(c);if(T.base)g.drawImage(T.base,0,0);drawWarped(g,T.src,T);delete L.preview;delete L.maskPreview;
  const affine=T.mode!=='warp'&&isPara(T.q)&&!T.selMask;let e=null;if(L.hi){if(affine)e=effHi(L)}
  L.canvas=c;
- if(L.hi){if(affine&&e){const q=T.q,M=new DOMMatrix([(q[1].x-q[0].x)/T.w,(q[1].y-q[0].y)/T.w,(q[3].x-q[0].x)/T.h,(q[3].y-q[0].y)/T.h,q[0].x,q[0].y]).translate(-T.bb.x0,-T.bb.y0);hiXform(L,e,d.w,d.h,d.w,d.h,M)}else{L.hi=null;L.hiC=null;toast('Cette transformation a converti le calque en 8 bits.')}}
+ if(L.hi){if(affine&&e){const q=T.q,M=new DOMMatrix([(q[1].x-q[0].x)/T.w,(q[1].y-q[0].y)/T.w,(q[3].x-q[0].x)/T.h,(q[3].y-q[0].y)/T.h,q[0].x,q[0].y]).translate(-T.bb.x0,-T.bb.y0);hiXform(L,e,d.w,d.h,d.w,d.h,M)}else{L.hi=null;L.hiP=null;L.hiC=null;toast('Cette transformation a converti le calque en 8 bits.')}}
  if(T.msrc){const mc=mk(d.w,d.h);drawWarped(cx(mc),T.msrc,T);L.mask=mc}
  if(T.selMask){const sm=mk(d.w,d.h),sg=cx(sm);const ms=mk(T.w,T.h);cx(ms).drawImage(d.sel,-T.bb.x0,-T.bb.y0);drawWarped(sg,ms,T);d.sel=sm;selChanged()}
  if(L.txt||L.shp){L.txt=null;L.shp=null}

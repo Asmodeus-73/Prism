@@ -1,0 +1,44 @@
+name: Modèles d'IA générative
+
+# Copies the Stable Diffusion 1.5 inpainting files (ONNX, fp16) into the "modeles" release,
+# each file named by its SHA-256, which is where the app fetches them on first use.
+# The hashes are the ones Hugging Face publishes for the large files; a download that does not match fails the job.
+on:
+  workflow_dispatch:
+  # also runs when this file changes on the branch that adds it (a new workflow cannot be started by hand before it reaches main)
+  push:
+    branches: [claude/project-thread-fn17xg]
+    paths: ['.github/workflows/models.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  sd:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Télécharger, vérifier, publier
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_HF: https://huggingface.co/RanaLLC/stable-diffusion-v1-5-inpainting-onnx-fp16/resolve/main
+        run: |
+          set -e
+          gh release view modeles --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create modeles --repo "$GITHUB_REPOSITORY" --prerelease --title "Modèles d'IA" --notes "Fichiers des modèles d'IA que Prism télécharge la première fois qu'il en a besoin. Rien à télécharger ici à la main."
+          gh release view modeles --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > have.txt
+          mkdir -p up
+          get() { # path sha256 (sha256 empty for small text files)
+            f="up/tmp"; curl -fL --retry 4 -o "$f" "$REPO_HF/$1"
+            h=$(sha256sum "$f" | cut -d' ' -f1)
+            if [ -n "$2" ] && [ "$h" != "$2" ]; then echo "contenu inattendu pour $1 : $h"; exit 1; fi
+            echo "$h  $1  $(stat -c %s "$f")" >> manifest.txt
+            if grep -qx "$h" have.txt; then rm "$f"; else mv "$f" "up/$h"; gh release upload modeles "up/$h" --repo "$GITHUB_REPOSITORY"; fi
+          }
+          : > manifest.txt
+          get unet/model.onnx a3726e1944ec2fbc9596096cd001520aea789367f329360ee34eb520c751de16
+          get text_encoder/model.onnx 8af516fb184866f8caed192ca3bf0636ef9d40d4f7799c05600cae431d18d8d1
+          get vae_decoder/model.onnx ce0ffca3fcfd0a2729a88d8d90dabf35c66d237404997e0461d52e46ac7a91bc
+          get vae_encoder/model.onnx f0da9070d007def0d6a4e7c10a21462bb6172e460ef2587c3fe91191397b4cea
+          get tokenizer/vocab.json ""
+          get tokenizer/merges.txt ""
+          get scheduler/scheduler_config.json ""
+          cat manifest.txt

@@ -1,11 +1,11 @@
 /* ================= stack rendering ================= */
-function markComp(){S.docVer++;S.contentDirty=true;requestRender();scheduleThumbs()}
+function markComp(){S.docVer++;S.contentDirty=true;requestRender();scheduleThumbs();spSchedule(null,true)}
 function markContent(){S.contentDirty=true;requestRender()}
 // panning: when a full redraw is slow, the last frame slides with the pointer and the photo is redrawn at a steady pace (and once the pointer stops)
 function panTo(nx,ny){const dx=nx-S.panX,dy=ny-S.panY;S.panX=nx;S.panY=ny;const now=performance.now();
   if(S.workPos&&(S.contentMs||0)>24&&now-(S.panRedraw||0)<160){S.workPos.x+=Math.round(dx*S.pr);S.workPos.y+=Math.round(dy*S.pr);requestRender();clearTimeout(S.panT);S.panT=setTimeout(markContent,90);return}
   S.panRedraw=now;markContent()}
-function layerSrc(L){if(L.preview)return L.preview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='pixel')return st.liveCanvas();return L.canvas}
+function layerSrc(L){if(L.preview)return L.preview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='pixel')return st.liveCanvas();return lcv(L)}
 function maskSrc(L){if(L.maskPreview)return L.maskPreview;const st=S.stroke;if(st&&st.layer===L&&st.live&&st.target==='mask')return st.liveCanvas();return L.mask}
 const scratch={};function scr(name,w,h){let c=scratch[name];if(!c||c.width!==w||c.height!==h){c=scratch[name]=mk(w,h)}return c}
 const stackCache={key:'',c:null};
@@ -20,9 +20,9 @@ function renderStack(tc,W,H,T,o){const d=S.doc;tc.setTransform(1,0,0,1,0,0);tc.g
     if(L.kind==='adjust'){if(o.before||devIsId(L.dev))continue;const ms=maskSrc(L);let mc=null;if(ms){mc=scr('am',W,H);const g=cx(mc);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.imageSmoothingEnabled=true;g.setTransform(...T);drawMip(g,ms,0,0,o.scale,ms===L.mask);g.setTransform(1,0,0,1,0,0)}
       applyAdjust(tc,W,H,L,mc,o);continue}
     const src=layerSrc(L),ms=L.mask?maskSrc(L):null;tc.setTransform(...T);
-    if(ms){const t=scr('lm',W,H),g=cx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.setTransform(...T);drawMip(g,src,L.dx||0,L.dy||0,o.scale,src===L.canvas||src.__fx);g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,L.dx||0,L.dy||0,o.scale,ms===L.mask);g.globalCompositeOperation='source-over';g.setTransform(1,0,0,1,0,0);
+    if(ms){const t=scr('lm',W,H),g=cx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.setTransform(...T);drawMip(g,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx);g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,L.dx||0,L.dy||0,o.scale,ms===L.mask);g.globalCompositeOperation='source-over';g.setTransform(1,0,0,1,0,0);
       tc.setTransform(1,0,0,1,0,0);tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;tc.drawImage(t,0,0)}
-    else{tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;drawMip(tc,src,L.dx||0,L.dy||0,o.scale,src===L.canvas||src.__fx)}
+    else{tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;drawMip(tc,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx)}
     tc.globalAlpha=1;tc.globalCompositeOperation='source-over';tc.setTransform(1,0,0,1,0,0)}}
 function applyAdjust(tc,W,H,L,mc,o){const po={scale:o.scale,ox:o.ox,oy:o.oy,docW:S.doc.w,docH:S.doc.h};
   if(GPU.ok&&W<=GPU.max&&H<=GPU.max&&W*H<=(GPU.area||Infinity)){try{const out=GPU.develop(tc.canvas,L.dev,mc,L.opacity,po);tc.setTransform(1,0,0,1,0,0);tc.globalCompositeOperation='copy';tc.drawImage(out,0,0);tc.globalCompositeOperation='source-over';return}catch(e){console.warn(e);GPU.ok=false}}

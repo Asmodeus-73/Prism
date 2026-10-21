@@ -13,7 +13,7 @@ const falloff=(dist,hard)=>{const t=Math.min(1,dist);const h=clamp(hard,0,1);ret
 let LQ={layer:null,orig:null};
 function ipBegin(tool,p,e){const d=S.doc,A=rtPixelTarget();if(!A)return false;
  lazy(tool==='liquify'?'liquify':'smudge',tool==='liquify'?120:60);
- editCanvas(A);const ctx=rx(A.canvas),st={type:'ip',tool,L:A,ctx,last:{x:p.x,y:p.y},sel:d.sel?rx(d.sel):null,carry:null,pressure:(e&&e.pointerType==='pen')?(e.pressure||1):1};S.drag=st;if(tool==='smudge')smudgeStep(st,p,true);markComp();return true}
+ const hl=tool==='smudge'?hiTake(A):null;editCanvas(A);const ctx=rx(A.canvas),st={type:'ip',tool,L:A,ctx,hw:hl?hiWork(A):null,last:{x:p.x,y:p.y},sel:d.sel?rx(d.sel):null,carry:null,pressure:(e&&e.pointerType==='pen')?(e.pressure||1):1};S.drag=st;if(tool==='smudge')smudgeStep(st,p,true);markComp();return true}
 function regionOf(st,p,r){const d=S.doc,x0=Math.max(0,Math.floor(p.x-r)),y0=Math.max(0,Math.floor(p.y-r)),x1=Math.min(d.w,Math.ceil(p.x+r)),y1=Math.min(d.h,Math.ceil(p.y+r));if(x1<=x0||y1<=y0)return null;return{x0,y0,w:x1-x0,h:y1-y0}}
 function liqStep(st,p,dx,dy){const o=OB.liquify,r=o.size/2,R=regionOf(st,p,r);if(!R)return;const img=st.ctx.getImageData(R.x0,R.y0,R.w,R.h),src=new Uint8ClampedArray(img.data),a=img.data,w=R.w,h=R.h,S0=o.strength*st.pressure;
  let sel=null;if(st.sel)sel=st.sel.getImageData(R.x0,R.y0,w,h).data;let orig=null;if(o.mode==='reconstruct'&&LQ.orig)orig=rx(LQ.orig).getImageData(R.x0,R.y0,w,h).data;
@@ -41,7 +41,7 @@ S.patch=null;
 const polyMask=pts=>{const d=S.doc,m=mk(d.w,d.h),g=cx(m);g.fillStyle='#fff';g.beginPath();pts.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y));g.closePath();g.fill();return m};
 const inPoly=(p,pts)=>{let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const a=pts[i],b=pts[j];if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)c=!c}return c};
 async function patchApply(){const P=S.patch;if(!P||P.phase!=='drag')return;const off=P.off;if(Math.hypot(off.x,off.y)<2){S.patch=null;requestRender();return}
- const d=S.doc,L=pixelTarget();if(!L||L.visible===false){if(L)toast('Ce calque est masqué');S.patch=null;requestRender();return}busy(true,'Correction…');await new Promise(r=>setTimeout(r,20));let ok=true;const prev=L.canvas;try{editCanvas(L);const bx={x0:P.bb.x0,y0:P.bb.y0,x1:P.bb.x1,y1:P.bb.y1};ok=healRegion(L,P.mask,bx,off)!==false}finally{busy(false)}
+ const d=S.doc,L=pixelTarget();if(!L||L.visible===false){if(L)toast('Ce calque est masqué');S.patch=null;requestRender();return}busy(true,'Correction…');await new Promise(r=>setTimeout(r,20));let ok=true;const prev=L.canvas;try{const H=hiTake(L);editCanvas(L);const bx={x0:P.bb.x0,y0:P.bb.y0,x1:P.bb.x1,y1:P.bb.y1};ok=healRegion(L,P.mask,bx,off,H)!==false}finally{busy(false)}
  S.patch=null;if(!ok){L.canvas=prev;markComp();return}markComp();pushHistory('Pièce');syncLayers()}
 // ---------- red eye ----------
 function redEyeAt(p){const d=S.doc,A=rtPixelTarget(),o=OB.redeye;lazy('redeye',40);if(!A)return;

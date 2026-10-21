@@ -125,7 +125,7 @@ bakeMove=function(L,dx,dy){const d=S.doc;
   if(L&&(dx||dy)&&window.PrismSO&&PrismSO.valid(L)){L.dx=0;L.dy=0;const so=L.so,m={...so.m,dx:so.m.dx+dx/d.w*100,dy:so.m.dy+dy/d.h*100},c=PrismSO.render(so,m);L.so={...so,m,out:c};L.canvas=c;if(L.mask){const k=mk(d.w,d.h);cx(k).drawImage(L.mask,dx,dy);L.mask=k}return}
   return _bm.apply(this,arguments)};
 function layerAt(x,y){const d=S.doc;x=Math.floor(x);y=Math.floor(y);if(x<0||y<0||x>=d.w||y>=d.h)return -1;
-  for(let i=d.layers.length-1;i>=0;i--){const L=d.layers[i];if(L.kind!=='pixel'||L.visible===false||!L.canvas||!(L.opacity>0))continue;if(rx(L.canvas).getImageData(x,y,1,1).data[3]<=8)continue;if(L.mask&&rx(L.mask).getImageData(x,y,1,1).data[3]<=8)continue;return i}return -1}
+  for(let i=d.layers.length-1;i>=0;i--){const L=d.layers[i];if(L.kind!=='pixel'||L.visible===false||!lcv(L)||!(L.opacity>0))continue;if(lAlpha(L,x,y)<=8)continue;if(L.mask&&rx(L.mask).getImageData(x,y,1,1).data[3]<=8)continue;return i}return -1}
 const mates=L=>L&&L.link?S.doc.layers.filter(l=>l!==L&&l.link===L.link&&l.kind==='pixel'&&l.visible!==false):[];
 
 const _od=onDown;

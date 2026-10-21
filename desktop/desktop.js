@@ -13,6 +13,14 @@
   // reads them from /_blob/; scripts/prepare.mjs points those reads here).
   window.PRISM_BLOB = T.core.convertFileSrc('', 'prismsync');
 
+  // AI model files are not in the app: they are fetched the first time they are
+  // needed and kept (src-tauri/src/models.rs). Their addresses carry the expected hash.
+  const MODELS = window.PRISM_MODELS || {};
+  window.PRISM_ASSET = (p) => {
+    const h = MODELS[String(p).replace(/^\.\//, '')];
+    return h ? T.core.convertFileSrc(`${h}/${String(p).replace(/^\.\//, '')}`, 'prismmodel') : null;
+  };
+
   const toBytes = async (data) =>
     data instanceof Blob ? new Uint8Array(await data.arrayBuffer())
     : data instanceof Uint8Array ? data
@@ -187,12 +195,48 @@
     });
   }
 
+  // ---- Fichier > Prise de vue connectée… : photos opened as the camera app writes them ----
+  const tether = { keep: true, queue: Promise.resolve() };
+  T.event.listen('tether-photo', ({ payload }) => {
+    tether.queue = tether.queue.then(async () => {
+      try {
+        // the look of the photo shown when the new one arrives carries over, as in a studio session
+        const look = tether.keep && S.doc ? captureLook(false) : null;
+        const bytes = new Uint8Array(await invoke('tether_read', { path: payload.path }));
+        await openBlob(new File([bytes], payload.name));
+        if (look && look.layers.length && S.doc && S.doc.name === payload.name) pasteLook(look);
+        toast('Nouvelle photo : ' + payload.name);
+      } catch (e) {
+        toast('Photo reçue mais impossible à ouvrir (' + payload.name + ') : ' + (e.message || e), 6000);
+      }
+    });
+  });
+  async function tetherDialog() {
+    const folder = await invoke('tether_folder').catch(() => null);
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const body = `${folder ? `<p>Prism ouvre chaque nouvelle photo qui arrive dans :</p><p><b>${esc(folder)}</b></p>` : `<p>Branchez l’appareil et lancez le logiciel de prise de vue de sa marque (EOS Utility, Nikon NX Tether, Imaging Edge, X Acquire…), réglé pour enregistrer sur l’ordinateur.</p><p>Choisissez ensuite le dossier où il enregistre : Prism ouvrira chaque photo dès qu’elle arrive.</p>`}
+      <label class="row" style="gap:8px;display:flex;align-items:center;margin-top:8px"><input type="checkbox" id="tetherKeep" ${tether.keep ? 'checked' : ''}> Appliquer aux nouvelles photos les réglages de la photo affichée</label>`;
+    const keep = () => { const c = document.getElementById('tetherKeep'); if (c) tether.keep = c.checked; };
+    dialog({
+      title: 'Prise de vue connectée',
+      body,
+      buttons: [
+        { label: 'Fermer', onClick: keep },
+        ...(folder ? [{ label: 'Arrêter', onClick: () => { keep(); invoke('tether_stop'); toast('Prise de vue connectée arrêtée'); } }] : []),
+        { label: folder ? 'Changer de dossier…' : 'Choisir le dossier…', primary: true, onClick: () => {
+          keep();
+          invoke('tether_start').then((d) => { if (d) toast('En attente des photos dans ' + d, 5000); }, (e) => toast('Dossier impossible à surveiller : ' + e, 6000));
+        } },
+      ],
+    });
+  }
+
   addEventListener('DOMContentLoaded', () => {
     try {
       const items = MENU2.file.items;
       MENU2.file.items = () => {
         const a = items();
-        a.push(SEP, MI('Dossier de synchronisation…', { icon: 'cloud', fn: syncDialog }));
+        a.push(SEP, MI('Prise de vue connectée…', { icon: 'open', fn: tetherDialog }), MI('Dossier de synchronisation…', { icon: 'cloud', fn: syncDialog }));
         return a;
       };
     } catch (e) {

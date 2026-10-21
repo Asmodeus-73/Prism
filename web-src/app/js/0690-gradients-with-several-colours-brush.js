@@ -24,6 +24,14 @@ const _gc=gradientCanvas;gradientCanvas=function(dr,color){const d=S.doc;
  const m=mk(d.w,d.h),g=cx(m);let st;
  if(color===undefined){st=[{t:0,c:'#ffffff',a:1},{t:1,c:'#ffffff',a:0}];if(GO.reverse)st=[{t:0,c:'#ffffff',a:0},{t:1,c:'#ffffff',a:1}]}else st=stopsFor(color);
  paint(g,dr.shape,dr,st,d.w,d.h);return m};
+// 16-bit painting: the same gradient in float, fill(x,y,w,h,o) writes straight colour 0..255 and alpha 0..1 for the pixel centres of a rectangle
+window.gradF=function(dr,color){let st=stopsFor(color);const dx=dr.x1-dr.x0,dy=dr.y1-dr.y0,r=Math.max(1,Math.hypot(dx,dy)),L2=Math.max(1e-9,dx*dx+dy*dy),a0=Math.atan2(dy,dx),sh=dr.shape,N=65535;
+ if(sh==='radial'&&st.length===2&&st[0].c===st[1].c&&st[0].a===1&&st[1].a===0)st=[st[0],{...st[0],t:.45},st[1]];
+ const T=st.map(s=>clamp(s.t,0,1)),C=st.map(s=>{const n=parseInt(s.c.slice(1),16);return[n>>16&255,n>>8&255,n&255,s.a]}),n=st.length,lut=new Float32Array((N+1)*4);
+ for(let i=0,k=0;i<=N;i++){const t=i/N;while(k<n-1&&T[k+1]<t)k++;const A=C[k],B=C[Math.min(n-1,k+1)],f=k>=n-1||t<=T[k]?0:T[k+1]>T[k]?(t-T[k])/(T[k+1]-T[k]):1;for(let c=0;c<4;c++)lut[i*4+c]=A[c]+(B[c]-A[c])*f}
+ return{fill(x0,y0,w,h,o){for(let y=0;y<h;y++){const py=y0+y+.5-dr.y0;for(let x=0;x<w;x++){const px=x0+x+.5-dr.x0;let t;
+   if(sh==='radial')t=Math.sqrt(px*px+py*py)/r;else if(sh==='angular'){t=(Math.atan2(py,px)-a0)/(2*Math.PI);t-=Math.floor(t)}else{t=(px*dx+py*dy)/L2;if(sh==='reflect'&&t<0)t=-t}
+   const i=(t<=0?0:t>=1?N:(t*N+.5)|0)*4,j=(y*w+x)*4;o[j]=lut[i];o[j+1]=lut[i+1];o[j+2]=lut[i+2];o[j+3]=lut[i+3]}}}}};
 const gradCss=st=>'linear-gradient(90deg,'+st.map(s=>`${hexA(s.c,s.a)} ${Math.round(s.t*100)}%`).join(',')+')';
 function gradEditor(){const prev=JSON.parse(JSON.stringify(GO.stops));let sel=0;
  dialog({title:'Dégradé',body:`<label class="field">Modèle<select id="gdP">${Object.keys(GN).map(k=>`<option value="${k}" ${GO.preset===k?'selected':''}>${GN[k]}</option>`).join('')}</select></label>
