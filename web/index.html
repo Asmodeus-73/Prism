@@ -9845,7 +9845,7 @@ GF.onKey=e=>{if(e.key==='Escape'&&GF.busyNow){GF.cancel();e.stopPropagation()}};
 GF.show=(msg,p)=>{busy(true,msg,p);GF.busyCancel(true)};
 /* télécharge (une fois) puis charge le modèle ; renvoie false si impossible ou annulé */
 GF.prepare=async()=>{const st=await GF.inv('sd_status');
-  if(!st.ok){toast('Le moteur IA natif est indisponible : la génération ne peut pas démarrer.',5000);return false}
+  if(!st.ok){toast('Le moteur IA natif est indisponible : la génération ne peut pas démarrer.'+(st.error?' ('+String(st.error).slice(0,260)+')':''),12000);console.warn('genfill moteur',st.error);return false}
   if(st.loaded){return true}
   const gb=(st.total/1e9).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1})+' Go';
   const un=await GF.listen('sd-download',e=>{if(GF.abort)return;
