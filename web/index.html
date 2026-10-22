@@ -9239,7 +9239,7 @@ upscaleCanvas=async function(src,scale,model,onP){
 }
 
 
-window.PRISM_VERSION="0.7.0";
+window.PRISM_VERSION="0.7.1";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {
@@ -9845,7 +9845,7 @@ GF.onKey=e=>{if(e.key==='Escape'&&GF.busyNow){GF.cancel();e.stopPropagation()}};
 GF.show=(msg,p)=>{busy(true,msg,p);GF.busyCancel(true)};
 /* télécharge (une fois) puis charge le modèle ; renvoie false si impossible ou annulé */
 GF.prepare=async()=>{const st=await GF.inv('sd_status');
-  if(!st.ok){toast('Le moteur IA natif est indisponible : la génération ne peut pas démarrer.',5000);return false}
+  if(!st.ok){toast('Le moteur IA natif est indisponible : la génération ne peut pas démarrer.'+(st.error?' ('+String(st.error).slice(0,260)+')':''),12000);console.warn('genfill moteur',st.error);return false}
   if(st.loaded){return true}
   const gb=(st.total/1e9).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1})+' Go';
   const un=await GF.listen('sd-download',e=>{if(GF.abort)return;
@@ -11788,10 +11788,10 @@ const minus=(a,b)=>{const o=cloneC(a),g=cx(o);g.globalCompositeOperation='destin
 // statistics of the photo inside a mask, on a small proxy: median and percentiles of luminance, clipping, mean saturation
 function stats(m){const d=S.doc,s=Math.min(1,384/Math.max(d.w,d.h)),w=Math.max(1,d.w*s|0),h=Math.max(1,d.h*s|0),t=mk(w,h),g=rx(t);g.drawImage(flatSync(),0,0,w,h);const a=g.getImageData(0,0,w,h).data;
   let ma=null;if(m){const u=mk(w,h),ug=rx(u);ug.drawImage(m,0,0,w,h);ma=ug.getImageData(0,0,w,h).data}
-  const L=[];let sat=0,ws=0,clip=0;
-  for(let i=0;i<a.length;i+=4){const wt=ma?ma[i+3]/255:1;if(wt<0.5||a[i+3]<10)continue;const r=a[i]/255,gg=a[i+1]/255,b=a[i+2]/255,l=0.2126*r+0.7152*gg+0.0722*b,mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);L.push(l);sat+=mx>0?(mx-mn)/mx:0;ws++;if(mx>0.985)clip++}
+  const L=[];let sat=0,ws=0,clip=0,dark=0,gs=0,gn=0,pl=-1;
+  for(let i=0;i<a.length;i+=4){const wt=ma?ma[i+3]/255:1;if(wt<0.5||a[i+3]<10){pl=-1;continue}const r=a[i]/255,gg=a[i+1]/255,b=a[i+2]/255,l=0.2126*r+0.7152*gg+0.0722*b,mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);L.push(l);sat+=mx>0?(mx-mn)/mx:0;ws++;if(mx>0.985)clip++;if(l<0.1)dark++;if(pl>=0&&(i/4)%w){gs+=Math.abs(l-pl);gn++}pl=l}
   if(!L.length)return null;L.sort((x,y)=>x-y);const q=f=>L[Math.min(L.length-1,Math.floor(f*L.length))];
-  return{n:L.length,med:q(.5),lo:q(.02),hi:q(.98),spread:q(.9)-q(.1),sat:sat/ws,clip:clip/ws}}
+  return{n:L.length,med:q(.5),lo:q(.02),hi:q(.98),spread:q(.9)-q(.1),sat:sat/ws,clip:clip/ws,dark:dark/ws,grad:gn?gs/gn:0}}
 async function masks(onP){const d=S.doc;let subj=null,sky=null;
   try{subj=await AI.subjectMask()}catch(e){console.warn(e)}if(S.doc!==d)return null;
   const cs=covOf(subj);if(cs<0.02||cs>0.9)subj=null;
@@ -11829,32 +11829,38 @@ function mainBlobs(m){const R=512,s=Math.min(1,R/Math.max(m.width,m.height)),w=M
   return o}
 AIM.masks=masks;
 const r2=v=>Math.round(v*100)/100;
-function devSubject(st){const z=DEV0();if(!st)return z;
-  z.exposure=r2(clamp(1.1*Math.log2(0.48/Math.max(0.03,st.med)),-0.4,0.8));
-  z.shadows=Math.round(clamp((0.12-st.lo)*200+8,0,45));z.highlights=st.hi>0.95?-20:0;
-  z.clarity=10;z.texture=8;z.vibrance=st.sat<0.25?12:5;return z}
-function devSky(st){const z=DEV0();if(!st)return z;
-  z.highlights=Math.round(-clamp(20+st.clip*300+(st.hi-0.85)*120,15,60));z.whites=st.clip>0.02?-15:-5;
-  z.dehaze=st.spread<0.25?18:10;z.vibrance=14;z.saturation=st.sat<0.15?6:0;
-  if(st.med>0.83)z.exposure=-r2(clamp((st.med-0.8)*2,0,0.4));return z}
+// A dose is measured on the region itself: each setting is touched only when the region shows the matching need,
+// in proportion to it, and the reason is kept so the user can read why (DOSE.why).
+const DOSE={why:[]};
+const ramp=(x,a,b)=>clamp((x-a)/(b-a),0,1);
+const pct=v=>Math.round(v*100)+' %';
+function put(z,k,v,txt){v=k==='exposure'?r2(v):Math.round(v);if(!v)return;z[k]=v;DOSE.why.push(txt)}
+function dose(kind,st,sub){const z=DEV0();DOSE.why=[];if(!st)return z;
+  const face=kind==='face'||kind==='skin',sky=kind==='sky';
+  // brightness: bring the median toward a natural level for this kind of region
+  const target=sky?0.72:face?0.52:kind==='bg'?0.4:0.47;let e=Math.log2(target/Math.max(0.03,st.med));
+  if(sky)e=Math.min(0,e);                               // a sky is only ever darkened
+  if(kind==='bg'&&sub)e=Math.min(0,-0.4*Math.max(0,st.med-sub.med+0.04)*4); // background: only calmed when it competes with the subject
+  e*=face?0.7:0.9;if(Math.abs(e)>=0.12)put(z,'exposure',clamp(e,-0.6,0.8),e>0?'trop sombre ('+pct(st.med)+' de luminosité)':'trop lumineux ('+pct(st.med)+' de luminosité)');
+  const hl=st.clip>0.004||st.hi>0.97?ramp(st.clip,0.004,0.08)*40+(st.hi>0.97?8:0):0;
+  if(hl>=6)put(z,'highlights',-hl,st.clip>0.004?pct(st.clip)+' des pixels brûlés':'hautes lumières très proches du blanc');
+  if(st.clip>0.02&&sky)put(z,'whites',-12,'point blanc abaissé');
+  const sh=ramp(st.dark,0.05,0.35)*42;if(sh>=5&&kind!=='bg')put(z,'shadows',sh,pct(st.dark)+' de la zone est très sombre');
+  // haze: flat and lifted blacks
+  const hz=st.spread<0.22&&st.lo>0.1&&!face?ramp(0.22-st.spread,0,0.12)*24:0;if(hz>=4)put(z,'dehaze',hz,'voile (contraste faible dans la zone)');
+  // local contrast and texture: only where the region is flat; skin and background are never sharpened
+  const flat=ramp(0.03-st.grad,0,0.022);
+  if(!face&&kind!=='bg'&&flat>0.2){put(z,'clarity',flat*14,'zone molle (peu de détails)');put(z,'texture',flat*10,'zone molle (peu de détails)')}
+  if(face&&st.grad>0.05)put(z,'texture',-ramp(st.grad,0.05,0.1)*14,'texture de peau marquée');
+  // colour
+  const vib=ramp(0.34-st.sat,0,0.22)*26;if(vib>=4&&!face)put(z,'vibrance',vib,'couleurs ternes ('+pct(st.sat)+' de saturation)');
+  if(kind==='bg'&&sub&&st.sat>sub.sat+0.1)put(z,'saturation',-clamp((st.sat-sub.sat)*40,0,15),'fond plus coloré que le sujet');
+  return z}
+const devSubject=st=>dose('subj',st),devSky=st=>dose('sky',st),devBg=(st,sub)=>dose('bg',st,sub);
 // a starting dose for a single AI mask, measured on the region (the user then tunes it)
 function devFor(kind,m){const st=stats(m);if(!st)return DEV0();
-  if(kind==='sky')return devSky(st);
-  if(kind==='bg')return devBg(st,stats(invOf(m)));
-  if(kind==='subj'||kind==='people')return devSubject(st);
-  const z=DEV0(),lift=Math.round(clamp((0.2-st.lo)*80,0,20));
-  if(kind==='face'||kind==='skin'){z.exposure=r2(clamp(0.8*Math.log2(0.5/Math.max(0.05,st.med)),-0.3,0.4));z.texture=-12;z.clarity=-6;z.shadows=lift}
-  else if(kind==='hair'){z.texture=14;z.clarity=6;z.shadows=lift}
-  else if(kind==='clothes'){z.texture=8;z.vibrance=8;z.shadows=lift}
-  else if(kind==='vegetation'){z.vibrance=18;z.texture=8;z.shadows=lift}
-  else if(kind==='water'){z.dehaze=10;z.vibrance=12;z.clarity=6}
-  else if(kind==='mountains'){z.dehaze=15;z.clarity=10;z.texture=8}
-  else if(kind==='buildings'){z.clarity=12;z.texture=10;z.shadows=lift}
-  else if(kind==='ground'){z.texture=10;z.clarity=6;z.shadows=lift}
-  if(st.hi>0.95&&kind!=='sky')z.highlights=Math.min(z.highlights||0,-15);return z}
+  return dose(kind==='people'?'subj':kind,st,kind==='bg'?stats(invOf(m)):null)}
 const isNeutral=L=>{const z=DEV0(),v=L.dev||{};return Object.keys(z).every(k=>typeof z[k]!=='number'||(v[k]??z[k])===z[k])};
-function devBg(st,sub){const z=DEV0();if(!st)return z;
-  const gap=sub?(st.med-sub.med):0;z.exposure=r2(clamp(-0.1-Math.max(0,gap)*0.4,-0.3,0));z.clarity=-6;z.saturation=-4;return z}
 
 async function aiMaskRetouch(){const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}const h0=S.history[S.hi];
   const prog=(p,m)=>busy(true,m||'Analyse de la photo…',p);
@@ -11862,13 +11868,15 @@ async function aiMaskRetouch(){const d=S.doc;if(!d){toast('Ouvrez d’abord une 
   if(!M||S.doc!==d){return}
   if(S.history[S.hi]!==h0){toast('Retouche IA annulée : la photo a changé pendant l’analyse');return}
   if(!M.subj&&!M.sky){toast('Ni sujet ni ciel nets dans cette photo : rien à masquer. Les réglages automatiques restent possibles.',5000);return}
-  const add=[],sSub=M.subj?stats(M.subj):null;
-  if(M.bg){const s=stats(M.bg);if(s){const L=newAdjust('Arrière-plan (IA)',M.bg);L.dev=devBg(s,sSub);add.push(L)}}
-  if(M.sky){const s=stats(M.sky);if(s){const L=newAdjust('Ciel (IA)',M.sky);L.dev=devSky(s);add.push(L)}}
-  if(M.subj&&sSub){const L=newAdjust('Sujet (IA)',M.subj);L.dev=devSubject(sSub);add.push(L)}
-  if(!add.length)return;
+  const add=[],notes=[],sSub=M.subj?stats(M.subj):null;
+  const one=(name,mask,st,fn)=>{if(!st)return;const dev=fn(st),why=DOSE.why.slice(),L=newAdjust(name+' (IA)',mask);L.dev=dev;
+    if(isNeutral(L)){notes.push(name+' : rien à corriger');return}add.push(L);notes.push(name+' : '+[...new Set(why)].join(', '))};
+  if(M.bg)one('Arrière-plan',M.bg,stats(M.bg),s=>devBg(s,sSub));
+  if(M.sky)one('Ciel',M.sky,stats(M.sky),devSky);
+  if(M.subj)one('Sujet',M.subj,sSub,devSubject);
+  if(!add.length){toast('Photo déjà équilibrée sur les zones détectées ('+notes.join(' ; ')+') : rien ajouté.',7000);return}
   d.layers.push(...add);d.active=d.layers.length-1;markComp();if(typeof markContent==='function')markContent();pushHistory('Retouche IA avec masques');syncAll();try{switchTab('develop')}catch(e){}
-  toast(add.map(L=>L.name.replace(' (IA)','')).join(', ')+' : un réglage masqué chacun, déjà dosé. Ajustez ou masquez-les dans les calques.',6000)}
+  toast(notes.join(' · '),9000)}
 AIM.retouch=aiMaskRetouch;
 
 // ---------- AI mask on the active local adjustment (or pixel layer mask) ----------
@@ -11882,11 +11890,11 @@ async function applyAIMask(kind,op){const d=S.doc,A=d&&d.layers[d.active];if(!A)
   else{out=cloneC(cur);const g=cx(out);g.globalCompositeOperation=op==='add'?'source-over':op==='sub'?'destination-out':'destination-in';g.drawImage(m,0,0);g.globalCompositeOperation='source-over'}
   // a new local adjustment: asked for, or the only global adjustment (never masked)
   if(op==='layer'||A.kind==='adjust'&&!A.mask&&d.layers.filter(l=>l.kind==='adjust'&&!l.mask).length<=1){
-    const L=newAdjust(AI.categoryLabel(kind)+' (IA)',out);L.dev=devFor(kind,out);insertLayer(L,'Masque IA',true);switchTab('develop');toast(AI.categoryLabel(kind)+' : nouveau réglage local, déjà dosé. Ajustez-le à droite.',5000);return}
+    const L=newAdjust(AI.categoryLabel(kind)+' (IA)',out);L.dev=devFor(kind,out);const why=[...new Set(DOSE.why)];insertLayer(L,'Masque IA',true);switchTab('develop');toast(AI.categoryLabel(kind)+' : '+(why.length?why.join(', ')+'. Réglages ajustés en conséquence, modifiables à droite.':'rien à corriger sur cette zone, réglage laissé neutre.'),7000);return}
   // a fresh local adjustment gets a starting dose too, so the mask shows its effect right away
-  const dosed=A.kind==='adjust'&&op==='new'&&isNeutral(A);if(dosed)A.dev=devFor(kind,out);
+  const dosed=A.kind==='adjust'&&op==='new'&&isNeutral(A);let why=[];if(dosed){A.dev=devFor(kind,out);why=[...new Set(DOSE.why)]}
   if(op==='new'&&/ \(IA\)$/.test(A.name||''))A.name=AI.categoryLabel(kind)+' (IA)';
-  A.mask=out;markComp();if(typeof markContent==='function')markContent();pushHistory('Masque IA');syncAll();toast(dosed?'Masque appliqué, réglage déjà dosé':'Masque mis à jour')}
+  A.mask=out;markComp();if(typeof markContent==='function')markContent();pushHistory('Masque IA');syncAll();toast(dosed?(why.length?'Masque appliqué : '+why.join(', '):'Masque appliqué : rien à corriger sur cette zone'):'Masque mis à jour')}
 AIM.apply=applyAIMask;window.PrismAIMask=AIM;
 
 // Masque section (local adjustments): a row of AI buttons with the combination mode

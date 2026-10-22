@@ -66,10 +66,14 @@ await test('sélection d’objet (Segment Anything) : un clic de baguette choisi
   await drag(0.5,0.5,0.5,0.5,1);await page.waitForFunction(()=>S.history[S.hi]&&S.history[S.hi].label==='Sélectionner un objet',null,{timeout:180000});
   const r=await ev(()=>{const m=S.doc.sel,c=mk(m.width,m.height),g=rx(c);g.drawImage(m,0,0);const a=g.getImageData(0,0,c.width,c.height).data;let on=0;for(let i=3;i<a.length;i+=4)if(a[i]>127)on++;S.opts.wand.obj=false;return on/(c.width*c.height)});
   if(!(r>0.005&&r<0.995))throw new Error('couverture '+r)});
-await test('masque IA : le nouveau réglage local est déjà dosé',async()=>{await sample();const r=await ev(async()=>{const d=S.doc,m=mk(d.w,d.h),g=cx(m);g.fillStyle='#fff';g.fillRect(d.w*0.25,d.h*0.25,d.w*0.5,d.h*0.5);
-    const cm=AI.categoryMask;AI.categoryMask=async()=>m;try{await PrismAIMask.apply('subj','layer');await PrismAIMask.apply('sky','layer')}finally{AI.categoryMask=cm}
-    const z=DEV0(),moved=L=>Object.keys(z).filter(k=>typeof z[k]==='number'&&L.dev[k]!==z[k]).length,a=d.layers.slice(-2);return a.map(L=>[L.name,!!L.mask,moved(L)])});
-  if(r[0][0]!=='Sujet (IA)'||r[1][0]!=='Ciel (IA)'||!r.every(x=>x[1]&&x[2]>0))throw new Error(JSON.stringify(r))});
+await test('masque IA : les réglages suivent la photo (sombre → éclaircit, équilibrée → ne touche à rien)',async()=>{await sample();const r=await ev(async()=>{const d=S.doc,m=mk(d.w,d.h),g=cx(m);g.fillStyle='#fff';g.fillRect(0,0,d.w,d.h);
+    const cm=AI.categoryMask;AI.categoryMask=async()=>m;const out={};
+    try{for(const [name,paint] of [['dark',(c,x,y)=>{const v=Math.round(24+((x*7+y*13)%9));return[v,v,v]}],['balanced',(c,x,y)=>{const v=Math.round(112+((x>>2)+(y>>2))%2*32);return[v,v,v]}]]){
+      const base=d.layers[0],c=base.canvas,cg=cx(c),im=cg.getImageData(0,0,c.width,c.height);for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++){const k=(y*c.width+x)*4,p=paint(0,x,y);im.data[k]=p[0];im.data[k+1]=p[1];im.data[k+2]=p[2];im.data[k+3]=255}cg.putImageData(im,0,0);markContent();
+      await PrismAIMask.apply('subj','layer');const L=d.layers[d.layers.length-1];out[name]={exposure:L.dev.exposure,moved:Object.keys(DEV0()).filter(k=>typeof DEV0()[k]==='number'&&L.dev[k]!==DEV0()[k])}}}
+    finally{AI.categoryMask=cm}return out});
+  if(!(r.dark.exposure>0.3))throw new Error('photo sombre : '+JSON.stringify(r.dark));
+  if(r.balanced.exposure&&Math.abs(r.balanced.exposure)>0.15)throw new Error('photo équilibrée : '+JSON.stringify(r.balanced))});
 await test('avant / après : glisser la séparation ne sélectionne rien et reste sur la photo',async()=>{await sample();await ev(()=>{S.compare='off';toggleCompare()});await page.waitForTimeout(200);
   const b=await page.locator('#split .knob').boundingBox();await page.mouse.move(b.x+16,b.y+16);await page.mouse.down();for(let i=1;i<=12;i++)await page.mouse.move(b.x+16-i*60,b.y+16+i*4);await page.mouse.up();
   const r=await ev(()=>{const a=S.panX/S.vw,o={sel:getSelection().type,x:S.splitX,a};S.compare='off';markContent();return o});
