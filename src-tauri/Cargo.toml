@@ -1,6 +1,6 @@
 [package]
 name = "prism"
-version = "0.7.1"
+version = "0.7.2"
 description = "Prism, retouche photo"
 edition = "2021"
 

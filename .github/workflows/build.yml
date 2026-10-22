@@ -108,6 +108,10 @@ jobs:
             echo "$SHA_MAC  ort.tgz" | shasum -a 256 -c
             tar xzf ort.tgz
             cp -L onnxruntime-osx-universal2-$ORT/lib/libonnxruntime.dylib ../src-tauri/onnxruntime/
+            # Microsoft's Developer ID signature carries another Team ID than the app (signed ad hoc): macOS refuses to
+            # load the library (dlopen failed). Signed ad hoc like the app, it loads.
+            codesign --force --sign - ../src-tauri/onnxruntime/libonnxruntime.dylib
+            codesign --verify --verbose=2 ../src-tauri/onnxruntime/libonnxruntime.dylib
           fi
           cd .. && rm -rf tmp-ort && ls -l src-tauri/onnxruntime
 
