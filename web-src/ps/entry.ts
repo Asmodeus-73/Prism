@@ -14,7 +14,8 @@ import { applyAdjustment, defaultParams, shadowsHighlights, DEFAULT_SHADOWS_HIGH
 import { focusAreaMask, autoFocusRange } from './src/imaging/segment/focus-area';
 import { decontaminate } from './src/imaging/segment/refine';
 import { SKY_PRESETS, renderSky, placeSky, adjustSky, skyMaskEdge, skyHorizon, skyLight, foregroundLightMask } from './src/imaging/sky/sky';
-import { seamOrder, contextScale, protectionMap } from './src/imaging/warp/seam-carve';
+import { seamOrder, contextScale, protectionMap, KEPT } from './src/imaging/warp/seam-carve';
+import { resize } from './src/imaging/filters/resample';
 import { labStats } from './src/features/adjust/match-color';
 import { harmonizePixels } from './src/features/assist/harmonize-math';
 
@@ -24,8 +25,8 @@ let cancelled = false;
 const prog = (report: Report) => ({ report, cancelled: () => cancelled });
 
 const SEAM_SHARE = 0.6;
-// Pixels a mask covers (>= half), as the 0/1 array labStats expects.
-const cover = (m?: Mask8) => (m ? Uint8Array.from(m.data, (v) => (v >= 128 ? 1 : 0)) : undefined);
+// Pixels a mask covers: labStats keeps those at 128 or more.
+const cover = (m?: Mask8) => (m ? m.data : undefined);
 
 const ops: Record<string, (a: Args, report: Report) => any> = {
   denoise: (a, r) => denoise(a.img, a.o, prog(r)),
@@ -52,10 +53,40 @@ const ops: Record<string, (a: Args, report: Report) => any> = {
   skyLight: (a) => skyLight(a.sky, a.mask, a.horizon),
   foregroundLight: (a) => foregroundLightMask(a.mask, a.horizon),
   seamScale: (a, r) => {
-    const img: RGBA8 = a.img;
-    const protect = protectionMap(img, { skin: !!a.skin, mask: a.protect });
-    const vertical = seamOrder(img, 'vertical', Math.floor(img.width * SEAM_SHARE), protect, { report: (f) => r(f * 0.5), cancelled: () => cancelled });
-    const horizontal = seamOrder(img, 'horizontal', Math.floor(img.height * SEAM_SHARE), protect, { report: (f) => r(0.5 + f * 0.5), cancelled: () => cancelled });
+    // Seams are searched on a working copy of at most WORK pixels, then their removal order is spread over the
+    // full-size image: each working pixel covers a block, numbered inside the block so every row (or column) keeps
+    // one pixel per order value. carveWidth takes the lowest values per row, so the result stays exact.
+    const img: RGBA8 = a.img, W = img.width, H = img.height, WORK = a.work || 1.5e6;
+    const f = Math.min(1, Math.sqrt(WORK / (W * H)));
+    const w = Math.max(2, Math.round(W * f)), h = Math.max(2, Math.round(H * f));
+    const low = f < 1 ? resize(img, w, h, 'bilinear') : img;
+    let pm: Mask8 | undefined = a.protect;
+    if (pm && f < 1) {
+      const d = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) d[y * w + x] = pm.data[Math.min(H - 1, Math.floor(((y + 0.5) * H) / h)) * W + Math.min(W - 1, Math.floor(((x + 0.5) * W) / w))];
+      pm = { width: w, height: h, data: d };
+    }
+    const protect = protectionMap(low, { skin: !!a.skin, mask: pm });
+    const p = (o: number, k: number) => ({ report: (v: number) => r(o + v * k), cancelled: () => cancelled });
+    let vertical = seamOrder(low, 'vertical', Math.floor(w * SEAM_SHARE), protect, p(0, 0.45));
+    let horizontal = seamOrder(low, 'horizontal', Math.floor(h * SEAM_SHARE), protect, p(0.45, 0.45));
+    if (f < 1) {
+      const KX = Math.ceil(W / w), KY = Math.ceil(H / h);
+      const up = (o: Uint16Array, vert: boolean) => {
+        const out = new Uint16Array(W * H);
+        for (let y = 0; y < H; y++) {
+          const ly = Math.min(h - 1, Math.floor((y * h) / H)), sy = y - Math.floor((ly * H) / h);
+          for (let x = 0; x < W; x++) {
+            const lx = Math.min(w - 1, Math.floor((x * w) / W)), v = o[ly * w + lx];
+            out[y * W + x] = v === KEPT ? KEPT : Math.min(KEPT - 1, vert ? v * KX + (x - Math.floor((lx * W) / w)) : v * KY + sy);
+          }
+        }
+        return out;
+      };
+      vertical = up(vertical, true);
+      horizontal = up(horizontal, false);
+    }
+    r(0.92);
     return contextScale(img, { vertical, horizontal }, a.width, a.height, a.amount ?? 1);
   },
   harmonize: (a) => harmonizePixels(a.img, labStats(a.img, cover(a.layerMask)), labStats(a.target, cover(a.targetMask)), a.o),
