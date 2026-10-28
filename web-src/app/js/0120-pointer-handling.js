@@ -42,16 +42,13 @@ function onUp(){const dr=S.drag;S.drag=null;if(!dr)return;const d=S.doc;
   if(dr.type==='crop'){requestRender();return}
   if(dr.type==='stroke')endStroke()}
 function modeFrom(e){if(e.shiftKey&&e.altKey)return'int';if(e.shiftKey)return'add';if(e.altKey)return'sub';return S.opts.selMode}
-function pickColor(p){const c=flatSync(),x=Math.floor(p.x),y=Math.floor(p.y),d=S.doc;if(x<0||y<0||x>=d.w||y>=d.h)return;const a=rx(c).getImageData(x,y,1,1).data;if(!a[3])return;S.color='#'+[a[0],a[1],a[2]].map(v=>v.toString(16).padStart(2,'0')).join('');$('#fg').value=S.color;const oc=$('#optColor');if(oc)oc.value=S.color}
-function wbFromPoint(p){const L=AL();if(!L||L.kind!=='adjust'){toast('Sélectionnez un réglage');return}const d=S.doc,c=flatSync(),x=clamp(Math.floor(p.x)-2,0,d.w-5),y=clamp(Math.floor(p.y)-2,0,d.h-5),a=rx(c).getImageData(x,y,5,5).data;let r=0,g=0,b=0;for(let i=0;i<a.length;i+=4){r+=a[i];g+=a[i+1];b+=a[i+2]}
-  const lin=v=>Math.pow(Math.max(1,v/25)/255,2.2);r=lin(r);g=lin(g);b=lin(b);const q=b/r;const t=clamp((q-1)/(0.3*(1+q)),-1,1),gr=1+0.3*t,ti=clamp((1-r*gr/g)/0.22,-1,1);L.dev.temp=Math.round(t*100);L.dev.tint=Math.round(ti*100);syncDev();markContent();pushHistory('Balance des blancs');toast('Balance des blancs appliquée')}
+var pickColor; /* défini dans 0870-brush-eraser-gradient-bucket-eyedropper.js */
+var wbFromPoint; /* défini dans 0830-reglages-developper-panel.js */
 
 /* gradients (masks of local adjustments, or colour on pixel layers) */
 function gradientCanvas(dr,color){const d=S.doc,m=mk(d.w,d.h),g=cx(m);let gr;const col=color||'#ffffff';
   if(dr.shape==='radial'){const r=Math.max(1,Math.hypot(dr.x1-dr.x0,dr.y1-dr.y0));gr=g.createRadialGradient(dr.x0,dr.y0,0,dr.x0,dr.y0,r);gr.addColorStop(0,hexA(col,1));gr.addColorStop(0.45,hexA(col,1));gr.addColorStop(1,hexA(col,0))}
   else{gr=g.createLinearGradient(dr.x0,dr.y0,dr.x1,dr.y1);gr.addColorStop(0,hexA(col,1));gr.addColorStop(1,hexA(col,0))}g.fillStyle=gr;g.fillRect(0,0,d.w,d.h);return m}
-function gradientPreview(dr){const L=dr.target;if(Math.hypot(dr.x1-dr.x0,dr.y1-dr.y0)*S.zoom<4)return;if(L.kind==='adjust'||(L.mask&&L.editMask)){L.maskPreview=gradientCanvas(dr)}else if(L.kind==='pixel'){const c=cloneC(L.canvas);cx(c).drawImage(gradientCanvas(dr,S.color),0,0);L.preview=c}markComp()}
-function gradientCommit(dr){const L=dr.target;delete L.maskPreview;delete L.preview;if(Math.hypot(dr.x1-dr.x0,dr.y1-dr.y0)*S.zoom<4){markComp();return}
-  if(L.kind==='adjust'||(L.mask&&L.editMask)){L.mask=gradientCanvas(dr);markComp();pushHistory(dr.shape==='radial'?'Masque radial':'Masque dégradé');syncLayers();return}
-  const g=editCanvas(L);g.drawImage(gradientCanvas(dr,S.color),0,0);markComp();pushHistory('Dégradé')}
+var gradientPreview; /* défini dans 0870-brush-eraser-gradient-bucket-eyedropper.js */
+var gradientCommit; /* défini dans 0870-brush-eraser-gradient-bucket-eyedropper.js */
 

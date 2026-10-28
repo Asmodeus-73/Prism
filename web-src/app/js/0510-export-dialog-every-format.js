@@ -94,5 +94,4 @@ sampleReady.then(v=>{$('#bAssist').hidden=!v;$('#composer').hidden=!v||PREF.get(
   $('.tabs').addEventListener('click',()=>{if(ins.dataset.sheet==='peek')setSheet('half')})})();
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&SAVE.state==='pending')saveNow()});
 window.addEventListener('pagehide',()=>{if(SAVE.state==='pending')saveNow()});
-updateDocName=function(){const d=S.doc;$('#docname').innerHTML=d?`<b>${esc(d.name)}</b><span class="dim"> · ${d.w|0} × ${d.h|0}${d.space==='display-p3'?' · Display P3':''}${precLabel()?' · '+precLabel():''}${S.meta?' · '+esc(S.meta):''}</span>`:'Mes projets'};
 

@@ -11,11 +11,7 @@ const FILTERS={
   bw:{name:'Noir et blanc',params:[['r','Rouges',-100,200,1,40,' %'],['g','Verts',-100,200,1,40,' %'],['b','Bleus',-100,200,1,20,' %']],run:(s,p)=>pixFilter(s,a=>{for(let i=0;i<a.length;i+=4){const v=clamp((a[i]*p.r+a[i+1]*p.g+a[i+2]*p.b)/100,0,255);a[i]=a[i+1]=a[i+2]=v}})},
   sepia:{name:'Sépia',params:[['a','Intensité',0,100,1,80,' %']],run:(s,p)=>pixFilter(s,a=>{const k=p.a/100;for(let i=0;i<a.length;i+=4){const r=a[i],g=a[i+1],b=a[i+2];a[i]=clamp(r+(r*.393+g*.769+b*.189-r)*k,0,255);a[i+1]=clamp(g+(r*.349+g*.686+b*.168-g)*k,0,255);a[i+2]=clamp(b+(r*.272+g*.534+b*.131-b)*k,0,255)}})},
   invert:{name:'Négatif',params:[],run:s=>pixFilter(s,a=>{for(let i=0;i<a.length;i+=4){a[i]=255-a[i];a[i+1]=255-a[i+1];a[i+2]=255-a[i+2]}})}};
-function filterDialog(id){const d=S.doc,L=pixelTarget(),F=FILTERS[id];if(!L)return;if(!F.params.length){applyMasked(L,F.run(L.canvas,{}),F.name);return}const p={};F.params.forEach(q=>p[q[0]]=q[5]);let tmr=null;const orig=L.canvas;
-  const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{let r=F.run(orig,p);if(d.sel){const t=cloneC(orig),g=cx(t);g.globalCompositeOperation='destination-out';g.drawImage(d.sel,0,0);const rr=cloneC(r),rg=cx(rr);rg.globalCompositeOperation='destination-in';rg.drawImage(d.sel,0,0);g.globalCompositeOperation='source-over';g.drawImage(rr,0,0);r=t}L.preview=r;markComp()},120)};
-  dialog({title:F.name,light:true,body:F.params.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
-    onOpen:el=>{F.params.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});prev()},
-    buttons:[{label:'Annuler',onClick:()=>{clearTimeout(tmr);delete L.preview;markComp()}},{label:'Appliquer',primary:true,onClick:()=>{clearTimeout(tmr);delete L.preview;applyMasked(L,F.run(orig,p),F.name)}}]})}
+var filterDialog; /* défini dans 0840-menu-filtre-des-effets-modifiables.js */
 const fmtN=(v,st)=>st<1?(+v).toFixed(st<0.1?2:1):String(Math.round(v));
 function rangeRow(id,label,min,max,step,val,unit){return`<div class="row"><label for="${id}">${label}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}"><output id="${id}-o">${fmtN(val,step)}${unit||''}</output></div>`}
 

@@ -6,8 +6,7 @@ function nonDefaultDev(dv){const z=DEV0(),o={};for(const k in dv){if(k==='curve'
 function ellipseMask(cxn,cyn,rxn,ryn,feather,invert){const d=S.doc,m=mk(d.w,d.h),g=cx(m);const X=cxn*d.w,Y=cyn*d.h,RX=Math.max(2,rxn*d.w),RY=Math.max(2,ryn*d.h);
   const gr=g.createRadialGradient(0,0,0,0,0,1);const f=clamp(feather??0.5,0,1);gr.addColorStop(0,'#fff');gr.addColorStop(clamp(1-f,0,0.999),'#fff');gr.addColorStop(1,'rgba(255,255,255,0)');
   g.save();g.translate(X,Y);g.scale(RX,RY);g.fillStyle=gr;g.beginPath();g.arc(0,0,1,0,7);g.fill();g.restore();if(invert){const o=fullMask(),og=cx(o);og.globalCompositeOperation='destination-out';og.drawImage(m,0,0);return o}return m}
-function cleanParams(p){const out={};if(!p||typeof p!=='object')return out;for(const {k,min,max} of ASSIST_KEYS)if(typeof p[k]==='number'&&isFinite(p[k]))out[k]=clamp(p[k],min,max);
-  for(const k of ['hslH','hslS','hslL'])if(Array.isArray(p[k])&&p[k].length===8)out[k]=p[k].map(v=>clamp(+v||0,-100,100));return out}
+var cleanParams; /* défini dans 0830-reglages-developper-panel.js */
 async function areaMask(a){const d=S.doc;a=a||{};const t=a.type||'global';
   if(t==='global')return null;
   if(t==='subject'||t==='background'){const m=await AI.subjectMask();if(!m)throw new Error('détourage indisponible');if(t==='subject')return cloneC(m);const o=fullMask(),g=cx(o);g.globalCompositeOperation='destination-out';g.drawImage(m,0,0);return o}

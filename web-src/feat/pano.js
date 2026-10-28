@@ -183,7 +183,7 @@ function patchMatch(gA,gB,Hs,R,half){
     if(!inB(x,y))continue;
     let s=0,k=0;for(let j=-half;j<=half;j++)for(let i=-half;i<=half;i++){const v=gA.d[(y+j)*wA+x+i];T[k++]=v;s+=v}
     const m=s/n;let tn=0;for(let q=0;q<n;q++){T[q]-=m;tn+=T[q]*T[q]}if(tn<n*5)continue;tn=Math.sqrt(tn);
-    k=0;let okp=true;for(let j=-half;j<=half;j++)for(let i=-half;i<=half;i++){const p=hap(Hs,x+i,y+j);bx[k]=p[0];by[k]=p[1];k++}
+    k=0;for(let j=-half;j<=half;j++)for(let i=-half;i<=half;i++){const p=hap(Hs,x+i,y+j);bx[k]=p[0];by[k]=p[1];k++}
     let best=-2,bi=0,bj=0;
     for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
       let sb=0,sbb=0,stb=0;
@@ -450,7 +450,6 @@ async function stitchImages(canvases,names,optsIn){
   for(let i=ref+1;i<n;i++)G[i]=m3n(m3mul(G[i-1],m3inv(Hf[i-1])));
   for(let i=ref-1;i>=0;i--)G[i]=m3n(m3mul(G[i+1],Hf[i]));
   /* paires non adjacentes qui se recouvrent */
-  const goodAdj=pairs.every(p=>p.method==='feat'||p.method==='refined');
   if(n>=3){
     for(let i=0;i<n-2;i++)for(let j=i+2;j<n;j++){
       const Hij=normAt(m3mul(m3inv(G[j]),G[i]),ims[i].w/2,ims[i].h/2);if(!Hij)continue;
@@ -627,7 +626,7 @@ async function stitchFiles(files){
   }catch(e){busy(false);console.error(e);toast('Panorama impossible : '+(e.message||e),5000)}}
 async function panoDialog2(){const fs=await pickManyP();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fs.sort((a,b)=>(a.name||'').localeCompare(b.name||''));stitchFiles(fs)}
 PN.stitchImages=stitchImages;PN.stitchFiles=stitchFiles;PN.estimatePair=async(a,b)=>estimatePair(mkImg(a),mkImg(b),null,5);PN.focalsFromH=focalsFromH;PN.fitH=fitH;PN.mkImg=mkImg;
-if(window.PrismF){PN.oldStitch=window.PrismF.stitch;window.PrismF.stitch=stitchFiles}
+if(window.PrismF)window.PrismF.stitch=stitchFiles;
 /* remplace l'entrée de menu existante : même libellé, nouveau moteur */
 {const _f=MENU2.file.items;const mapIt=it=>{if(!it||it==='-'||typeof it!=='object')return it;if(it.label==='Panorama…')return{...it,fn:panoDialog2};if(it.sub){const s=it.sub;return{...it,sub:()=>s().map(mapIt)}}return it};
  MENU2.file.items=()=>_f().map(mapIt)}

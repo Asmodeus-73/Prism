@@ -776,16 +776,7 @@ function curveFn(pts){const p=pts.slice().sort((a,b)=>a[0]-b[0]),m=p.length,xs=p
   return x=>{if(x<=xs[0])return ys[0];if(x>=xs[m-1])return ys[m-1];let i=0;while(i<m-2&&x>xs[i+1])i++;const t=x-xs[i];return clamp(ys[i]+c1[i]*t+c2[i]*t*t+c3[i]*t*t*t,0,1)}}
 const isIdCurve=p=>p.length===2&&p[0][0]===0&&p[0][1]===0&&p[1][0]===1&&p[1][1]===1;
 const lutMap=new Map();
-function getLUTs(dv){const key=JSON.stringify([dv.temp,dv.tint,dv.exposure,dv.contrast,dv.highlights,dv.shadows,dv.whites,dv.blacks,dv.dehaze,dv.curve]);let r=lutMap.get(key);if(r)return r;
-  const t=dv.temp/100,ti=dv.tint/100;let g=[1+0.3*t,1-0.22*ti,1-0.3*t];const nrm=0.2126*g[0]+0.7152*g[1]+0.0722*g[2];g=g.map(v=>v/nrm);
-  const ev=Math.pow(2,dv.exposure),hl=dv.highlights/100,sh=dv.shadows/100,wh=dv.whites/100,bl=dv.blacks/100,dh=dv.dehaze/100,c=dv.contrast/100+dh*0.35,k=c>=0?1+c*1.5:1+c*0.65;
-  const mf=isIdCurve(dv.curve.rgb)?null:curveFn(dv.curve.rgb);
-  r=['r','g','b'].map((ch,ci)=>{const L=new Float32Array(4096),gain=g[ci]*ev,knee=gain>1?1-Math.min(0.3,(gain-1)*0.35):1,cf=isIdCurve(dv.curve[ch])?null:curveFn(dv.curve[ch]);
-    for(let i=0;i<4096;i++){let x=i/4095;if(dh>0)x=(x-0.1*dh)/(1-0.1*dh);else if(dh<0)x=x+(0.78-x)*(-dh)*0.35;if(x<0)x=0;x=Math.pow(Math.pow(x,2.2)*gain,1/2.2);
-      if(x>knee&&knee<1)x=knee+(1-knee)*(1-Math.exp(-(x-knee)/(1-knee)));if(x>1)x=1;
-      x+=sh*1.35*x*(1-x)*(1-x);x+=hl*1.35*x*x*(1-x);x+=wh*0.25*x*x*x;x+=bl*0.2*(1-x)*(1-x)*(1-x);x=clamp(x,0,1);
-      if(k!==1)x=x<0.5?0.5*Math.pow(2*x,k):1-0.5*Math.pow(2-2*x,k);if(mf)x=mf(x);if(cf)x=cf(x);L[i]=x}return L});
-  if(lutMap.size>24)lutMap.delete(lutMap.keys().next().value);lutMap.set(key,r);return r}
+var getLUTs; /* défini dans 0830-reglages-developper-panel.js */
 const HSL_C=[0,30,60,120,180,240,275,310];const hslMap=new Map();
 function getHSLT(dv){const key=dv.hslH.join()+'|'+dv.hslS.join()+'|'+dv.hslL.join();if(hslMap.has(key))return hslMap.get(key);let t=null;
   if(dv.hslH.some(v=>v)||dv.hslS.some(v=>v)||dv.hslL.some(v=>v)){const H=new Float32Array(360),Sa=new Float32Array(360),Lu=new Float32Array(360);
@@ -912,7 +903,7 @@ function setDoc(src,name,opts={}){setCS(opts.space||(src._raw&&src._cs)||'srgb')
   if(opts.dev)Object.assign(S.doc.layers[1].dev,opts.dev);
   S.sample=!!opts.sample;S.meta=opts.meta||'';S.history=[];S.hi=-1;S.crop=null;S.cloneSrc=null;S.cloneOff=null;S.maxHist=clamp(Math.floor(HIST_BUDGET/(w*h*4)),3,40);AI.subjectCache=null;
   pushHistory(opts.raw?'Ouverture du RAW':'Ouverture');selChanged();markComp();fit(true);syncAll();$('#empty').hidden=true;updateDocName();if(S.tool==='crop')initCrop()}
-function updateDocName(){const d=S.doc;$('#docname').innerHTML=d?`<b>${esc(d.name)}</b> · ${d.w|0} × ${d.h|0}${S.meta?' · '+esc(S.meta):''}`:''}
+var updateDocName; /* défini dans 0530-prism-interface-brand-tooltips-command.js */
 
 /* ================= history (copy-on-write) ================= */
 function snapLayer(L){return Object.assign(spCopy(L),{dev:L.dev?JSON.parse(JSON.stringify(L.dev)):undefined,preview:undefined,maskPreview:undefined,dx:0,dy:0})}
@@ -1185,21 +1176,7 @@ function cancelDrag(){const dr=S.drag;S.drag=null;if(!dr)return;if(dr.type==='mo
 function cancelStroke(){if(!S.stroke)return;const st=S.stroke;S.stroke=null;if(st.tool==='dodge')restore(S.hi);markComp()}
 
 /* healing brush: Poisson blending */
-function healRegion(L,maskC,bx,manualOff){const d=S.doc,W=d.w,H=d.h,x0=Math.max(0,Math.floor(bx.x0)-3),y0=Math.max(0,Math.floor(bx.y0)-3),x1=Math.min(W,Math.ceil(bx.x1)+3),y1=Math.min(H,Math.ceil(bx.y1)+3),rw=x1-x0,rh=y1-y0;if(rw<3||rh<3)return false;
-  const g=rx(L.canvas),T=g.getImageData(x0,y0,rw,rh),td=T.data,M=rx(maskC).getImageData(x0,y0,rw,rh).data,n=rw*rh,ins=new Uint8Array(n);let cnt=0;for(let i=0;i<n;i++)if(M[i*4+3]>6){ins[i]=1;cnt++}if(!cnt)return false;
-  let cur=ins.slice();for(let pass=0;pass<3;pass++){const nx=cur.slice();for(let y=0;y<rh;y++)for(let x=0;x<rw;x++){const i=y*rw+x;if(cur[i])continue;if((x>0&&cur[i-1])||(x<rw-1&&cur[i+1])||(y>0&&cur[i-rw])||(y<rh-1&&cur[i+rw]))nx[i]=1}cur=nx}
-  const ringL=[];for(let i=0;i<n;i++)if(cur[i]&&!ins[i])ringL.push(i);let off=manualOff?{x:Math.round(manualOff.x),y:Math.round(manualOff.y)}:null;
-  if(!off){const s=Math.max(bx.x1-bx.x0,bx.y1-bx.y0)+6,R=Math.ceil(s*2.4)+4,ax0=Math.max(0,x0-R),ay0=Math.max(0,y0-R),ax1=Math.min(W,x1+R),ay1=Math.min(H,y1+R),aw=ax1-ax0,A=g.getImageData(ax0,ay0,aw,ay1-ay0).data,insL=[];for(let i=0;i<n;i+=3)if(ins[i])insL.push(i);let best=Infinity;
-    for(const f of[1.05,1.4,1.85,2.4])for(let k=0;k<24;k++){const an=k*Math.PI/12,dx=Math.round(Math.cos(an)*s*f),dy=Math.round(Math.sin(an)*s*f);if(x0+dx<0||y0+dy<0||x1+dx>W||y1+dy>H)continue;let cost=0;
-      for(const i of ringL){const px=i%rw,py=(i/rw)|0,sj=((y0+py+dy-ay0)*aw+(x0+px+dx-ax0))*4,tj=i*4,e0=td[tj]-A[sj],e1=td[tj+1]-A[sj+1],e2=td[tj+2]-A[sj+2];cost+=e0*e0+e1*e1+e2*e2}cost/=Math.max(1,ringL.length);
-      let ov=0;for(const i of insL){const px=(i%rw)+dx,py=((i/rw)|0)+dy;if(px>=0&&py>=0&&px<rw&&py<rh&&ins[py*rw+px])ov++}cost+=ov*400+f*40;if(cost<best){best=cost;off={x:dx,y:dy}}}
-    if(!off){toast('Pas assez de matière autour pour corriger cette zone');return false}}
-  const Sd=g.getImageData(x0+off.x,y0+off.y,rw,rh).data,D=[new Float32Array(n),new Float32Array(n),new Float32Array(n)],inL=[],mean=[0,0,0];let bn=0;
-  for(let i=0;i<n;i++){if(ins[i]){inL.push(i);continue}for(let c=0;c<3;c++)D[c][i]=td[i*4+c]-Sd[i*4+c]}
-  for(const i of ringL){const px=i%rw,py=(i/rw)|0;if((px>0&&ins[i-1])||(px<rw-1&&ins[i+1])||(py>0&&ins[i-rw])||(py<rh-1&&ins[i+rw])){for(let c=0;c<3;c++)mean[c]+=D[c][i];bn++}}for(let c=0;c<3;c++)mean[c]/=Math.max(1,bn);
-  const m=inL.length,nb=new Int32Array(m*4).fill(-1);for(let k=0;k<m;k++){const i=inL[k],px=i%rw,py=(i/rw)|0;if(px>0)nb[k*4]=i-1;if(px<rw-1)nb[k*4+1]=i+1;if(py>0)nb[k*4+2]=i-rw;if(py<rh-1)nb[k*4+3]=i+rw;for(let c=0;c<3;c++)D[c][i]=mean[c]}
-  const iters=Math.min(1600,80+Math.round(Math.sqrt(m)*9)),w=1.92;for(let c=0;c<3;c++){const Dc=D[c];for(let it=0;it<iters;it++)for(let k=0;k<m;k++){let s=0,q=0,t;t=nb[k*4];if(t>=0){s+=Dc[t];q++}t=nb[k*4+1];if(t>=0){s+=Dc[t];q++}t=nb[k*4+2];if(t>=0){s+=Dc[t];q++}t=nb[k*4+3];if(t>=0){s+=Dc[t];q++}const i=inL[k];Dc[i]+=w*(s/q-Dc[i])}}
-  for(const i of inL){const a=Math.min(1,M[i*4+3]/255*1.15),j=i*4;for(let c=0;c<3;c++){const v=Sd[j+c]+D[c][i];td[j+c]=clamp(td[j+c]+(v-td[j+c])*a,0,255)}if(Sd[j+3]>0)td[j+3]=td[j+3]+(Sd[j+3]-td[j+3])*a}g.putImageData(T,x0,y0);return true}
+var healRegion; /* défini dans 0880-retouching-tools-heal-remove-clone.js */
 
 /* object removal: multi-scale PatchMatch inpainting in a worker */
 const INPAINT_SRC=`self.onmessage=e=>{const{w,h,rgb,hole}=e.data;const out=inpaint(w,h,rgb,hole,p=>self.postMessage({progress:p}));self.postMessage({done:true,rgb:out},[out.buffer])};
@@ -1236,17 +1213,7 @@ function vote(L,tg,NN,DS,R){const w=L.w,h=L.h,img=L.img,ho=L.hole,acc=new Float3
  for(let i=0;i<w*h;i++){if(!ho[i]||acc[i*4+3]<=0)continue;img[i*3]=acc[i*4]/acc[i*4+3];img[i*3+1]=acc[i*4+1]/acc[i*4+3];img[i*3+2]=acc[i*4+2]/acc[i*4+3]}}`;
 let inpaintURL=null;
 function runInpaint(w,h,rgb,hole,onProg){if(!inpaintURL)inpaintURL=URL.createObjectURL(new Blob([INPAINT_SRC],{type:'text/javascript'}));return new Promise((res,rej)=>{let wk;try{wk=new Worker(inpaintURL)}catch(e){rej(e);return}wk.onmessage=e=>{if(e.data.progress!=null)onProg&&onProg(e.data.progress);if(e.data.done){wk.terminate();res(e.data.rgb)}};wk.onerror=e=>{wk.terminate();rej(e)};wk.postMessage({w,h,rgb,hole},[rgb.buffer,hole.buffer])})}
-async function removeObject(L,maskC,bx){const d=S.doc;const hw=bx.x1-bx.x0,hh=bx.y1-bx.y0;if(hw<2||hh<2)return;if(hw*hh>d.w*d.h*0.3){toast('Zone trop grande : peignez seulement l’objet à effacer');return}
-  const mg=Math.max(40,Math.round(Math.max(hw,hh)*0.9)),x0=Math.max(0,Math.floor(bx.x0-mg)),y0=Math.max(0,Math.floor(bx.y0-mg)),x1=Math.min(d.w,Math.ceil(bx.x1+mg)),y1=Math.min(d.h,Math.ceil(bx.y1+mg));
-  let f=1;const area=(x1-x0)*(y1-y0);if(area>900000)f=Math.sqrt(area/900000);const rw=Math.max(8,Math.round((x1-x0)/f)),rh=Math.max(8,Math.round((y1-y0)/f));
-  const src=mk(rw,rh),sg=rx(src);sg.imageSmoothingQuality='high';sg.drawImage(L.canvas,x0,y0,x1-x0,y1-y0,0,0,rw,rh);const mc=mk(rw,rh),mg2=rx(mc);mg2.drawImage(maskC,x0,y0,x1-x0,y1-y0,0,0,rw,rh);
-  const sd=sg.getImageData(0,0,rw,rh).data,md=mg2.getImageData(0,0,rw,rh).data,n=rw*rh,rgb=new Float32Array(n*3),hole=new Uint8Array(n);
-  for(let i=0;i<n;i++){rgb[i*3]=sd[i*4];rgb[i*3+1]=sd[i*4+1];rgb[i*3+2]=sd[i*4+2];hole[i]=md[i*4+3]>10?1:0}
-  // grow hole by 2px so edges of the object are removed too
-  for(let pass=0;pass<2;pass++){const h2=hole.slice();for(let y=0;y<rh;y++)for(let x=0;x<rw;x++){const i=y*rw+x;if(hole[i])continue;if((x>0&&hole[i-1])||(x<rw-1&&hole[i+1])||(y>0&&hole[i-rw])||(y<rh-1&&hole[i+rw]))h2[i]=1}hole.set(h2)}
-  const holeC=hole.slice(),doc0=S.doc,h0=S.history[S.hi];busy(true,'Suppression de l’objet…',0);let out;try{out=await runInpaint(rw,rh,rgb,hole,p=>busy(true,'Suppression de l’objet…',p))}catch(e){busy(false);toast('La gomme magique n’a pas pu s’exécuter dans ce navigateur');return}busy(false);if(S.doc!==doc0||S.history[S.hi]!==h0||!doc0.layers.includes(L)){toast('Opération annulée : le document a changé');return}
-  const res=mk(rw,rh),rg=cx(res),ri=rg.createImageData(rw,rh);for(let i=0;i<n;i++){ri.data[i*4]=out[i*3];ri.data[i*4+1]=out[i*3+1];ri.data[i*4+2]=out[i*3+2];ri.data[i*4+3]=holeC[i]?255:0}rg.putImageData(ri,0,0);
-  const soft=blurCanvas(res,1.2);const g=editCanvas(L);g.imageSmoothingQuality='high';g.drawImage(soft,0,0,rw,rh,x0,y0,x1-x0,y1-y0);markComp();pushHistory('Gomme magique')}
+var removeObject; /* défini dans 0880-retouching-tools-heal-remove-clone.js */
 async function removeSelected(){const d=S.doc;if(!d||!d.sel){toast('Sélectionnez d’abord l’objet à effacer');return}const L=pixelTarget();if(!L)return;const b=maskBBox(d.sel);if(!b)return;await removeObject(L,d.sel,b)}
 
 /* ================= pointer handling ================= */
@@ -1293,18 +1260,15 @@ function onUp(){const dr=S.drag;S.drag=null;if(!dr)return;const d=S.doc;
   if(dr.type==='crop'){requestRender();return}
   if(dr.type==='stroke')endStroke()}
 function modeFrom(e){if(e.shiftKey&&e.altKey)return'int';if(e.shiftKey)return'add';if(e.altKey)return'sub';return S.opts.selMode}
-function pickColor(p){const c=flatSync(),x=Math.floor(p.x),y=Math.floor(p.y),d=S.doc;if(x<0||y<0||x>=d.w||y>=d.h)return;const a=rx(c).getImageData(x,y,1,1).data;if(!a[3])return;S.color='#'+[a[0],a[1],a[2]].map(v=>v.toString(16).padStart(2,'0')).join('');$('#fg').value=S.color;const oc=$('#optColor');if(oc)oc.value=S.color}
-function wbFromPoint(p){const L=AL();if(!L||L.kind!=='adjust'){toast('Sélectionnez un réglage');return}const d=S.doc,c=flatSync(),x=clamp(Math.floor(p.x)-2,0,d.w-5),y=clamp(Math.floor(p.y)-2,0,d.h-5),a=rx(c).getImageData(x,y,5,5).data;let r=0,g=0,b=0;for(let i=0;i<a.length;i+=4){r+=a[i];g+=a[i+1];b+=a[i+2]}
-  const lin=v=>Math.pow(Math.max(1,v/25)/255,2.2);r=lin(r);g=lin(g);b=lin(b);const q=b/r;const t=clamp((q-1)/(0.3*(1+q)),-1,1),gr=1+0.3*t,ti=clamp((1-r*gr/g)/0.22,-1,1);L.dev.temp=Math.round(t*100);L.dev.tint=Math.round(ti*100);syncDev();markContent();pushHistory('Balance des blancs');toast('Balance des blancs appliquée')}
+var pickColor; /* défini dans 0870-brush-eraser-gradient-bucket-eyedropper.js */
+var wbFromPoint; /* défini dans 0830-reglages-developper-panel.js */
 
 /* gradients (masks of local adjustments, or colour on pixel layers) */
 function gradientCanvas(dr,color){const d=S.doc,m=mk(d.w,d.h),g=cx(m);let gr;const col=color||'#ffffff';
   if(dr.shape==='radial'){const r=Math.max(1,Math.hypot(dr.x1-dr.x0,dr.y1-dr.y0));gr=g.createRadialGradient(dr.x0,dr.y0,0,dr.x0,dr.y0,r);gr.addColorStop(0,hexA(col,1));gr.addColorStop(0.45,hexA(col,1));gr.addColorStop(1,hexA(col,0))}
   else{gr=g.createLinearGradient(dr.x0,dr.y0,dr.x1,dr.y1);gr.addColorStop(0,hexA(col,1));gr.addColorStop(1,hexA(col,0))}g.fillStyle=gr;g.fillRect(0,0,d.w,d.h);return m}
-function gradientPreview(dr){const L=dr.target;if(Math.hypot(dr.x1-dr.x0,dr.y1-dr.y0)*S.zoom<4)return;if(L.kind==='adjust'||(L.mask&&L.editMask)){L.maskPreview=gradientCanvas(dr)}else if(L.kind==='pixel'){const c=cloneC(L.canvas);cx(c).drawImage(gradientCanvas(dr,S.color),0,0);L.preview=c}markComp()}
-function gradientCommit(dr){const L=dr.target;delete L.maskPreview;delete L.preview;if(Math.hypot(dr.x1-dr.x0,dr.y1-dr.y0)*S.zoom<4){markComp();return}
-  if(L.kind==='adjust'||(L.mask&&L.editMask)){L.mask=gradientCanvas(dr);markComp();pushHistory(dr.shape==='radial'?'Masque radial':'Masque dégradé');syncLayers();return}
-  const g=editCanvas(L);g.drawImage(gradientCanvas(dr,S.color),0,0);markComp();pushHistory('Dégradé')}
+var gradientPreview; /* défini dans 0870-brush-eraser-gradient-bucket-eyedropper.js */
+var gradientCommit; /* défini dans 0870-brush-eraser-gradient-bucket-eyedropper.js */
 
 /* ================= crop & straighten ================= */
 function initCrop(){const d=S.doc;if(!d)return;S.crop={x:0,y:0,w:d.w,h:d.h,angle:0};applyRatio();requestRender()}
@@ -1324,19 +1288,11 @@ function applyCrop(){const c=S.crop,d=S.doc;if(!c)return;const a=c.angle*Math.PI
 function cancelCrop(){initCrop();renderPill()}
 
 /* ================= text ================= */
-async function textAt(p){const prev=$('#scrim');if(prev&&prev._cancel)prev._cancel();const d=S.doc,o=S.opts.text,L=newPixel('Texte',mk(d.w,d.h));d.layers.splice(d.active+1,0,L);d.active++;const st={text:'Votre texte',color:S.color};
-  const draw=async()=>{const g=cx(L.canvas);g.clearRect(0,0,d.w,d.h);const f=`${o.italic?'italic ':''}${o.bold?'700':'400'} ${o.size}px "${o.font}"`;try{await document.fonts.load(f)}catch(e){}g.font=f;g.textBaseline='top';g.fillStyle=st.color;
-    if(o.shadow){g.shadowColor='rgba(0,0,0,.45)';g.shadowBlur=o.size*0.12;g.shadowOffsetY=o.size*0.04}st.text.split('\n').forEach((ln,i)=>g.fillText(ln,p.x,p.y+i*o.size*1.15));g.shadowColor='transparent';L.name='Texte : '+(st.text.split('\n')[0].slice(0,18)||'…');markComp()};
-  const fonts=['Geist','Newsreader','Playfair Display','Bebas Neue','Caveat','Geist Mono','Georgia','Arial'];
-  dialog({title:'Texte',light:true,body:`<label class="field">Texte<textarea id="tTxt" rows="3">${esc(st.text)}</textarea></label><div class="inline"><select id="tFont" aria-label="Police">${fonts.map(f=>`<option ${f===o.font?'selected':''}>${f}</option>`).join('')}</select><input type="color" class="swatch" id="tCol" value="${esc(st.color)}" aria-label="Couleur">
-    <label class="inline"><input type="checkbox" id="tB" ${o.bold?'checked':''}>Gras</label><label class="inline"><input type="checkbox" id="tI" ${o.italic?'checked':''}>Italique</label><label class="inline"><input type="checkbox" id="tS" ${o.shadow?'checked':''}>Ombre</label></div>
-    ${rangeRow('tSize','Taille',8,Math.max(200,Math.round(d.h/2)),1,o.size,' px')}<p class="muted">Ajustez ensuite la position avec l’outil Déplacement (V).</p>`,
-    onOpen:el=>{const up=()=>{st.text=$('#tTxt',el).value;o.font=$('#tFont',el).value;st.color=$('#tCol',el).value;o.bold=$('#tB',el).checked;o.italic=$('#tI',el).checked;o.shadow=$('#tS',el).checked;o.size=+$('#tSize',el).value;$('#tSize-o',el).textContent=o.size+' px';draw()};el.addEventListener('input',up);el.addEventListener('change',up);draw();setTimeout(()=>{$('#tTxt',el).select();$('#tTxt',el).focus()},30)},
-    buttons:[{label:'Annuler',onClick:()=>{const i=d.layers.indexOf(L);if(i>=0){d.layers.splice(i,1);d.active=Math.max(0,Math.min(d.active-1,d.layers.length-1))}markComp();syncLayers()}},{label:'Ajouter le texte',primary:true,onClick:()=>{if(!d.layers.includes(L)||S.doc!==d)return;pushHistory('Texte');syncLayers()}}]})}
+var textAt; /* défini dans 0590-editable-text-shapes-layer-styles.js */
 
 /* ================= layers ================= */
 function insertLayer(L,label,top){const d=S.doc;if(top){d.layers.push(L);d.active=d.layers.length-1}else{d.layers.splice(d.active+1,0,L);d.active++}markComp();pushHistory(label);syncAll()}
-function addLayer(){const d=S.doc;if(!d)return;insertLayer(newPixel('Calque '+d.layers.filter(l=>l.kind==='pixel').length,mk(d.w,d.h)),'Nouveau calque')}
+var addLayer; /* défini dans 0860-layers-area.js */
 function addAdjust(kind){const d=S.doc;if(!d)return;const n=d.layers.filter(l=>l.kind==='adjust'&&l.mask).length+1;
   if(kind==='global'){insertLayer(newAdjust('Réglages '+(d.layers.filter(l=>l.kind==='adjust').length+1)),'Calque de réglage',true);return}
   let mask=null,name='Local '+n;
@@ -1358,8 +1314,8 @@ function mergeDown(){const d=S.doc,i=d.active;if(i<1){toast('Aucun calque en des
   bot.canvas=c;bot.mask=null;d.layers.splice(i,1);d.active=i-1;markComp();pushHistory('Fusionner');syncAll()}
 async function flatten(){const d=S.doc,h0=S.history[S.hi];busy(true,'Aplatissement…');await tick();try{const c=await renderDoc(1);if(S.doc!==d||S.history[S.hi]!==h0)return;d.layers=[newPixel('Arrière-plan',c),newAdjust('Réglages')];d.active=1;markComp();pushHistory('Aplatir');syncAll()}finally{busy(false)}}
 async function stampVisible(){const d=S.doc,h0=S.history[S.hi];busy(true,'Fusion des calques visibles…');await tick();try{const c=await renderDoc(1);if(S.doc!==d||S.history[S.hi]!==h0)return;insertLayer(newPixel('Calques fusionnés',c),'Fusionner les calques visibles',true)}finally{busy(false)}}
-function addMask(fromSel){const L=AL();if(!L||L.kind!=='pixel')return;const d=S.doc;L.mask=fromSel&&d.sel?cloneC(d.sel):fullMask();L.editMask=true;markComp();pushHistory('Ajouter un masque');syncAll()}
-function deleteMask(){const L=AL();if(!L||!L.mask)return;L.mask=null;L.editMask=false;markComp();pushHistory('Supprimer le masque');syncAll()}
+var addMask; /* défini dans 0860-layers-area.js */
+var deleteMask; /* défini dans 0860-layers-area.js */
 function invertMask(){const L=AL();if(!L||!L.mask)return;const m=fullMask(),g=cx(m);g.globalCompositeOperation='destination-out';g.drawImage(L.mask,0,0);L.mask=m;markComp();pushHistory('Inverser le masque');syncAll()}
 function clearSel(){const d=S.doc,L=pixelTarget();if(!d||!L)return;if(!d.sel){toast('Aucune sélection : rien n’est effacé');return}const g=editCanvas(L);g.globalCompositeOperation='destination-out';g.drawImage(d.sel,0,0);markComp();pushHistory('Effacer la sélection')}
 function fillSel(){const d=S.doc,L=pixelTarget();if(!d||!L)return;const g=editCanvas(L);if(d.sel){const t=mk(d.w,d.h),tg=cx(t);tg.fillStyle=S.color;tg.fillRect(0,0,d.w,d.h);tg.globalCompositeOperation='destination-in';tg.drawImage(d.sel,0,0);g.drawImage(t,0,0)}else{g.fillStyle=S.color;g.fillRect(0,0,d.w,d.h)}markComp();pushHistory('Remplir')}
@@ -1392,11 +1348,7 @@ const FILTERS={
   bw:{name:'Noir et blanc',params:[['r','Rouges',-100,200,1,40,' %'],['g','Verts',-100,200,1,40,' %'],['b','Bleus',-100,200,1,20,' %']],run:(s,p)=>pixFilter(s,a=>{for(let i=0;i<a.length;i+=4){const v=clamp((a[i]*p.r+a[i+1]*p.g+a[i+2]*p.b)/100,0,255);a[i]=a[i+1]=a[i+2]=v}})},
   sepia:{name:'Sépia',params:[['a','Intensité',0,100,1,80,' %']],run:(s,p)=>pixFilter(s,a=>{const k=p.a/100;for(let i=0;i<a.length;i+=4){const r=a[i],g=a[i+1],b=a[i+2];a[i]=clamp(r+(r*.393+g*.769+b*.189-r)*k,0,255);a[i+1]=clamp(g+(r*.349+g*.686+b*.168-g)*k,0,255);a[i+2]=clamp(b+(r*.272+g*.534+b*.131-b)*k,0,255)}})},
   invert:{name:'Négatif',params:[],run:s=>pixFilter(s,a=>{for(let i=0;i<a.length;i+=4){a[i]=255-a[i];a[i+1]=255-a[i+1];a[i+2]=255-a[i+2]}})}};
-function filterDialog(id){const d=S.doc,L=pixelTarget(),F=FILTERS[id];if(!L)return;if(!F.params.length){applyMasked(L,F.run(L.canvas,{}),F.name);return}const p={};F.params.forEach(q=>p[q[0]]=q[5]);let tmr=null;const orig=L.canvas;
-  const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{let r=F.run(orig,p);if(d.sel){const t=cloneC(orig),g=cx(t);g.globalCompositeOperation='destination-out';g.drawImage(d.sel,0,0);const rr=cloneC(r),rg=cx(rr);rg.globalCompositeOperation='destination-in';rg.drawImage(d.sel,0,0);g.globalCompositeOperation='source-over';g.drawImage(rr,0,0);r=t}L.preview=r;markComp()},120)};
-  dialog({title:F.name,light:true,body:F.params.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
-    onOpen:el=>{F.params.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});prev()},
-    buttons:[{label:'Annuler',onClick:()=>{clearTimeout(tmr);delete L.preview;markComp()}},{label:'Appliquer',primary:true,onClick:()=>{clearTimeout(tmr);delete L.preview;applyMasked(L,F.run(orig,p),F.name)}}]})}
+var filterDialog; /* défini dans 0840-menu-filtre-des-effets-modifiables.js */
 const fmtN=(v,st)=>st<1?(+v).toFixed(st<0.1?2:1):String(Math.round(v));
 function rangeRow(id,label,min,max,step,val,unit){return`<div class="row"><label for="${id}">${label}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}"><output id="${id}-o">${fmtN(val,step)}${unit||''}</output></div>`}
 
@@ -1476,7 +1428,7 @@ function renderPill(){const t=S.tool,o=S.opts,ob=$('#pill'),A=AL();const name=(T
   const oc=$('#optColor');if(oc)oc.oninput=e=>{S.color=e.target.value;$('#fg').value=S.color};
   const sb=$('#srcBtn');if(sb)sb.onclick=()=>{S.pickSource=!S.pickSource;sb.classList.toggle('on',S.pickSource);if(S.pickSource)toast('Touchez la zone à copier')};
   if(t==='crop'){$('#cropAng').oninput=e=>{if(!S.crop)return;S.crop.angle=+e.target.value;$('#cropAngV').textContent=S.crop.angle.toFixed(1)+'°';applyRatio();markContent()};$('#cropApply').onclick=applyCrop;$('#cropReset').onclick=cancelCrop}}
-function srcBtn(){return`<button class="btn sm ${S.pickSource?'on':''}" id="srcBtn">Définir la source</button><span class="hint">${S.cloneSrc?'Source définie. ':''}${ALT}+clic pour choisir la zone à copier.</span>`}
+var srcBtn; /* défini dans 0880-retouching-tools-heal-remove-clone.js */
 
 /* ================= Régler panel ================= */
 const SECTIONS=[
@@ -1678,12 +1630,7 @@ AI.removeBackground=async()=>{const L=pixelTarget();if(!L)return;const d0=S.doc;
 AI._upP={};AI.ensureUp=scale=>AI._up[scale]?Promise.resolve(AI._up[scale]):(AI._upP[scale]||(AI._upP[scale]=AI._ensureUp(scale).finally(()=>{AI._upP[scale]=null})));
 AI._ensureUp=async(scale)=>{AI.setState('up','load',0);try{busy(true,'Chargement du moteur d’agrandissement…',0.1);if(!window.tf)await loadScript(asset('ai/tf.min.js'));const tf=window.tf;try{await tf.setBackend('webgl')}catch(e){}await tf.ready();
     busy(true,'Chargement du modèle ×'+scale+'…',0.5);const m=await tf.loadLayersModel(asset(`ai/esrgan-x${scale}/model.json`));AI._up[scale]=m;AI.setState('up','ready');return m}catch(e){console.error(e);AI.setState('up','error');busy(false);toast('Le modèle d’agrandissement n’a pas pu se charger : '+(e.message||e),5000);return null}};
-async function upscaleCanvas(src,scale,model,onP){const tf=window.tf,W=src.width,H=src.height,T=96,P=8,out=mk(W*scale,H*scale),og=cx(out);const nx=Math.ceil(W/T),ny=Math.ceil(H/T);let k=0;
-  for(let ty=0;ty<ny;ty++)for(let tx=0;tx<nx;tx++){const x0=tx*T,y0=ty*T,tw=Math.min(T,W-x0),th=Math.min(T,H-y0),px0=Math.max(0,x0-P),py0=Math.max(0,y0-P),px1=Math.min(W,x0+tw+P),py1=Math.min(H,y0+th+P),pw=px1-px0,ph=py1-py0;
-    const tc=scr('upin',pw,ph),tg=cx(tc);tg.clearRect(0,0,pw,ph);tg.drawImage(src,px0,py0,pw,ph,0,0,pw,ph);
-    const res=tf.tidy(()=>model.predict(tf.browser.fromPixels(tc).toFloat().expandDims(0)).clipByValue(0,255).squeeze().round().toInt());const oc=scr('upout',pw*scale,ph*scale);await tf.browser.toPixels(res,oc);res.dispose();
-    og.drawImage(oc,(x0-px0)*scale,(y0-py0)*scale,tw*scale,th*scale,x0*scale,y0*scale,tw*scale,th*scale);k++;if(k%4===0){onP&&onP(k/(nx*ny));await tick()}}
-  const a=resample(src,W*scale,H*scale);og.globalCompositeOperation='destination-in';og.drawImage(a,0,0);return out}
+var upscaleCanvas; /* défini dans 1000-le-logo-prism-apparait-aussi.js */
 AI.upscale=async(scale)=>{const d=S.doc;if(!d)return;const nw=d.w*scale,nh=d.h*scale;if(nw*nh>MAX_PX){toast(`Résultat trop grand (${nw} × ${nh}). Recadrez ou réduisez d’abord la photo.`,4500);return}
   try{const model=await AI.ensureUp(scale);if(!model||S.doc!==d)return;const h0=S.history[S.hi];const px=d.layers.filter(l=>l.kind==='pixel'),res=new Map();let i=0;for(const L of px){const r=await upscaleCanvas(L.canvas,scale,model,p=>busy(true,`Agrandissement ×${scale} : ${L.name}…`,(i+p)/px.length));res.set(L,r);i++}
     if(S.doc!==d||S.history[S.hi]!==h0){toast('Agrandissement annulé : le document a changé');return}resizeDoc(nw,nh,`Agrandissement IA ×${scale}`,L=>res.get(L)||resample(L.canvas,nw,nh));toast(`Image agrandie à ${nw} × ${nh} px`)}catch(e){if(e&&e.message==='annulé')return;/* the caller says « Agrandissement annulé » */console.error(e);toast('Agrandissement interrompu : '+(e.message||e),5000)}finally{busy(false)}};
@@ -1699,27 +1646,14 @@ $('#pane-ai').addEventListener('click',e=>{const b=e.target.closest('[data-ai]')
 
 /* ================= export ================= */
 let dlNS=null;const dlReady=(async()=>{try{return window.claude&&window.claude.use?await window.claude.use('downloads'):null}catch(e){return null}})().then(v=>dlNS=v);
-function exportDialog(){const d=S.doc;if(!d)return;const st={fmt:'jpeg',q:92};const base=(d.name||'photo').replace(/\.[a-z0-9]+$/i,'');const hasAlpha=d.layers.some(l=>l.mask&&l.kind==='pixel')||(()=>{try{const f=flatSync(),t=mk(Math.min(256,d.w),Math.min(256,d.h));cx(t).drawImage(f,0,0,t.width,t.height);const a=rx(t).getImageData(0,0,t.width,t.height).data;for(let i=3;i<a.length;i+=4)if(a[i]<250)return true}catch(e){}return false})();if(hasAlpha)st.fmt='png';
-  dialog({title:'Exporter',body:`<label class="field">Format<div class="seg" id="exF">${['jpeg','png','webp','png16','tiff'].map(f=>`<button data-f="${f}" class="${st.fmt===f?'on':''}">${f==='jpeg'?'JPEG':f==='png16'?'PNG 16 bits':f==='tiff'?'TIFF 16 bits':f.toUpperCase()}</button>`).join('')}</div></label><div id="exQ" ${st.fmt==='png'?'hidden':''}>${rangeRow('exQr','Qualité',40,100,1,92,'')}</div>
-    <label class="field">Taille<select id="exS"><option value="full">Taille d’origine (${d.w} × ${d.h})</option><option value="4096">Grand côté 4096 px</option><option value="2048">Grand côté 2048 px (web)</option><option value="1080">Grand côté 1080 px (Instagram)</option><option value="50">50 %</option></select></label>
-    <label class="field">Nom du fichier<input type="text" id="exN" value="${esc(base)}-prism"></label><p class="muted" id="exInfo"></p>`,
-    onOpen:el=>{const sf=()=>{const v=$('#exS',el).value;return v==='full'?1:v==='50'?0.5:Math.min(1,+v/Math.max(d.w,d.h))};el._scale=sf;const info=()=>{const s=sf();$('#exInfo',el).textContent=`${Math.round(d.w*s)} × ${Math.round(d.h*s)} px · ${st.fmt.toUpperCase()}${st.fmt==='png'?' · sans perte, transparence conservée':st.fmt==='png16'||st.fmt==='tiff'?' · 16 bits par couche, sans perte, profil couleur inclus':''}`};
-      $$('#exF button',el).forEach(b=>b.onclick=()=>{st.fmt=b.dataset.f;$$('#exF button',el).forEach(x=>x.classList.toggle('on',x===b));$('#exQ',el).hidden=!['jpeg','webp'].includes(st.fmt);info()});$('#exQr',el).oninput=e=>{st.q=+e.target.value;$('#exQr-o',el).textContent=st.q};$('#exS',el).onchange=info;info()},
-    buttons:[{label:'Annuler'},{label:'Exporter',primary:true,onClick:el=>{doExport(st.fmt,st.q/100,el._scale(),($('#exN',el).value||'photo').replace(/[\\/:*?"<>|]+/g,'-'))}}]})}
-async function doExport(fmt,q,scale,name){if(fmt==='png16'||fmt==='tiff')return doExport16(fmt,scale,name);busy(true,'Export en cours…',0);await tick();let blob;try{let c=await renderDoc(scale,{progress:p=>busy(true,'Export en cours…',p)});if(fmt==='jpeg'){const w=mk(c.width,c.height),g=cx(w);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(c,0,0);c=w}blob=await new Promise(r=>c.toBlob(r,'image/'+fmt,q))}catch(e){console.error(e);busy(false);toast('Export impossible : '+(e.message||e),5000);return}finally{busy(false)}
-  if(!blob||blob.type!=='image/'+fmt){toast('Ce navigateur ne sait pas encoder ce format. Essayez JPEG ou PNG.');return}const fname=name+'.'+(fmt==='jpeg'?'jpg':fmt);await dlReady;
-  if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Photo enregistrée : '+fname);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}}}
-  const url=URL.createObjectURL(blob);dialog({title:'Votre photo est prête',body:`<img src="${url}" alt="Photo exportée"><p class="muted">${(blob.size/1048576).toFixed(1)} Mo · Clic droit ou appui long sur l’image, puis « Enregistrer l’image » (${esc(fname)}).</p>`,buttons:[{label:'Fermer',onClick:()=>setTimeout(()=>URL.revokeObjectURL(url),1000)}]})}
+var exportDialog; /* défini dans 0510-export-dialog-every-format.js */
+var doExport; /* défini dans 0510-export-dialog-every-format.js */
 
 /* ================= opening files (incl. RAW) ================= */
 const RAW_EXT=/\.(dng|cr2|cr3|crw|nef|nrw|arw|srf|sr2|raf|orf|rw2|pef|srw|3fr|iiq|erf|mef|mos|kdc|dcr|x3f|raw|rwl)$/i;
 function openFile(){$('#fileOpen').click()}
 function loadImageFile(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),im=new Image();im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{URL.revokeObjectURL(url);res(im)})};im.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('format'))};im.src=url})}
-async function decodeRaw(file){busy(true,'Développement du fichier RAW…',null);try{const mod=await import(asset('raw/index.js'));const raw=new mod.default();const buf=new Uint8Array(await file.arrayBuffer());
-    await raw.open(buf,{useCameraWb:true,outputBps:8,outputColor:1,userQual:3,noAutoBright:false});let meta={};try{meta=await raw.metadata()}catch(e){}const im=await raw.imageData();try{raw.dispose&&raw.dispose()}catch(e){}
-    const W=im.width,H=im.height,c=mk(W,H),g=cx(c),id=g.createImageData(W,H),s=im.data,col=im.colors||3;for(let i=0,j=0;i<W*H;i++,j+=col){id.data[i*4]=s[j];id.data[i*4+1]=s[j+1];id.data[i*4+2]=s[j+2];id.data[i*4+3]=255}g.putImageData(id,0,0);
-    const bits=[];const mk_=meta.camera_make||meta.make,md_=meta.camera_model||meta.model;if(mk_||md_)bits.push([mk_,md_].filter(Boolean).join(' ').trim());if(meta.iso_speed)bits.push('ISO '+Math.round(meta.iso_speed));if(meta.shutter)bits.push(meta.shutter>=1?meta.shutter+' s':'1/'+Math.round(1/meta.shutter)+' s');if(meta.aperture)bits.push('f/'+(+meta.aperture).toFixed(1));if(meta.focal_len)bits.push(Math.round(meta.focal_len)+' mm');
-    return{c,meta:bits.join(' · ')}}finally{busy(false)}}
+var decodeRaw; /* défini dans 0440-raw-16-bit-linear-development.js */
 async function openBlob(file,asLayer){try{if(!asLayer&&(/\.png$/i.test(file.name||'')||file.type==='image/png')&&await open16(file))return;if(/\.(psd|psb)$/i.test(file.name||'')&&!asLayer){await importPSD(file);return}if(/\.zip$/i.test(file.name||'')||file.type==='application/zip'){busy(true,'Lecture de l’archive…',null);try{await importZip(file)}finally{busy(false)}return}let src,meta='',isRaw=RAW_EXT.test(file.name||'');
     if(isRaw){const r=await decodeRaw(file);src=r.c;meta=r.meta}else{try{src=await loadImageFile(file)}catch(e){if(/\.(tif|tiff)$/i.test(file.name||'')){const r=await decodeRaw(file);src=r.c}else throw e}}
     if(asLayer&&S.doc)pasteClip(src.tagName==='IMG'?(()=>{const c=mk(src.naturalWidth,src.naturalHeight);cx(c).drawImage(src,0,0);return c})():src,(file.name||'Image').replace(/\.[^.]+$/,''));
@@ -1806,7 +1740,7 @@ async function buildManifest(d=S.doc){const layers=[],meta=S.meta||'',name=d.nam
   const tk='t_'+uid8();pin(tk);await IDB.put('blobs',tk,thumbB);
   return{v:1,app:'revelateur',id:d.pid,name,w:W,h:H,active,meta,space:d.space||'srgb',lib:d.lib||null,exif:d.exif?b64enc(d.exif):null,path:d.path?JSON.parse(JSON.stringify(d.path)):null,raw:d.raw?{key:d.raw.key,name:d.raw.name,set:d.raw.set,w:d.raw.w,h:d.raw.h}:null,updatedAt:Date.now(),device:DEVICE,sync:!!d.sync,thumb:tk,guides:(d.guides&&(d.guides.v.length||d.guides.h.length))?{v:d.guides.v.slice(),h:d.guides.h.slice()}:null,layers}}
 function manifestKeys(m){const k=new Set();if(m.thumb)k.add(m.thumb);if(m.raw&&m.raw.key)k.add(m.raw.key);(m.layers||[]).forEach(L=>{(L.canvas||[]).forEach(t=>k.add(t.key));(L.mask||[]).forEach(t=>k.add(t.key));(L.hi||[]).forEach(t=>k.add(t.key));(L.fbase||[]).forEach(t=>k.add(t.key));((L.so&&L.so.t)||[]).forEach(t=>k.add(t.key))});return k}
-async function gcBlobs(){const ms=await IDB.all('projects'),keep=new Set();ms.forEach(m=>manifestKeys(m).forEach(k=>keep.add(k)));PIN.forEach(k=>keep.add(k));if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [lcv(L),L.mask,L.fbase,L.so&&L.so.src]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}const hk=await (window.PrismHist?PrismHist.keep(keep,ms):[]);const all=await IDB.keys('blobs');for(const k of all)if(!keep.has(k)&&!String(k).startsWith('icc_')&&!hk.includes(k)){await IDB.del('blobs',k);await IDB.del('amap',k).catch(()=>{})}}
+var gcBlobs; /* défini dans 0830-reglages-developper-panel.js */
 
 const SAVE={timer:null,running:false,again:false,state:'idle',err:''};
 function scheduleSave(ms=2500){const d=S.doc;if(!d||d.nosave||(S.sample&&S.hi<1&&!d.saved))return;clearTimeout(SAVE.timer);SAVE.timer=setTimeout(()=>{SAVE.timer=null;saveNow()},ms);setSaveState('pending')}
@@ -1929,14 +1863,7 @@ async function exportProjectFile(){const d=S.doc;if(!d)return;busy(true,'Prépar
     files.unshift({name:'revelateur.json',data:new TextEncoder().encode(JSON.stringify({...m,sync:false})),compress:true});const z=await makeZip(files);busy(false);
     await saveFile(z,(d.name||'projet').replace(/\.[a-z0-9]+$/i,'').replace(/[\\/:*?"<>|]+/g,'-')+'.prism.zip')}
   catch(e){busy(false);console.error(e);toast('Export du projet impossible : '+(e.message||e),5000)}}
-async function importZip(file){const z=await readZip(file);
-  if(z.names.includes('revelateur.json')){const m=checkDims(JSON.parse(new TextDecoder().decode(await z.get('revelateur.json'))));const id=uid8(),remap=new Map();
-    const take=async t=>{const nk='t_'+uid8();const ext=t.key===m.thumb?'.jpg':'.png';const data=await z.get('tiles/'+t.key+ext);if(!data)throw new Error('fichier manquant dans l’archive');await IDB.put('blobs',nk,new Blob([data],{type:ext==='.jpg'?'image/jpeg':'image/png'}));remap.set(t.key,nk);return{...t,key:nk}};
-    for(const L of m.layers){if(L.canvas)L.canvas=await Promise.all(L.canvas.map(take));if(L.mask)L.mask=await Promise.all(L.mask.map(take));if(L.hi){try{L.hi=await Promise.all(L.hi.map(take))}catch(e){L.hi=null}}}if(m.raw&&m.raw.key){try{m.raw.key=(await take({key:m.raw.key})).key}catch(e){m.raw=null}}m.thumb=(await take({key:m.thumb})).key;
-    Object.assign(m,{id,sync:Cloud.ok&&PREF.get('autoSync',true),updatedAt:Date.now(),device:DEVICE});await IDB.put('projects',id,m);await loadManifest(m,t=>IDB.get('blobs',t.key));toast('Projet importé avec ses calques');if(m.sync)scheduleSave(300);return}
-  const psd=z.names.find(n=>/\.psd$/i.test(n));if(psd){await importPSD(new Blob([await z.get(psd)]),psd.split('/').pop());return}
-  const img=z.names.find(n=>/\.(jpe?g|png|webp|tiff?|dng|cr2|cr3|nef|arw|raf)$/i.test(n));if(img){await openBlob(new File([await z.get(img)],img.split('/').pop()),false);return}
-  throw new Error('aucun projet, PSD ni photo dans cette archive')}
+var importZip; /* défini dans 0830-reglages-developper-panel.js */
 
 /* ================= PSD (Photoshop) ================= */
 async function ensurePSD(){if(!window.agPsd)await loadScript(asset('psd/ag-psd.min.js'));return window.agPsd}
@@ -1973,8 +1900,7 @@ function nonDefaultDev(dv){const z=DEV0(),o={};for(const k in dv){if(k==='curve'
 function ellipseMask(cxn,cyn,rxn,ryn,feather,invert){const d=S.doc,m=mk(d.w,d.h),g=cx(m);const X=cxn*d.w,Y=cyn*d.h,RX=Math.max(2,rxn*d.w),RY=Math.max(2,ryn*d.h);
   const gr=g.createRadialGradient(0,0,0,0,0,1);const f=clamp(feather??0.5,0,1);gr.addColorStop(0,'#fff');gr.addColorStop(clamp(1-f,0,0.999),'#fff');gr.addColorStop(1,'rgba(255,255,255,0)');
   g.save();g.translate(X,Y);g.scale(RX,RY);g.fillStyle=gr;g.beginPath();g.arc(0,0,1,0,7);g.fill();g.restore();if(invert){const o=fullMask(),og=cx(o);og.globalCompositeOperation='destination-out';og.drawImage(m,0,0);return o}return m}
-function cleanParams(p){const out={};if(!p||typeof p!=='object')return out;for(const {k,min,max} of ASSIST_KEYS)if(typeof p[k]==='number'&&isFinite(p[k]))out[k]=clamp(p[k],min,max);
-  for(const k of ['hslH','hslS','hslL'])if(Array.isArray(p[k])&&p[k].length===8)out[k]=p[k].map(v=>clamp(+v||0,-100,100));return out}
+var cleanParams; /* défini dans 0830-reglages-developper-panel.js */
 async function areaMask(a){const d=S.doc;a=a||{};const t=a.type||'global';
   if(t==='global')return null;
   if(t==='subject'||t==='background'){const m=await AI.subjectMask();if(!m)throw new Error('détourage indisponible');if(t==='subject')return cloneC(m);const o=fullMask(),g=cx(o);g.globalCompositeOperation='destination-out';g.drawImage(m,0,0);return o}
@@ -2209,7 +2135,6 @@ function proofDialog(){const st={...PROOF};let bytes=PROOF.bytes,name=PROOF.name
 S.opts.pen={width:4,feather:0};
 IC.pen='<path d="M10 2.5l4.5 7L10 17l-4.5-7.5z"/><circle cx="10" cy="10.2" r="1.3"/><path d="M10 2.5v6.4"/>';
 TOOLS.splice(TOOLS.findIndex(x=>x&&x[0]==='wand')+1,0,['pen','Plume (tracés vectoriels)','P']);KEYTOOLS.p='pen';
-const penPts=()=>S.doc&&S.doc.path?S.doc.path.pts:[];
 function penPath(P){const p=new Path2D(),a=P.pts;if(!a.length)return p;p.moveTo(a[0].x,a[0].y);for(let i=1;i<a.length;i++){const s=a[i-1],t=a[i];p.bezierCurveTo(s.ox,s.oy,t.ix,t.iy,t.x,t.y)}
   if(P.closed&&a.length>2){const s=a[a.length-1],t=a[0];p.bezierCurveTo(s.ox,s.oy,t.ix,t.iy,t.x,t.y);p.closePath()}return p}
 function penDown(e,p){const d=S.doc;if(!d)return;const r=8/S.zoom;let P=d.path;const near=(x,y)=>Math.hypot(p.x-x,p.y-y)<=r;
@@ -2243,11 +2168,7 @@ function penToMask(){const d=S.doc,L=AL(),m=penMask();if(!m||!L)return;const fm=
 function penFill(){const d=S.doc,P=d&&d.path;if(!P||P.pts.length<2){toast('Tracez d’abord une forme avec la plume');return}const c=mk(d.w,d.h),g=cx(c);g.fillStyle=S.color;g.fill(penPath({...P,closed:true}));insertLayer(newPixel('Forme',c),'Remplir le tracé')}
 function penStroke(){const d=S.doc,P=d&&d.path;if(!P||P.pts.length<2){toast('Tracez d’abord une forme avec la plume');return}const c=mk(d.w,d.h),g=cx(c);g.strokeStyle=S.color;g.lineWidth=S.opts.pen.width;g.lineJoin='round';g.lineCap='round';g.stroke(penPath(P));insertLayer(newPixel('Contour',c),'Contour du tracé')}
 function selToPath(){const d=S.doc;if(!d||!d.sel){toast('Faites d’abord une sélection');return}const pts=traceMask(d.sel);if(!pts){toast('Sélection trop complexe à convertir');return}d.path={pts,closed:true};setTool('pen');requestRender();toast('Sélection convertie en tracé : ajustez les points avec la plume')}
-function traceMask(m){/* outer contour of the largest region, simplified to a polygon */const s=Math.min(1,800/Math.max(m.width,m.height)),w=Math.max(2,Math.round(m.width*s)),h=Math.max(2,Math.round(m.height*s)),t=mk(w,h),g=rx(t);g.drawImage(m,0,0,w,h);const a=g.getImageData(0,0,w,h).data,on=(x,y)=>x>=0&&y>=0&&x<w&&y<h&&a[(y*w+x)*4+3]>=128;
-  let sx=-1,sy=-1;outer:for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(on(x,y)){sx=x;sy=y;break outer}if(sx<0)return null;
-  const D=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];let x=sx,y=sy,dir=7,pts=[],guard=w*h*4;do{pts.push([x,y]);let k=(dir+6)%8,f=false;for(let j=0;j<8;j++){const dd=D[(k+j)%8];if(on(x+dd[0],y+dd[1])){x+=dd[0];y+=dd[1];dir=(k+j)%8;f=true;break}}if(!f)break}while((x!==sx||y!==sy)&&--guard>0);
-  const simp=(P,eps)=>{if(P.length<3)return P;let i0=0,dm=0;const[a0,b0]=[P[0],P[P.length-1]];for(let i=1;i<P.length-1;i++){const[px,py]=P[i],L=Math.hypot(b0[0]-a0[0],b0[1]-a0[1])||1,dd=Math.abs((b0[0]-a0[0])*(a0[1]-py)-(a0[0]-px)*(b0[1]-a0[1]))/L;if(dd>dm){dm=dd;i0=i}}return dm>eps?[...simp(P.slice(0,i0+1),eps).slice(0,-1),...simp(P.slice(i0),eps)]:[P[0],P[P.length-1]]};
-  const half=Math.floor(pts.length/2),sp=[...simp(pts.slice(0,half+1),1.2).slice(0,-1),...simp(pts.slice(half),1.2).slice(0,-1)];if(sp.length<3)return null;return sp.map(([px,py])=>{const X=(px+0.5)/s,Y=(py+0.5)/s;return{x:X,y:Y,ix:X,iy:Y,ox:X,oy:Y}})}
+var traceMask; /* défini dans 0890-selection-quick-mask-pen-paths.js */
 
 /* ================= refine edge (hair) : colour guided filter ================= */
 function boxMean(src,w,h,r,out,tmp){for(let y=0;y<h;y++){const o=y*w;let s=0;const lim=Math.min(r,w-1);for(let x=0;x<=lim;x++)s+=src[o+x];
@@ -3055,7 +2976,6 @@ sampleReady.then(v=>{$('#bAssist').hidden=!v;$('#composer').hidden=!v||PREF.get(
   $('.tabs').addEventListener('click',()=>{if(ins.dataset.sheet==='peek')setSheet('half')})})();
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&SAVE.state==='pending')saveNow()});
 window.addEventListener('pagehide',()=>{if(SAVE.state==='pending')saveNow()});
-updateDocName=function(){const d=S.doc;$('#docname').innerHTML=d?`<b>${esc(d.name)}</b><span class="dim"> · ${d.w|0} × ${d.h|0}${d.space==='display-p3'?' · Display P3':''}${precLabel()?' · '+precLabel():''}${S.meta?' · '+esc(S.meta):''}</span>`:'Mes projets'};
 
 /* ================= boot ================= */
 buildDock();buildDevelop();setTool('heal');syncLayers();renderHistory();updateUndo();renderTarget();setSaveState('idle');setSheet('peek');
@@ -3203,7 +3123,7 @@ const MENU2={
     MI('Thème',{icon:'theme',sub:()=>{const t=PREF.get('theme','auto');return[MI('Automatique (comme le système)',{check:t==='auto',fn:()=>themeSet('auto')}),MI('Clair',{check:t==='light',fn:()=>themeSet('light')}),MI('Sombre',{check:t==='dark',fn:()=>themeSet('dark')})]}}),SEP,MI('Avis partagés',{icon:'share',fn:openReview})]},
   help:{label:'Aide',items:()=>[MI('Raccourcis clavier',{icon:'keys',kbd:'?',fn:shortcutsDialog}),MI('Rechercher une commande…',{icon:'search',kbd:MOD+'K',fn:openCmdK}),MI('Formats pris en charge',{icon:'info',fn:formatsDialog}),SEP,MI('À propos de Prism',{icon:'help',fn:aboutDialog})]}};
 function adjSub(){const nd=k=>()=>{if(k==='subject'||k==='background')addSubjectAdjust(k==='background');else addAdjust(k)};return[MI('Global (toute la photo)',{icon:'adj',fn:nd('global')}),MI('Au pinceau',{icon:'brush',fn:nd('brush')}),MI('Dégradé linéaire',{icon:'grad',fn:nd('linear')}),MI('Dégradé radial',{icon:'radial',fn:nd('radial')}),SEP,MI('Sur le sujet (IA)',{icon:'subject',fn:nd('subject')}),MI('Sur l’arrière-plan (IA)',{icon:'subject',fn:nd('background')}),MI('Sur la sélection',{icon:'sel',fn:nd('selection'),dis:selDis()})]}
-function maskSub(){const L=S.doc&&AL(),has=!!(L&&L.mask);return[fromPick('layer','Ajouter un masque','Ajouter un masque','mask',{dis:has?'Ce calque a déjà un masque':S.doc?false:NODOC}),MI('Inverser le masque',{icon:'invert',fn:invertMask,dis:has?false:'Ce calque n’a pas de masque'}),MI('Affiner le masque…',{fn:refineDialog,dis:has?false:'Ce calque n’a pas de masque'}),MI('Afficher le masque',{kbd:'⇧M',check:!!S.showMask,fn:toggleMask,dis:has?false:'Ce calque n’a pas de masque'}),MI('Supprimer le masque',{icon:'trash',danger:true,fn:deleteMask,dis:has?false:'Ce calque n’a pas de masque'})]}
+var maskSub; /* défini dans 0860-layers-area.js */
 function renameLayerUI(i){if(!S.doc)return;if(document.body.classList.contains('compact'))switchTab('layers');setTimeout(()=>startRename(i),30)}
 /* ---- menu engine: menu bar, submenus, context menus, phone sheet ---- */
 const MEN={levels:[],bar:null,anchorBtn:null,ret:null,hoverT:0};
@@ -3654,14 +3574,11 @@ function cropCustomDialog(){const sel=document.querySelector('[data-sel="crop.ra
     buttons:[{label:'Annuler',onClick:back},{label:'Utiliser',primary:true,onClick:()=>{const w=+$('#ccW').value,h=+$('#ccH').value;if(!(w>0&&h>0)||w/h>50||h/w>50){toast('Entrez deux nombres positifs, par exemple 5 et 7');back();return}
       const r=`${+w.toFixed(3)}:${+h.toFixed(3)}`,l=PREF.get('cropCustom',[]).filter(x=>x!==r);l.unshift(r);PREF.set('cropCustom',l.slice(0,6));S.opts.crop.ratio=r;cropRemember(r);applyRatio();renderPill()}}]})}
 S.opts.crop.ratio=PREF.get('cropRatio','free');if(!cropRatios().some(x=>x[0]===S.opts.crop.ratio))S.opts.crop.ratio='free';
-function cropSwapRatio(){const r=S.opts.crop.ratio;if(!/^[\d.]+:[\d.]+$/.test(r))return;const[a,b]=r.split(':');S.opts.crop.ratio=b+':'+a;cropRemember(S.opts.crop.ratio);applyRatio()}
+var cropSwapRatio; /* défini dans 0850-move-crop-free-transform-guides.js */
 
 /* ---------- quick mask (Q) ---------- */
 function inQuickMask(){return!!(S.doc&&S.doc.layers.some(l=>l.qmask))}
-function quickMask(){const d=S.doc;if(!d)return;const q=d.layers.findIndex(l=>l.qmask);
-  if(q<0){const mask=d.sel?cloneC(d.sel):mk(d.w,d.h),L=newAdjust('Masque rapide',mask);L.qmask=true;d.layers.push(L);d.active=d.layers.length-1;S.showMask=true;setTool('brush');markComp();syncAll();toast('Masque rapide : peignez en blanc pour ajouter à la sélection, avec la gomme pour retirer. Q pour valider.',6000);return}
-  const L=d.layers[q];d.sel=maskBBox(L.mask)?cloneC(L.mask):null;d.layers.splice(q,1);d.active=Math.min(d.active,d.layers.length-1);if(d.layers[d.active]&&d.layers[d.active].kind!=='pixel'){const p=d.layers.findLastIndex(l=>l.kind==='pixel');if(p>=0)d.active=p}
-  S.showMask=false;selChanged();markComp();pushHistory(d.sel?'Masque rapide : sélection':'Masque rapide : désélection');syncAll();toast(d.sel?'Sélection mise à jour':'Rien n’est sélectionné')}
+var quickMask; /* défini dans 0890-selection-quick-mask-pen-paths.js */
 document.addEventListener('keydown',e=>{if(e.key!=='q'&&e.key!=='Q')return;if(e.metaKey||e.ctrlKey||e.altKey)return;const tg=e.target;if($('#library')||$('#scrim')||(tg.closest&&tg.closest('input,textarea,select,[contenteditable]')))return;if(!S.doc||S.stroke)return;e.preventDefault();quickMask()});
 /* a quick mask layer must never survive saving or exporting */
 /* the quick mask layer is left out of saved manifests (fx_files) */
@@ -4938,12 +4855,7 @@ Object.assign(FILTERS,{
  duotone:{name:'Bichromie',params:[P('hs','Teinte des ombres',0,360,1,235,'°'),P('hh','Teinte des hautes lumières',0,360,1,35,'°'),P('s','Saturation',0,100,1,70,' %'),P('k','Intensité',0,100,1,100,' %')],run:(s,p)=>{const A=hsl(p.hs,p.s/100,.2),B=hsl(p.hh,p.s/100,.78),k=p.k/100;return pixFilter(s,a=>{for(let i=0;i<a.length;i+=4){const l=luma(a,i)/255;for(let c=0;c<3;c++){const v=(A[c]+(B[c]-A[c])*l)*255;a[i+c]=a[i+c]*(1-k)+v*k}}})}}
 });
 
-/* les rayons s'adaptent à la résolution de la photo */
-const base=new WeakMap();
-const _fd=filterDialog;
-filterDialog=function(id){const F=FILTERS[id],d=S.doc;
-  if(F&&d){if(!base.has(F))base.set(F,F.params.map(q=>q.slice()));const k=Math.max(1,Math.max(d.w,d.h)/2400);F.params=base.get(F).map(q=>{q=q.slice();if(q[7]){q[3]=Math.round(q[3]*k);q[5]=Math.round(q[5]*k)}return q})}
-  return _fd(id)};
+/* rayons en pixels : filterDialog (0840) les adapte à la résolution de la photo */
 ['blur','pixelate'].forEach(k=>{const F=FILTERS[k];if(F)F.params[0][7]=true});
 FILTERS.unsharp.params[1][7]=true;
 
@@ -5319,7 +5231,6 @@ window.PrismExport={WM,stamp,presets};
 
 /* wave37: library backup/restore in one archive + tabs reopened at launch */
 (()=>{
-const NAMEOF=m=>(m.name||'projet');
 async function backupLibrary(){
   busy(true,'Préparation de la sauvegarde…',null);
   try{
@@ -5645,60 +5556,6 @@ async function iccDialog(){if(!S.doc)return;let bytes=null,name='';if(await proo
   buttons:[{label:'Annuler'},{label:'Exporter',primary:true,onClick:el=>{if(!bytes){toast('Choisissez d’abord un profil ICC');return false}iccExport({bytes,name,fmt:$('#icF',el).value,intent:+$('#icI',el).value,bpc:$('#icB',el).checked,q:.92})}}],
   onOpen:el=>{$('#icPick',el).onclick=()=>{const i=document.createElement('input');i.type='file';i.accept='.icc,.icm';i.onchange=async()=>{const f=i.files[0];if(!f)return;bytes=new Uint8Array(await f.arrayBuffer());name=f.name.replace(/\.[^.]+$/,'');$('#icName',el).textContent=name};i.click()}}})}
 
-/* ---------- helpers for multi-photo tools ---------- */
-function pickMany(){return new Promise(res=>{const i=document.createElement('input');i.type='file';i.multiple=true;i.accept='image/*,.heic,.heif,.tif,.tiff,'+RAW_ACCEPT;i.onchange=()=>res([...i.files]);i.oncancel=()=>res([]);i.click()})}
-async function loadScaled(f,maxPx){let bm=null;if(!RAW_EXT.test(f.name||'')&&!/\.(heic|heif|avif|tiff?)$/i.test(f.name||'')){try{bm=await createImageBitmap(f)}catch(e){}}
-  if(!bm){const src=await styleFromFile(f);const s=Math.min(1,maxPx/Math.max(src.width,src.height)),c=mk(Math.round(src.width*s),Math.round(src.height*s));cx(c).drawImage(src,0,0,c.width,c.height);return c}
-  const s=Math.min(1,maxPx/Math.max(bm.width,bm.height)),c=mk(Math.round(bm.width*s),Math.round(bm.height*s));cx(c).drawImage(bm,0,0,c.width,c.height);bm.close&&bm.close();return c}
-/* translation that best aligns B onto A (normalised grey levels, so different exposures still match) */
-function alignShift(A,B){const w=200,h=Math.max(8,Math.round(A.height*200/A.width));const g=c=>{const t=mk(w,h);cx(t).drawImage(c,0,0,w,h);const a=grayOf(t);let m=0,v=0;for(const x of a)m+=x;m/=a.length;for(const x of a)v+=(x-m)*(x-m);const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]=(a[i]-m)/sd;return a};
-  const ga=g(A),gb=g(B),R=Math.round(w*.06);let best=1e9,bx=0,by=0;
-  for(let sy=-R;sy<=R;sy++)for(let sx=-R;sx<=R;sx++){let e=0,n=0;for(let y=Math.max(0,sy);y<Math.min(h,h+sy);y++)for(let x=Math.max(0,sx);x<Math.min(w,w+sx);x++){e+=Math.abs(ga[y*w+x]-gb[(y-sy)*w+(x-sx)]);n++}e/=n||1;if(e<best){best=e;bx=sx;by=sy}}
-  return{x:bx*A.width/w,y:by*A.height/h}}
-function boxBlur(a,w,h,r){const t=new Float32Array(a.length),o=new Float32Array(a.length),k=2*r+1;
-  for(let y=0;y<h;y++){let s=0;const b=y*w;for(let x=-r;x<=r;x++)s+=a[b+Math.max(0,Math.min(w-1,x))];for(let x=0;x<w;x++){t[b+x]=s/k;s+=a[b+Math.min(w-1,x+r+1)]-a[b+Math.max(0,x-r)]}}
-  for(let x=0;x<w;x++){let s=0;for(let y=-r;y<=r;y++)s+=t[Math.max(0,Math.min(h-1,y))*w+x];for(let y=0;y<h;y++){o[y*w+x]=s/k;s+=t[Math.min(h-1,y+r+1)*w+x]-t[Math.max(0,y-r)*w+x]}}
-  return o}
-/* ---------- exposure fusion ---------- */
-async function fuseExposures(files){busy(true,'Fusion des expositions…',0);await tick();
-  try{const imgs=[];for(const f of files)imgs.push(await loadScaled(f,3200));const W=imgs[0].width,H=imgs[0].height;let moved=0;for(let k=1;k<imgs.length;k++){const sh=alignShift(imgs[0],imgs[k]);if(Math.abs(sh.x)>=1||Math.abs(sh.y)>=1){const t2=mk(W,H);cx(t2).drawImage(imgs[k],sh.x,sh.y);imgs[k]=t2;moved++}}
-    const datas=imgs.map(c=>{if(c.width===W&&c.height===H)return cx(c).getImageData(0,0,W,H).data;const t=mk(W,H);cx(t).drawImage(c,0,0,W,H);return cx(t).getImageData(0,0,W,H).data});
-    const n=W*H,ws=[];let k=0;
-    for(const d of datas){const w=new Float32Array(n),gray=new Float32Array(n);
-      for(let i=0;i<n;i++){const r=d[i*4]/255,g=d[i*4+1]/255,b=d[i*4+2]/255;gray[i]=.299*r+.587*g+.114*b;const mean=(r+g+b)/3,sat=Math.sqrt(((r-mean)**2+(g-mean)**2+(b-mean)**2)/3);
-        const ex=Math.exp(-((r-.5)**2+(g-.5)**2+(b-.5)**2)/(2*.2*.2*3/3));w[i]=(sat+.02)*ex+1e-6}
-      for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,lap=Math.abs(4*gray[i]-gray[i-1]-gray[i+1]-gray[i-W]-gray[i+W]);w[i]*=(lap+.01)}
-      ws.push(boxBlur(w,W,H,Math.max(3,Math.round(Math.min(W,H)/80))));busy(true,'Fusion des expositions…',++k/(datas.length*2));await tick()}
-    const out=mk(W,H),og=cx(out),oi=og.createImageData(W,H),od=oi.data;
-    for(let i=0;i<n;i++){let s=0;for(let j=0;j<ws.length;j++)s+=ws[j][i];let r=0,g=0,b=0;for(let j=0;j<ws.length;j++){const a=ws[j][i]/s;r+=datas[j][i*4]*a;g+=datas[j][i*4+1]*a;b+=datas[j][i*4+2]*a}od[i*4]=r;od[i*4+1]=g;od[i*4+2]=b;od[i*4+3]=255}
-    og.putImageData(oi,0,0);busy(false);setDoc(out,'fusion-expositions.jpg',{});toast('Expositions fusionnées'+(moved?' (alignement corrigé sur '+moved+' photo'+(moved>1?'s':'')+')':'')+'. Un petit décalage est corrigé, pas une rotation.',6000)
-  }catch(e){busy(false);console.error(e);toast('Fusion impossible : '+(e.message||e),5000)}}
-async function fusionDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fuseExposures(fs)}
-
-/* ---------- panorama (translation only) ---------- */
-function grayOf(c){const d=cx(c).getImageData(0,0,c.width,c.height).data,g=new Float32Array(c.width*c.height);for(let i=0;i<g.length;i++)g[i]=.299*d[i*4]+.587*d[i*4+1]+.114*d[i*4+2];return g}
-function shiftErr(A,B,w,h,sx,sy){let s=0,n=0;const x0=Math.max(0,sx),x1=Math.min(w,sx+w);if(x1-x0<w*.12)return 1e9;
-  for(let y=Math.max(0,sy);y<Math.min(h,h+sy);y+=2)for(let x=x0;x<x1;x+=2){const a=A[y*w+x],b=B[(y-sy)*w+(x-sx)];s+=Math.abs(a-b);n++}return n?s/n:1e9}
-async function stitch(files){busy(true,'Assemblage du panorama…',0);await tick();
-  try{const fulls=[];for(const f of files)fulls.push(await loadScaled(f,4000));
-    const SC=200/fulls[0].width,sm=fulls.map(c=>{const t=mk(Math.round(c.width*SC),Math.round(c.height*SC));cx(t).drawImage(c,0,0,t.width,t.height);return t});
-    const pos=[{x:0,y:0}];
-    for(let k=1;k<fulls.length;k++){const A=sm[k-1],B=sm[k];if(A.width!==B.width||A.height!==B.height){const t=mk(A.width,A.height);cx(t).drawImage(B,0,0,A.width,A.height);sm[k]=t}
-      const w=A.width,h=A.height,ga=grayOf(A),gb=grayOf(sm[k]);let best=1e9,bx=0,by=0;const my=Math.round(h*.12);
-      for(let sx=Math.round(w*.15);sx<=w*.9;sx++)for(let sy=-my;sy<=my;sy++){const e=shiftErr(ga,gb,w,h,sx,sy);if(e<best){best=e;bx=sx;by=sy}}
-      const f=fulls[k-1].width/w;const prev=pos[k-1];pos.push({x:prev.x+bx*f,y:prev.y+by*f});busy(true,'Assemblage du panorama…',k/fulls.length);await tick()}
-    let minX=0,minY=0,maxX=0,maxY=0;pos.forEach((p,i)=>{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+fulls[i].width);maxY=Math.max(maxY,p.y+fulls[i].height)});
-    const W=Math.round(maxX-minX),H=Math.round(maxY-minY);if(W*H>MAX_PX)throw new Error('panorama trop grand');
-    const out=mk(W,H),g=cx(out);
-    for(let i=0;i<fulls.length;i++){const c=fulls[i],x=Math.round(pos[i].x-minX),y=Math.round(pos[i].y-minY);
-      if(i===0){g.drawImage(c,x,y);continue}
-      const prevEnd=Math.round(pos[i-1].x-minX)+fulls[i-1].width,ov=Math.max(1,prevEnd-x),t=mk(c.width,c.height),tg=cx(t);tg.drawImage(c,0,0);
-      tg.globalCompositeOperation='destination-in';const gr=tg.createLinearGradient(0,0,Math.min(ov,c.width),0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,1)');tg.fillStyle=gr;tg.fillRect(0,0,c.width,c.height);
-      g.drawImage(t,x,y)}
-    busy(false);setDoc(out,'panorama.jpg',{});toast('Panorama assemblé (translation seule). Recadrez ensuite les bords.',6000)
-  }catch(e){busy(false);console.error(e);toast('Panorama impossible : '+(e.message||e),5000)}}
-async function panoDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fs.sort((a,b)=>(a.name||'').localeCompare(b.name||''));stitch(fs)}
-
 /* ---------- puppet warp ---------- */
 function mls(pins,x,y,a){let sw=0,px=0,py=0,qx=0,qy=0;const ws=[];
   for(const p of pins){const dx=p.sx-x,dy=p.sy-y,d2=dx*dx+dy*dy;if(d2<1e-6)return[p.dx,p.dy];const w=1/Math.pow(d2,a);ws.push(w);sw+=w;px+=w*p.sx;py+=w*p.sy;qx+=w*p.dx;qy+=w*p.dy}
@@ -5715,7 +5572,7 @@ function warpMesh(img,pins,cell,out,scale){const W=img.width,H=img.height,g=cx(o
   const nx=Math.ceil(W/cell),ny=Math.ceil(H/cell),V=[];for(let j=0;j<=ny;j++){V[j]=[];for(let i=0;i<=nx;i++){const x=Math.min(W,i*cell),y=Math.min(H,j*cell);V[j][i]=[x,y,mls(pins,x,y,1.6)]}}
   g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const a=V[j][i],b=V[j][i+1],c=V[j+1][i+1],d=V[j+1][i];
-    const S_=(v)=>[v[0],v[1]],D_=(v)=>[v[2][0]*scale,v[2][1]*scale];
+    const D_=(v)=>[v[2][0]*scale,v[2][1]*scale];
     const sa=[a[0],a[1]],sb=[b[0],b[1]],sc=[c[0],c[1]],sd=[d[0],d[1]];
     drawTri(g,img,sa,sb,sc,D_(a),D_(b),D_(c));drawTri(g,img,sa,sc,sd,D_(a),D_(c),D_(d))}}
 function puppetDialog(){const d=S.doc,L=AL();if(!d||!L||L.kind!=='pixel'||L.editMask){toast('Choisissez un calque de pixels');return}
@@ -5748,9 +5605,9 @@ function puppetDialog(){const d=S.doc,L=AL();if(!d||!L||L.kind!=='pixel'||L.edit
 /* ---------- menus ---------- */
 const _ii=MENU2.image.items;MENU2.image.items=()=>{const a=_ii();a.push(SEP,MI('Mode : niveaux de gris',{dis:S.doc?false:NODOC,fn:toGray}),MI('Mode : couleurs indexées…',{dis:S.doc?false:NODOC,fn:indexedDialog}));return a};
 const _ly=MENU2.layer.items;MENU2.layer.items=()=>{const a=_ly();a.push(MI('Déformation marionnette…',{icon:'layer',dis:S.doc?false:NODOC,fn:puppetDialog}));return a};
-const _fi=MENU2.file.items;MENU2.file.items=()=>{const a=_fi();const k=a.findIndex(x=>x&&x.label==='Sauvegarder la photothèque…');const items=[MI('Exporter avec un profil ICC…',{dis:S.doc?false:NODOC,fn:iccDialog}),MI('Fusion d’expositions (HDR)…',{fn:fusionDialog}),MI('Panorama…',{fn:panoDialog})];
+const _fi=MENU2.file.items;MENU2.file.items=()=>{const a=_fi();const k=a.findIndex(x=>x&&x.label==='Sauvegarder la photothèque…');const items=[MI('Exporter avec un profil ICC…',{dis:S.doc?false:NODOC,fn:iccDialog}),MI('Fusion d’expositions (HDR)…'),MI('Panorama…')];/* commandes branchées par 0840 (fusion) et feat/pano.js (panorama) */
   if(k>0)a.splice(k-1,0,...items);else a.push(SEP,...items);return a};
-window.PrismD={toGray,indexed,iccExport,fuseExposures,stitch,puppetDialog,warpMesh,mls};
+window.PrismD={toGray,indexed,iccExport,puppetDialog,warpMesh,mls};
 })();
 
 /* wave41: smart objects (non-destructive layer transforms from the original pixels) */
@@ -5871,9 +5728,7 @@ window.PrismHist={keep,decode,saveHist,schedule,restoreHist};
 /* wave44: the assistant does what was asked, no more */
 (()=>{
 const _prompt=assistPrompt;
-const INTENSE=/beaucoup|tr[eè]s|fort(?:ement)?|vraiment|extr[eê]me|[àa] fond|maximum|\bmax\b|[ée]norm[ée]ment|nettement|radical|intense|bien plus|bien moins/i;
-let lastText='';
-assistPrompt=function(text){lastText=text||'';const d=S.doc;
+assistPrompt=function(text){const d=S.doc;
   const layers=d.layers.map((L,i)=>L.kind==='adjust'?{index:i,name:L.name,kind:'adjust',masked:!!L.mask,visible:L.visible!==false,params:nonDefaultDev(L.dev)}:{index:i,name:L.name,kind:'pixel'});
   const act=d.layers[d.active];
   const sel=d.sel?'OUI : une sélection est active. Si la demande vise « la sélection », « cette zone » ou ne précise pas de zone, utilise {"type":"selection"}.':'non';
@@ -5906,14 +5761,7 @@ Si la demande est impossible avec ces outils, renvoie "ops":[] et explique-le da
   return head+rules+'\n'+fmt};
 const _am=areaMask;
 areaMask=async function(a){if(a&&a.type==='selection'){const d=S.doc;if(!d.sel)throw new Error('aucune sélection active');return cloneC(d.sel)}return _am.apply(this,arguments)};
-/* safety net on the numbers the model returns */
-const _cp=cleanParams;
-cleanParams=function(p){const out=_cp.apply(this,arguments);
-  const keys=Object.keys(out).filter(k=>typeof out[k]==='number');
-  if(!INTENSE.test(lastText)){for(const {k,min,max} of ASSIST_KEYS){if(typeof out[k]!=='number')continue;const lim=k==='exposure'?1:Math.max(Math.abs(min),Math.abs(max))*.4;out[k]=clamp(out[k],Math.max(min,-lim),Math.min(max,lim))}}
-  if(keys.length>8){const rank=keys.map(k=>{const K=ASSIST_KEYS.find(x=>x.k===k);return[k,K?Math.abs(out[k])/Math.max(Math.abs(K.min),Math.abs(K.max)||1):0]}).sort((a,b)=>b[1]-a[1]);rank.slice(8).forEach(([k])=>delete out[k])}
-  return out};
-window.PrismAssist={prompt:()=>assistPrompt('test'),clean:cleanParams,setText:t=>{lastText=t}};
+window.PrismAssist={prompt:()=>assistPrompt('test'),clean:p=>cleanParams(p),setText:()=>{}};
 })();
 
 /* wave45: new features reachable from the command palette and the quick actions */
@@ -6079,7 +5927,7 @@ cleanParams=function(p){const out={};if(!p||typeof p!=='object')return out;const
   const HUE={shH:1,midH:1,hiH:1},keys=Object.keys(out).filter(k=>typeof out[k]==='number'&&!HUE[k]);
   if(keys.length>8){const rank=keys.map(k=>{const K=ASSIST_KEYS.find(x=>x.k===k);return[k,K?Math.abs(out[k]-Z[k])/Math.max(Math.abs(K.max-Z[k]),Math.abs(K.min-Z[k]),1e-6):0]}).sort((a,b)=>b[1]-a[1]);rank.slice(8).forEach(([k])=>delete out[k])}
   return out};
-if(window.PrismAssist){const _st=PrismAssist.setText;PrismAssist.setText=t=>{TXT=t||'';if(_st)_st(t)};PrismAssist.clean=cleanParams}
+if(window.PrismAssist){PrismAssist.setText=t=>{TXT=t||''};PrismAssist.clean=cleanParams}
 })();
 
 /* ---- E. preset thumbnails: the highlighted one is only the one that is still exactly applied ---- */
@@ -6511,10 +6359,6 @@ function sameSize(A,B){if(A.width===B.width&&A.height===B.height)return B;const 
 /* translation qui aligne B sur A (petit décalage entre prises) */
 function alignShift(A,B0){const B=sameSize(A,B0),w=200,h=Math.max(8,Math.round(A.height*w/A.width)),ga=grayN(A,w,h),gb=grayN(B,w,h),R=Math.round(w*.06);
   const r=searchShift(ga,gb,w,h,0,0,R,R,1,.0);return refineShift(A,B,r,w)}
-function boxBlur(a,w,h,r){const t=new Float32Array(a.length),o=new Float32Array(a.length),k=2*r+1;
-  for(let y=0;y<h;y++){let s=0;const b=y*w;for(let x=-r;x<=r;x++)s+=a[b+Math.max(0,Math.min(w-1,x))];for(let x=0;x<w;x++){t[b+x]=s/k;s+=a[b+Math.min(w-1,x+r+1)]-a[b+Math.max(0,x-r)]}}
-  for(let x=0;x<w;x++){let s=0;for(let y=-r;y<=r;y++)s+=t[Math.max(0,Math.min(h-1,y))*w+x];for(let y=0;y<h;y++){o[y*w+x]=s/k;s+=t[Math.min(h-1,y+r+1)*w+x]-t[Math.max(0,y-r)*w+x]}}
-  return o}
 
 async function fuseExposures(files){busy(true,'Fusion des expositions…',0);await tick();
   try{const imgs=[];const cap=(navigator.deviceMemory||8)>=8&&!IS_IOS?5000:3200;for(const f of files)imgs.push(await loadScaled(f,cap));const W=imgs[0].width,H=imgs[0].height;let moved=0;
@@ -6547,31 +6391,9 @@ async function fuseExposures(files){busy(true,'Fusion des expositions…',0);awa
   }catch(e){busy(false);console.error(e);toast('Fusion impossible : '+(e.message||e),5000)}}
 async function fusionDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fuseExposures(fs)}
 
-async function stitch(files){busy(true,'Assemblage du panorama…',0);await tick();
-  try{const fulls=[];for(const f of files)fulls.push(await loadScaled(f,4000));
-    const w0=200,pos=[{x:0,y:0}];
-    for(let k=1;k<fulls.length;k++){const A=fulls[k-1],B=sameSize(A,fulls[k]),h0=Math.max(8,Math.round(A.height*w0/A.width)),ga=grayN(A,w0,h0),gb=grayN(B,w0,h0),my=Math.round(h0*.12);
-      let best=1e9,bx=0,by=0;
-      for(let sx=Math.round(w0*.15);sx<=w0*.9;sx++)for(let sy=-my;sy<=my;sy++){const e=shiftErr(ga,gb,w0,h0,sx,sy,2,.12);if(e<best){best=e;bx=sx;by=sy}}
-      const r=refineShift(A,B,{x:bx,y:by},w0),prev=pos[k-1];pos.push({x:prev.x+r.x,y:prev.y+r.y});busy(true,'Assemblage du panorama…',k/fulls.length);await tick()}
-    let minX=0,minY=0,maxX=0,maxY=0;pos.forEach((p,i)=>{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+fulls[i].width);maxY=Math.max(maxY,p.y+fulls[i].height)});
-    let W=Math.round(maxX-minX),H=Math.round(maxY-minY);if(W*H>MAX_PX)throw new Error('panorama trop grand');
-    /* bords : on ne garde que le rectangle couvert par toutes les photos */
-    let top=-Infinity,bot=Infinity;pos.forEach((p,i)=>{top=Math.max(top,p.y-minY);bot=Math.min(bot,p.y-minY+fulls[i].height)});
-    top=Math.round(top);bot=Math.round(bot);const crop=bot-top>=H*.6&&(top>0||bot<H);
-    const out=mk(W,H),g=cx(out);
-    for(let i=0;i<fulls.length;i++){const c=fulls[i],x=Math.round(pos[i].x-minX),y=Math.round(pos[i].y-minY);
-      if(i===0){g.drawImage(c,x,y);continue}
-      const prevEnd=Math.round(pos[i-1].x-minX)+fulls[i-1].width,ov=Math.max(1,prevEnd-x),t=mk(c.width,c.height),tg=cx(t);tg.drawImage(c,0,0);
-      tg.globalCompositeOperation='destination-in';const gr=tg.createLinearGradient(0,0,Math.min(ov,c.width),0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,1)');tg.fillStyle=gr;tg.fillRect(0,0,c.width,c.height);
-      g.drawImage(t,x,y)}
-    let res=out;if(crop){res=mk(W,bot-top);cx(res).drawImage(out,0,-top)}
-    busy(false);setDoc(res,'panorama.jpg',{});toast('Panorama assemblé'+(crop?' et recadré sur la zone commune':'')+' (translation seule).',6000)
-  }catch(e){busy(false);console.error(e);toast('Panorama impossible : '+(e.message||e),5000)}}
-async function panoDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fs.sort((a,b)=>(a.name||'').localeCompare(b.name||''));stitch(fs)}
 {const _f=MENU2.file.items;
- MENU2.file.items=()=>walk(_f(),it=>{if(it.label==='Fusion d’expositions (HDR)…')return{...it,fn:fusionDialog};if(it.label==='Panorama…')return{...it,fn:panoDialog};return{...it}})}
-window.PrismF={fuseExposures,stitch,alignShift};
+ MENU2.file.items=()=>walk(_f(),it=>{if(it.label==='Fusion d’expositions (HDR)…')return{...it,fn:fusionDialog};return{...it}})}
+window.PrismF={fuseExposures,alignShift};
 })();
 
 /* ================= fx geometry: move, crop, free transform, guides, canvas size, zoom (audit fixes) ================= */
@@ -9293,7 +9115,7 @@ DN.ramp=(o,prev,next,r0,r1)=>{const T=DN.TILE,w=new Float32Array(T);for(let i=0;
 /* débruite la zone (rx0,ry0,rx1,ry1) de src (ImageData). Renvoie un Uint8ClampedArray RGBA de la taille de src (hors zone = inchangé). */
 DN.process=async(img,reg,onP)=>{const sess=await DN.load();if(!sess)return null;const T=DN.TILE,W=img.width,H=img.height,s=img.data;
   const [x0,y0,x1,y1]=reg,xs=DN.axis(x0,x1),ys=DN.axis(y0,y1),res=new Uint8ClampedArray(s),acc=new Uint8Array(W*H),N=T*T,total=xs.length*ys.length;let k=0;
-  const t00=performance.now();DN.abort=false;
+  DN.abort=false;
   for(let j=0;j<ys.length;j++){const wy=DN.ramp(ys[j],j>0?ys[j-1]:null,j<ys.length-1?ys[j+1]:null,y0,y1);
     for(let i=0;i<xs.length;i++){if(DN.abort)return null;
       const wx=DN.ramp(xs[i],i>0?xs[i-1]:null,i<xs.length-1?xs[i+1]:null,x0,x1),ox=xs[i],oy=ys[j];
@@ -10847,7 +10669,7 @@ function patchMatch(gA,gB,Hs,R,half){
     if(!inB(x,y))continue;
     let s=0,k=0;for(let j=-half;j<=half;j++)for(let i=-half;i<=half;i++){const v=gA.d[(y+j)*wA+x+i];T[k++]=v;s+=v}
     const m=s/n;let tn=0;for(let q=0;q<n;q++){T[q]-=m;tn+=T[q]*T[q]}if(tn<n*5)continue;tn=Math.sqrt(tn);
-    k=0;let okp=true;for(let j=-half;j<=half;j++)for(let i=-half;i<=half;i++){const p=hap(Hs,x+i,y+j);bx[k]=p[0];by[k]=p[1];k++}
+    k=0;for(let j=-half;j<=half;j++)for(let i=-half;i<=half;i++){const p=hap(Hs,x+i,y+j);bx[k]=p[0];by[k]=p[1];k++}
     let best=-2,bi=0,bj=0;
     for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
       let sb=0,sbb=0,stb=0;
@@ -11114,7 +10936,6 @@ async function stitchImages(canvases,names,optsIn){
   for(let i=ref+1;i<n;i++)G[i]=m3n(m3mul(G[i-1],m3inv(Hf[i-1])));
   for(let i=ref-1;i>=0;i--)G[i]=m3n(m3mul(G[i+1],Hf[i]));
   /* paires non adjacentes qui se recouvrent */
-  const goodAdj=pairs.every(p=>p.method==='feat'||p.method==='refined');
   if(n>=3){
     for(let i=0;i<n-2;i++)for(let j=i+2;j<n;j++){
       const Hij=normAt(m3mul(m3inv(G[j]),G[i]),ims[i].w/2,ims[i].h/2);if(!Hij)continue;
@@ -11291,7 +11112,7 @@ async function stitchFiles(files){
   }catch(e){busy(false);console.error(e);toast('Panorama impossible : '+(e.message||e),5000)}}
 async function panoDialog2(){const fs=await pickManyP();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fs.sort((a,b)=>(a.name||'').localeCompare(b.name||''));stitchFiles(fs)}
 PN.stitchImages=stitchImages;PN.stitchFiles=stitchFiles;PN.estimatePair=async(a,b)=>estimatePair(mkImg(a),mkImg(b),null,5);PN.focalsFromH=focalsFromH;PN.fitH=fitH;PN.mkImg=mkImg;
-if(window.PrismF){PN.oldStitch=window.PrismF.stitch;window.PrismF.stitch=stitchFiles}
+if(window.PrismF)window.PrismF.stitch=stitchFiles;
 /* remplace l'entrée de menu existante : même libellé, nouveau moteur */
 {const _f=MENU2.file.items;const mapIt=it=>{if(!it||it==='-'||typeof it!=='object')return it;if(it.label==='Panorama…')return{...it,fn:panoDialog2};if(it.sub){const s=it.sub;return{...it,sub:()=>s().map(mapIt)}}return it};
  MENU2.file.items=()=>_f().map(mapIt)}

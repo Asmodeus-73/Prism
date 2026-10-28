@@ -2,7 +2,6 @@
 S.opts.pen={width:4,feather:0};
 IC.pen='<path d="M10 2.5l4.5 7L10 17l-4.5-7.5z"/><circle cx="10" cy="10.2" r="1.3"/><path d="M10 2.5v6.4"/>';
 TOOLS.splice(TOOLS.findIndex(x=>x&&x[0]==='wand')+1,0,['pen','Plume (tracés vectoriels)','P']);KEYTOOLS.p='pen';
-const penPts=()=>S.doc&&S.doc.path?S.doc.path.pts:[];
 function penPath(P){const p=new Path2D(),a=P.pts;if(!a.length)return p;p.moveTo(a[0].x,a[0].y);for(let i=1;i<a.length;i++){const s=a[i-1],t=a[i];p.bezierCurveTo(s.ox,s.oy,t.ix,t.iy,t.x,t.y)}
   if(P.closed&&a.length>2){const s=a[a.length-1],t=a[0];p.bezierCurveTo(s.ox,s.oy,t.ix,t.iy,t.x,t.y);p.closePath()}return p}
 function penDown(e,p){const d=S.doc;if(!d)return;const r=8/S.zoom;let P=d.path;const near=(x,y)=>Math.hypot(p.x-x,p.y-y)<=r;
@@ -36,9 +35,5 @@ function penToMask(){const d=S.doc,L=AL(),m=penMask();if(!m||!L)return;const fm=
 function penFill(){const d=S.doc,P=d&&d.path;if(!P||P.pts.length<2){toast('Tracez d’abord une forme avec la plume');return}const c=mk(d.w,d.h),g=cx(c);g.fillStyle=S.color;g.fill(penPath({...P,closed:true}));insertLayer(newPixel('Forme',c),'Remplir le tracé')}
 function penStroke(){const d=S.doc,P=d&&d.path;if(!P||P.pts.length<2){toast('Tracez d’abord une forme avec la plume');return}const c=mk(d.w,d.h),g=cx(c);g.strokeStyle=S.color;g.lineWidth=S.opts.pen.width;g.lineJoin='round';g.lineCap='round';g.stroke(penPath(P));insertLayer(newPixel('Contour',c),'Contour du tracé')}
 function selToPath(){const d=S.doc;if(!d||!d.sel){toast('Faites d’abord une sélection');return}const pts=traceMask(d.sel);if(!pts){toast('Sélection trop complexe à convertir');return}d.path={pts,closed:true};setTool('pen');requestRender();toast('Sélection convertie en tracé : ajustez les points avec la plume')}
-function traceMask(m){/* outer contour of the largest region, simplified to a polygon */const s=Math.min(1,800/Math.max(m.width,m.height)),w=Math.max(2,Math.round(m.width*s)),h=Math.max(2,Math.round(m.height*s)),t=mk(w,h),g=rx(t);g.drawImage(m,0,0,w,h);const a=g.getImageData(0,0,w,h).data,on=(x,y)=>x>=0&&y>=0&&x<w&&y<h&&a[(y*w+x)*4+3]>=128;
-  let sx=-1,sy=-1;outer:for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(on(x,y)){sx=x;sy=y;break outer}if(sx<0)return null;
-  const D=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];let x=sx,y=sy,dir=7,pts=[],guard=w*h*4;do{pts.push([x,y]);let k=(dir+6)%8,f=false;for(let j=0;j<8;j++){const dd=D[(k+j)%8];if(on(x+dd[0],y+dd[1])){x+=dd[0];y+=dd[1];dir=(k+j)%8;f=true;break}}if(!f)break}while((x!==sx||y!==sy)&&--guard>0);
-  const simp=(P,eps)=>{if(P.length<3)return P;let i0=0,dm=0;const[a0,b0]=[P[0],P[P.length-1]];for(let i=1;i<P.length-1;i++){const[px,py]=P[i],L=Math.hypot(b0[0]-a0[0],b0[1]-a0[1])||1,dd=Math.abs((b0[0]-a0[0])*(a0[1]-py)-(a0[0]-px)*(b0[1]-a0[1]))/L;if(dd>dm){dm=dd;i0=i}}return dm>eps?[...simp(P.slice(0,i0+1),eps).slice(0,-1),...simp(P.slice(i0),eps)]:[P[0],P[P.length-1]]};
-  const half=Math.floor(pts.length/2),sp=[...simp(pts.slice(0,half+1),1.2).slice(0,-1),...simp(pts.slice(half),1.2).slice(0,-1)];if(sp.length<3)return null;return sp.map(([px,py])=>{const X=(px+0.5)/s,Y=(py+0.5)/s;return{x:X,y:Y,ix:X,iy:Y,ox:X,oy:Y}})}
+var traceMask; /* défini dans 0890-selection-quick-mask-pen-paths.js */
 

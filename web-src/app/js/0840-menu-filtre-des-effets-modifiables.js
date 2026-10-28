@@ -178,10 +178,6 @@ function sameSize(A,B){if(A.width===B.width&&A.height===B.height)return B;const 
 /* translation qui aligne B sur A (petit décalage entre prises) */
 function alignShift(A,B0){const B=sameSize(A,B0),w=200,h=Math.max(8,Math.round(A.height*w/A.width)),ga=grayN(A,w,h),gb=grayN(B,w,h),R=Math.round(w*.06);
   const r=searchShift(ga,gb,w,h,0,0,R,R,1,.0);return refineShift(A,B,r,w)}
-function boxBlur(a,w,h,r){const t=new Float32Array(a.length),o=new Float32Array(a.length),k=2*r+1;
-  for(let y=0;y<h;y++){let s=0;const b=y*w;for(let x=-r;x<=r;x++)s+=a[b+Math.max(0,Math.min(w-1,x))];for(let x=0;x<w;x++){t[b+x]=s/k;s+=a[b+Math.min(w-1,x+r+1)]-a[b+Math.max(0,x-r)]}}
-  for(let x=0;x<w;x++){let s=0;for(let y=-r;y<=r;y++)s+=t[Math.max(0,Math.min(h-1,y))*w+x];for(let y=0;y<h;y++){o[y*w+x]=s/k;s+=t[Math.min(h-1,y+r+1)*w+x]-t[Math.max(0,y-r)*w+x]}}
-  return o}
 
 async function fuseExposures(files){busy(true,'Fusion des expositions…',0);await tick();
   try{const imgs=[];const cap=(navigator.deviceMemory||8)>=8&&!IS_IOS?5000:3200;for(const f of files)imgs.push(await loadScaled(f,cap));const W=imgs[0].width,H=imgs[0].height;let moved=0;
@@ -214,30 +210,8 @@ async function fuseExposures(files){busy(true,'Fusion des expositions…',0);awa
   }catch(e){busy(false);console.error(e);toast('Fusion impossible : '+(e.message||e),5000)}}
 async function fusionDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fuseExposures(fs)}
 
-async function stitch(files){busy(true,'Assemblage du panorama…',0);await tick();
-  try{const fulls=[];for(const f of files)fulls.push(await loadScaled(f,4000));
-    const w0=200,pos=[{x:0,y:0}];
-    for(let k=1;k<fulls.length;k++){const A=fulls[k-1],B=sameSize(A,fulls[k]),h0=Math.max(8,Math.round(A.height*w0/A.width)),ga=grayN(A,w0,h0),gb=grayN(B,w0,h0),my=Math.round(h0*.12);
-      let best=1e9,bx=0,by=0;
-      for(let sx=Math.round(w0*.15);sx<=w0*.9;sx++)for(let sy=-my;sy<=my;sy++){const e=shiftErr(ga,gb,w0,h0,sx,sy,2,.12);if(e<best){best=e;bx=sx;by=sy}}
-      const r=refineShift(A,B,{x:bx,y:by},w0),prev=pos[k-1];pos.push({x:prev.x+r.x,y:prev.y+r.y});busy(true,'Assemblage du panorama…',k/fulls.length);await tick()}
-    let minX=0,minY=0,maxX=0,maxY=0;pos.forEach((p,i)=>{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+fulls[i].width);maxY=Math.max(maxY,p.y+fulls[i].height)});
-    let W=Math.round(maxX-minX),H=Math.round(maxY-minY);if(W*H>MAX_PX)throw new Error('panorama trop grand');
-    /* bords : on ne garde que le rectangle couvert par toutes les photos */
-    let top=-Infinity,bot=Infinity;pos.forEach((p,i)=>{top=Math.max(top,p.y-minY);bot=Math.min(bot,p.y-minY+fulls[i].height)});
-    top=Math.round(top);bot=Math.round(bot);const crop=bot-top>=H*.6&&(top>0||bot<H);
-    const out=mk(W,H),g=cx(out);
-    for(let i=0;i<fulls.length;i++){const c=fulls[i],x=Math.round(pos[i].x-minX),y=Math.round(pos[i].y-minY);
-      if(i===0){g.drawImage(c,x,y);continue}
-      const prevEnd=Math.round(pos[i-1].x-minX)+fulls[i-1].width,ov=Math.max(1,prevEnd-x),t=mk(c.width,c.height),tg=cx(t);tg.drawImage(c,0,0);
-      tg.globalCompositeOperation='destination-in';const gr=tg.createLinearGradient(0,0,Math.min(ov,c.width),0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,1)');tg.fillStyle=gr;tg.fillRect(0,0,c.width,c.height);
-      g.drawImage(t,x,y)}
-    let res=out;if(crop){res=mk(W,bot-top);cx(res).drawImage(out,0,-top)}
-    busy(false);setDoc(res,'panorama.jpg',{});toast('Panorama assemblé'+(crop?' et recadré sur la zone commune':'')+' (translation seule).',6000)
-  }catch(e){busy(false);console.error(e);toast('Panorama impossible : '+(e.message||e),5000)}}
-async function panoDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fs.sort((a,b)=>(a.name||'').localeCompare(b.name||''));stitch(fs)}
 {const _f=MENU2.file.items;
- MENU2.file.items=()=>walk(_f(),it=>{if(it.label==='Fusion d’expositions (HDR)…')return{...it,fn:fusionDialog};if(it.label==='Panorama…')return{...it,fn:panoDialog};return{...it}})}
-window.PrismF={fuseExposures,stitch,alignShift};
+ MENU2.file.items=()=>walk(_f(),it=>{if(it.label==='Fusion d’expositions (HDR)…')return{...it,fn:fusionDialog};return{...it}})}
+window.PrismF={fuseExposures,alignShift};
 })();
 

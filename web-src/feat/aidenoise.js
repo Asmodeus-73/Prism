@@ -47,7 +47,7 @@ DN.ramp=(o,prev,next,r0,r1)=>{const T=DN.TILE,w=new Float32Array(T);for(let i=0;
 /* débruite la zone (rx0,ry0,rx1,ry1) de src (ImageData). Renvoie un Uint8ClampedArray RGBA de la taille de src (hors zone = inchangé). */
 DN.process=async(img,reg,onP)=>{const sess=await DN.load();if(!sess)return null;const T=DN.TILE,W=img.width,H=img.height,s=img.data;
   const [x0,y0,x1,y1]=reg,xs=DN.axis(x0,x1),ys=DN.axis(y0,y1),res=new Uint8ClampedArray(s),acc=new Uint8Array(W*H),N=T*T,total=xs.length*ys.length;let k=0;
-  const t00=performance.now();DN.abort=false;
+  DN.abort=false;
   for(let j=0;j<ys.length;j++){const wy=DN.ramp(ys[j],j>0?ys[j-1]:null,j<ys.length-1?ys[j+1]:null,y0,y1);
     for(let i=0;i<xs.length;i++){if(DN.abort)return null;
       const wx=DN.ramp(xs[i],i>0?xs[i-1]:null,i<xs.length-1?xs[i+1]:null,x0,x1),ox=xs[i],oy=ys[j];

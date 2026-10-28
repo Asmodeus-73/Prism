@@ -26,14 +26,11 @@ function cropCustomDialog(){const sel=document.querySelector('[data-sel="crop.ra
     buttons:[{label:'Annuler',onClick:back},{label:'Utiliser',primary:true,onClick:()=>{const w=+$('#ccW').value,h=+$('#ccH').value;if(!(w>0&&h>0)||w/h>50||h/w>50){toast('Entrez deux nombres positifs, par exemple 5 et 7');back();return}
       const r=`${+w.toFixed(3)}:${+h.toFixed(3)}`,l=PREF.get('cropCustom',[]).filter(x=>x!==r);l.unshift(r);PREF.set('cropCustom',l.slice(0,6));S.opts.crop.ratio=r;cropRemember(r);applyRatio();renderPill()}}]})}
 S.opts.crop.ratio=PREF.get('cropRatio','free');if(!cropRatios().some(x=>x[0]===S.opts.crop.ratio))S.opts.crop.ratio='free';
-function cropSwapRatio(){const r=S.opts.crop.ratio;if(!/^[\d.]+:[\d.]+$/.test(r))return;const[a,b]=r.split(':');S.opts.crop.ratio=b+':'+a;cropRemember(S.opts.crop.ratio);applyRatio()}
+var cropSwapRatio; /* défini dans 0850-move-crop-free-transform-guides.js */
 
 /* ---------- quick mask (Q) ---------- */
 function inQuickMask(){return!!(S.doc&&S.doc.layers.some(l=>l.qmask))}
-function quickMask(){const d=S.doc;if(!d)return;const q=d.layers.findIndex(l=>l.qmask);
-  if(q<0){const mask=d.sel?cloneC(d.sel):mk(d.w,d.h),L=newAdjust('Masque rapide',mask);L.qmask=true;d.layers.push(L);d.active=d.layers.length-1;S.showMask=true;setTool('brush');markComp();syncAll();toast('Masque rapide : peignez en blanc pour ajouter à la sélection, avec la gomme pour retirer. Q pour valider.',6000);return}
-  const L=d.layers[q];d.sel=maskBBox(L.mask)?cloneC(L.mask):null;d.layers.splice(q,1);d.active=Math.min(d.active,d.layers.length-1);if(d.layers[d.active]&&d.layers[d.active].kind!=='pixel'){const p=d.layers.findLastIndex(l=>l.kind==='pixel');if(p>=0)d.active=p}
-  S.showMask=false;selChanged();markComp();pushHistory(d.sel?'Masque rapide : sélection':'Masque rapide : désélection');syncAll();toast(d.sel?'Sélection mise à jour':'Rien n’est sélectionné')}
+var quickMask; /* défini dans 0890-selection-quick-mask-pen-paths.js */
 document.addEventListener('keydown',e=>{if(e.key!=='q'&&e.key!=='Q')return;if(e.metaKey||e.ctrlKey||e.altKey)return;const tg=e.target;if($('#library')||$('#scrim')||(tg.closest&&tg.closest('input,textarea,select,[contenteditable]')))return;if(!S.doc||S.stroke)return;e.preventDefault();quickMask()});
 /* a quick mask layer must never survive saving or exporting */
 /* the quick mask layer is left out of saved manifests (fx_files) */
