@@ -9,10 +9,12 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "build-web": "node web-src/build.mjs",
-    "test": "node web-src/build.mjs --check && node tests/smoke.mjs"
+    "build-ps": "node web-src/ps/build.mjs",
+    "test": "node web-src/build.mjs --check && node web-src/ps/build.mjs --check && node tests/smoke.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.2",
+    "esbuild": "^0.25.10",
     "playwright": "1.56.1"
   }
 }

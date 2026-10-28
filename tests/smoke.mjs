@@ -261,6 +261,41 @@ await test('remplissage génératif : calque + masque progressif, annulation, é
   if(!r.sel)e.push('sélection perdue');if(!r.dlBusy)e.push('texte de téléchargement : '+r.busyDl);if(!r.genBusy)e.push('texte de génération : '+r.busyGen);if(!r.busyOff)e.push('overlay encore là');
   if(r.afterUndo!==0||r.afterRedo!==1)e.push(`annuler/rétablir ${r.afterUndo}/${r.afterRedo}`);if(!r.offline)e.push('message hors ligne');if(!r.cancelled)e.push('annulation');
   if(e.length)throw new Error(e.join('\n')+'\n'+JSON.stringify(r))});
+// ---- outils repris de Photo Studio (web/ps, MIT) : moteur en arrière-plan, filtres, ciel, mise à l'échelle selon le contenu ----
+const psIdle=()=>page.waitForFunction(()=>{const b=document.querySelector('#busy');return !b||b.hidden||getComputedStyle(b).display==='none'},null,{timeout:120000});
+const psHash=()=>ev(()=>{const c=flatSync(),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let h=0;for(let i=0;i<d.length;i+=13)h=(h*31+d[i])|0;return h});
+await test('Photo Studio : chaque filtre s’ouvre, prévisualise et s’applique (une étape d’historique)',async()=>{await sample();await page.waitForFunction(()=>!!window.PSI,null,{timeout:20000});
+  const bad=[];for(const id of['sharpdet','nlmeans','shhl','levels','chmix','selcolor','photofilter','gradmap']){const h0=await psHash(),n0=await ev(()=>S.hi);
+    await ev(id=>filterDialog(id),id);await page.waitForSelector('#scrim .foot');
+    await ev(id=>{const F=FILTERS[id],q=F.params.find(q=>!(F.choices&&F.choices[q[0]])&&!(F.checks||[]).includes(q[0])),i=document.querySelector('#ps-'+q[0]);i.value=Math.min(q[3],q[5]+(q[3]-q[2])*0.3);i.dispatchEvent(new Event('input'))},id);
+    await page.waitForFunction(()=>{const L=pixelTarget();return L&&L.preview},null,{timeout:60000}).catch(()=>bad.push(id+' : pas d’aperçu'));
+    await page.locator('#scrim .foot .btn.primary').click();await psIdle();await page.waitForTimeout(150);
+    const r=await ev(()=>[S.hi,S.history[S.hi].label]);if(await psHash()===h0)bad.push(id+' : image inchangée');if(r[0]!==n0+1)bad.push(id+' : historique '+JSON.stringify(r))}
+  if(bad.length)throw new Error(bad.join('\n'))});
+await test('Photo Studio : remplir d’après le contenu ne touche que la sélection',async()=>{await sample();
+  const r=await ev(async()=>{const d=S.doc,L=pixelTarget(),sel=mk(d.w,d.h);cx(sel).fillStyle='#fff';cx(sel).fillRect(700,500,120,90);d.sel=sel;selChanged();
+    const before=cx(L.canvas).getImageData(0,0,d.w,d.h).data.slice();await PSX.contentFill(d,L,maskBBox(sel),{col:1,rot:0,scale:1,mirror:0});
+    const after=cx(pixelTarget().canvas).getImageData(0,0,d.w,d.h).data;let inside=0,outside=0;
+    for(let y=0;y<d.h;y+=3)for(let x=0;x<d.w;x+=3){const i=(y*d.w+x)*4,ch=before[i]!==after[i]||before[i+1]!==after[i+1];if(x>=700&&x<820&&y>=500&&y<590)inside+=ch;else if(x<690||x>830||y<490||y>600)outside+=ch}
+    return{inside,outside,label:S.history[S.hi].label}});
+  if(!(r.inside>100)||r.outside>0||r.label!=='Remplir d’après le contenu')throw new Error(JSON.stringify(r))});
+await test('Photo Studio : remplacer le ciel donne trois calques groupés, annulables',async()=>{await sample();
+  const n0=await ev(()=>{const d=S.doc,c=mk(d.w,d.h);cx(c).fillStyle='#fff';cx(c).fillRect(0,0,d.w,Math.round(d.h*.35));d.sel=c;selChanged();PSX.skyOpen();return S.doc.layers.length});
+  await page.waitForSelector('#sk-preset');await page.selectOption('#sk-preset','3');await page.locator('#scrim .foot .btn',{hasText:'Remplacer'}).click();await psIdle();await page.waitForTimeout(200);
+  const r=await ev(n0=>{const L=S.doc.layers.slice(n0);const out={names:L.map(l=>l.name).join(),grp:new Set(L.map(l=>l.grp&&l.grp.id)).size,blends:L.map(l=>l.blend).join(),masked:L.every(l=>!!l.mask)};undo();out.undo=S.doc.layers.length-n0;return out},n0);
+  if(r.names!=='Éclairage du ciel,Couleur du ciel,Ciel'||r.grp!==1||r.blends!=='multiply,color,source-over'||!r.masked||r.undo!==0)throw new Error(JSON.stringify(r))});
+await test('Photo Studio : mise à l’échelle selon le contenu, une seule étape d’historique',async()=>{await sample();
+  await ev(()=>PSX.seamOpen());await page.waitForSelector('#cs-w');await page.selectOption('#cs-r','1:1');await page.selectOption('#cs-p','none');
+  await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await psIdle();await page.waitForTimeout(200);
+  const r=await ev(()=>{const d=S.doc,o={size:[d.w,d.h],layers:d.layers.filter(L=>L.canvas).every(L=>L.canvas.width===d.w&&L.canvas.height===d.h),label:S.history[S.hi].label};undo();o.undo=[S.doc.w,S.doc.h];return o});
+  if(r.size.join()!=='1200,1200'||!r.layers||r.label!=='Mise à l’échelle selon le contenu'||r.undo.join()!=='1800,1200')throw new Error(JSON.stringify(r))});
+await test('Photo Studio : zones nettes donne une sélection, export .cube valide',async()=>{await sample();
+  await ev(()=>{S.doc.sel=null;selChanged();PSX.focusOpen()});await page.waitForSelector('#fa-r');await page.waitForFunction(()=>!!S.doc.sel,null,{timeout:30000});
+  await page.locator('#scrim .foot .btn',{hasText:'Sélectionner'}).click();await page.waitForTimeout(200);
+  const r=await ev(async()=>{const o={sel:!!S.doc.sel&&!!maskBBox(S.doc.sel)};const sf=saveFile;let saved=null;saveFile=async(b,n)=>{saved=[n,await b.text()]};
+    try{await PSX.exportCube()}finally{saveFile=sf}
+    if(saved){const lines=saved[1].trim().split('\n').filter(l=>/^[\d.]+ [\d.]+ [\d.]+$/.test(l));o.name=saved[0];o.size=/LUT_3D_SIZE 33/.test(saved[1]);o.rows=lines.length;o.first=lines[0]}else o.toast=document.getElementById('toast').textContent;return o});
+  if(!r.sel||(r.name?(!r.size||r.rows!==33*33*33||!/\.cube$/.test(r.name)):!/réglage/.test(r.toast||'')))throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

@@ -27,6 +27,9 @@ jobs:
       - name: La page web correspond à ses sources
         run: node web-src/build.mjs --check
 
+      - name: Les algorithmes de Photo Studio correspondent à leurs sources
+        run: node web-src/ps/build.mjs --check
+
       - name: Chaque fichier source se lit seul
         run: for f in web-src/app/js/*.js web-src/feat/*.js; do node --check "$f" || exit 1; done
 

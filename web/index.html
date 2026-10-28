@@ -3313,7 +3313,8 @@ function aboutDialog(){dialog({title:'À propos de Prism',body:`<div class="abou
   <li>ONNX Runtime (MIT), TensorFlow.js (Apache 2.0)</li><li>LibRaw (LGPL 2.1 / CDDL 1.0), Little CMS (MIT), libheif (LGPL 3), pdf.js (Apache 2.0), ag-psd (MIT), encodeur AVIF libavif/aom (BSD)</li>
   <li>Détourage : ISNet, DIS (Apache 2.0) · Scènes : DeepLabv3+ ADE20K, TensorFlow Models (Apache 2.0) · Personnes : MediaPipe Selfie Multiclass (Apache 2.0)</li>
   <li>Débruitage : SCUNet (Apache 2.0) · Suppression d’objet : LaMa (Apache 2.0) · Sélection d’objet : Segment Anything ViT-B, Meta AI (Apache 2.0) · Agrandissement : Real-ESRGAN (BSD 3 clauses)</li>
-  <li>Profils d’objectif : base lensfun (CC BY-SA 3.0, lensfun.github.io)</li></ul></details>`,buttons:[{label:'Fermer',primary:true}]})}
+  <li>Profils d’objectif : base lensfun (CC BY-SA 3.0, lensfun.github.io)</li>
+  <li>Remplissage d’après le contenu, débruitage rapide, netteté des détails, restauration, ciel, mise à l’échelle selon le contenu : algorithmes de Photo Studio, Puter (MIT)</li></ul></details>`,buttons:[{label:'Fermer',primary:true}]})}
 document.addEventListener('keydown',e=>{const t=e.target;if(t.closest&&t.closest('input,textarea,select,[contenteditable]'))return;if(e.key==='?'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();shortcutsDialog()}
   if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&(e.key==='x'||e.key==='X')&&S.doc&&S.doc.sel){e.preventDefault();cutSel()}});
 /* dialogs keep focus inside, and their first field gets focus */
@@ -11339,6 +11340,510 @@ MENU2.file.items=function(){const a=_fim.apply(this,arguments),it=MI('Imprimer�
   const k=a.findIndex(x=>x&&x.label==='Exporter…');a.splice(k<0?a.length:k+1,0,it);return a};
 addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='p'&&S.doc&&!e.target.closest('input,textarea,[contenteditable]')){e.preventDefault();printDialog()}},true);
 window.PrismPrint={dialog:printDialog,layout};
+
+}
+
+/* ===== feat: feat/ps.js ===== */
+{
+/* ===== Algorithmes repris de Photo Studio (ps.puter.com, licence MIT : web/ps/LICENSE-photo-studio.txt).
+   web/ps/ps.js (compilé depuis web-src/ps/) définit window.PSI ; les calculs longs tournent dans web/ps/worker.js, hors de l'interface.
+   Ce fichier : chargement, travaux en arrière-plan annulables, conversions canvas <-> pixels, et une fenêtre de réglages commune
+   (aperçu sur une copie réduite ou sur la zone visible, application en pleine résolution avec la barre de progression). ===== */
+const PSX={jobs:0};
+let psMainP=null;
+/* le module sur la page : pour les actions enregistrées et les effets modifiables, qui appellent les filtres sans attendre */
+PSX.load=()=>window.PSI?Promise.resolve(window.PSI):(psMainP||(psMainP=loadScript(asset('ps/ps.js')).then(()=>window.PSI,e=>{psMainP=null;throw e})));
+PSX.sync=(op,args)=>{if(!window.PSI)throw new Error('le module de calcul se charge encore : réessayez dans un instant');return PSI.run(op,args)};
+{const pre=()=>PSX.load().catch(e=>console.warn('ps.js',e));if(window.requestIdleCallback)requestIdleCallback(pre,{timeout:4000});else setTimeout(pre,1500)}
+
+/* travaux : un worker par calcul (2 gardés au repos) ; annuler = arrêter le worker, l'interface ne se fige jamais */
+const PSW={idle:[],url:null,ok:true};
+function psWorker(){const w=PSW.idle.pop();if(w)return w;return new Worker(asset('ps/worker.js'))}
+function psTransfer(v,out=[]){if(!v||typeof v!=='object')return out;if(ArrayBuffer.isView(v)){if(!out.includes(v.buffer))out.push(v.buffer);return out}for(const k in v)psTransfer(v[k],out);return out}
+/* run(op, args, {onProgress, copy}) -> {promise, cancel}. Les tableaux passés sont transférés (inutilisables ensuite) sauf copy:true. */
+PSX.run=(op,args,o={})=>{let w=null,done=false,rej=null;const id=++PSX.jobs;
+  const promise=new Promise(async(res,rj)=>{rej=rj;
+    if(PSW.ok){try{w=psWorker()}catch(e){console.warn('worker ps',e);PSW.ok=false}}
+    if(!w){/* sans worker (navigateur ancien, fichier local) : sur la page, en laissant d'abord l'écran se mettre à jour */
+      try{await PSX.load();await tick();if(done)return;const r=await PSI.run(op,args,o.onProgress||(()=>{}));done=true;res(r)}catch(e){done=true;rj(e)}return}
+    w.onmessage=e=>{const m=e.data||{};if(m.id!==id)return;if(m.progress!=null){o.onProgress&&o.onProgress(m.progress);return}
+      done=true;w.onmessage=w.onerror=null;if(PSW.idle.length<2)PSW.idle.push(w);else w.terminate();
+      if(m.err)rj(Object.assign(new Error(m.err==='cancelled'?'annulé':m.err),m.err==='cancelled'?{code:'cancelled'}:{}));else res(m.out)};
+    w.onerror=e=>{if(done)return;done=true;try{w.terminate()}catch(x){}rj(new Error(e.message||'calcul impossible'))};
+    try{w.postMessage({id,op,args},o.copy?[]:psTransfer(args))}catch(e){done=true;try{w.terminate()}catch(x){}rj(e)}});
+  return{promise,cancel(){if(done)return;done=true;if(w){try{w.terminate()}catch(e){}}if(rej)rej(Object.assign(new Error('annulé'),{code:'cancelled'}))}}};
+PSX.cancelled=e=>e&&e.code==='cancelled';
+
+/* ---------- conversions ---------- */
+PSX.img=(c,x=0,y=0,w=c.width,h=c.height)=>{const id=rx(c).getImageData(x,y,w,h);return{width:w,height:h,data:id.data}};
+PSX.canvas=im=>{const c=mk(im.width,im.height);rx(c).putImageData(new ImageData(im.data instanceof Uint8ClampedArray?im.data:new Uint8ClampedArray(im.data.buffer,im.data.byteOffset,im.data.length),im.width,im.height),0,0);return c};
+/* masque Prism (canvas, couverture = alpha) -> Mask8 à la taille voulue (les masques de l'IA sont parfois plus petits que la photo) */
+PSX.mask=(c,w=c.width,h=c.height,x=0,y=0)=>{let s=c;if(c.width!==w+x||c.height!==h+y||x||y){s=mk(w,h);const g=rx(s);g.imageSmoothingQuality='high';if(x||y)g.drawImage(c,-x,-y);else g.drawImage(c,0,0,w,h)}
+  const a=rx(s).getImageData(0,0,w,h).data,m=new Uint8Array(w*h);for(let i=0;i<m.length;i++)m[i]=a[i*4+3];return{width:w,height:h,data:m}};
+PSX.maskCanvas=m=>{const c=mk(m.width,m.height),g=rx(c),im=g.createImageData(m.width,m.height),a=im.data;for(let i=0;i<m.data.length;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=m.data[i]}g.putImageData(im,0,0);return c};
+PSX.small=(c,max)=>{const k=max/Math.max(c.width,c.height);if(k>=1)return{c,k:1};const s=resample(c,Math.max(8,Math.round(c.width*k)),Math.max(8,Math.round(c.height*k)));return{c:s,k:s.width/c.width}};
+PSX.up=(c,w,h)=>{if(c.width===w&&c.height===h)return c;const o=mk(w,h),g=cx(o);g.imageSmoothingQuality='high';g.drawImage(c,0,0,w,h);return o};
+/* zone de la photo au centre de l'écran (pour un aperçu à 100 % d'un réglage fin : netteté, bruit) */
+PSX.visibleRect=(w,h,side=900)=>{const cw=Math.min(w,side),ch=Math.min(h,side);const cxp=(view.width/S.pr/2-S.panX)/S.zoom,cyp=(view.height/S.pr/2-S.panY)/S.zoom;
+  return{x:Math.round(Math.max(0,Math.min(w-cw,cxp-cw/2))),y:Math.round(Math.max(0,Math.min(h-ch,cyp-ch/2))),w:cw,h:ch}};
+PSX.rec=(id,p)=>{const F=FILTERS[id];if(F)F._lp={...p};const R=(window.PrismC&&window.PrismC.REC)||null;if(R)R.last={id,p:{...p}}};
+PSX.alive=(d,L)=>S.doc===d&&d.layers.includes(L);
+PSX.mixSel=(o,r,sel)=>window.PrismFX&&PrismFX.mixSel?PrismFX.mixSel(o,r,sel):r;
+
+/* ---------- menus : ajouter des entrées dans un sous-menu existant (ou en créer un) ---------- */
+PSX.addToMenu=(menu,subLabel,make,before)=>{const M=MENU2[menu];if(!M)return;const _i=M.items;
+  M.items=()=>{const a=_i(),add=make();if(!subLabel){const k=before?a.findIndex(x=>x&&before.test(x.label||'')):-1;if(k<0)return a.concat([SEP],add);a.splice(k,0,...add);return a}
+    const it=a.find(x=>x&&x.label===subLabel&&x.sub);if(it){const s=it.sub;return a.map(x=>x===it?{...x,sub:()=>s().concat(add)}:x)}
+    const k=before?a.findIndex(x=>x&&before.test(x.label||'')):-1,ni=MI(subLabel,{icon:'filter',dis:S.doc?false:NODOC,sub:()=>add});if(k<0)return a.concat([ni]);a.splice(k,0,ni);return a}};
+
+/* ---------- fenêtre de réglages commune ----------
+   def : {name, params:[[clé,libellé,min,max,pas,défaut,unité]], choices:{clé:[libellés]}, checks:[clés], note, preview:'crop'|'scale',
+          job:(img,p,scale,sel)=>[op,args] (args sans l'image ; img est ajoutée), extraBody, onOpen(el,p,refresh)} */
+function psRow(def,q,v){const[k,label,min,max,step,,unit]=q;
+  if(def.choices&&def.choices[k])return`<div class="row"><label for="ps-${k}">${label}</label><select id="ps-${k}">${def.choices[k].map((t,i)=>`<option value="${i}" ${+v===i?'selected':''}>${esc(t)}</option>`).join('')}</select><output></output></div>`;
+  if(def.checks&&def.checks.includes(k))return`<div class="row"><label for="ps-${k}">${label}</label><input type="checkbox" id="ps-${k}" ${v?'checked':''} style="justify-self:start"><output></output></div>`;
+  return rangeRow('ps-'+k,label,min,max,step,v,unit)}
+PSX.read=(def,el,p)=>{def.params.forEach(q=>{const k=q[0],i=$('#ps-'+k,el);if(!i)return;p[k]=i.type==='checkbox'?(i.checked?1:0):+i.value})};
+PSX.target=()=>{const d=S.doc;if(!d)return null;if(maskTarget()){toast('Ce réglage s’applique à la photo, pas au masque : choisissez le calque de photo');return null}
+  const L=pixelTarget();if(!L){toast('Aucun calque de pixels à modifier');return null}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return null}return L};
+/* calcule le filtre id sur un canvas, en arrière-plan ; résultat : canvas (null si annulé) */
+PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null;const[op,args]=F.job(PSX.img(src),p,sc,sel);
+  const j=PSX.run(op,args,{onProgress:o.onProgress});o.onJob&&o.onJob(j);return j.promise.then(r=>PSX.canvas(r&&r.image?r.image:r))};
+PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target();if(!L)return;
+  const p={...(F.last||{})};F.params.forEach(q=>{if(p[q[0]]==null)p[q[0]]=q[5]});
+  const orig=L.canvas;let tmr=null,job=null,seq=0,closed=false,small=null;
+  const stop=()=>{clearTimeout(tmr);seq++;if(job){job.cancel();job=null}};
+  const clear=()=>{closed=true;stop();delete L.preview};
+  const refresh=()=>{stop();const my=seq;tmr=setTimeout(async()=>{if(closed||!PSX.alive(d,L))return;const st=$('#ps-state');if(st)st.textContent='Calcul de l’aperçu…';
+    try{let r;
+      if(F.preview==='crop'){const R=PSX.visibleRect(orig.width,orig.height,F.cropSide||900),piece=mk(R.w,R.h);cx(piece).drawImage(orig,-R.x,-R.y);
+        const out=await PSX.compute(id,piece,p,{onJob:j=>job=j});if(my!==seq||closed)return;r=cloneC(orig);const g=cx(r);g.clearRect(R.x,R.y,R.w,R.h);g.drawImage(out,R.x,R.y)}
+      else{if(!small)small=PSX.small(orig,F.previewSide||1400);const out=await PSX.compute(id,small.c,p,{scale:small.k,onJob:j=>job=j});if(my!==seq||closed)return;r=PSX.up(out,orig.width,orig.height)}
+      job=null;if(d.sel)r=PSX.mixSel(orig,r,d.sel);L.preview=r;markComp();const st2=$('#ps-state');if(st2)st2.textContent=F.preview==='crop'&&(orig.width>(F.cropSide||900)||orig.height>(F.cropSide||900))?'Aperçu à 100 % sur la zone au centre de l’écran.':''}
+    catch(e){if(PSX.cancelled(e))return;console.error(e);const st2=$('#ps-state');if(st2)st2.textContent='';toast('Aperçu impossible : '+(e.message||e),3000)}},F.delay||160)};
+  dialog({title:F.name,light:true,
+    body:(F.note?`<p class="muted" style="margin:0 0 8px">${F.note}</p>`:'')+F.params.map(q=>psRow(F,q,p[q[0]])).join('')+(F.extraBody?F.extraBody(p):'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':'')+'<p class="muted" id="ps-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>',
+    onOpen:el=>{F.params.forEach(q=>{const i=$('#ps-'+q[0],el);if(!i)return;const ev=i.tagName==='SELECT'||i.type==='checkbox'?'onchange':'oninput';
+        i[ev]=()=>{PSX.read(F,el,p);if(F.onInput)F.onInput(q[0],p,el);const o=$('#ps-'+q[0]+'-o',el);if(o)o.textContent=fmtN(+i.value,q[4])+(q[6]||'');refresh()}});
+      if(F.onOpen)F.onOpen(el,p,refresh);refresh()},
+    buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
+      {label:'Appliquer',primary:true,onClick:()=>{clear();PSX.apply(id,d,L,orig,{...p})}}]})};
+PSX.apply=async(id,d,L,orig,p)=>{const F=FILTERS[id];F.last={...p};busy(true,F.name+'…',0);let j=null;
+  try{const r=await PSX.compute(id,orig,p,{onProgress:f=>busy(true,F.name+'…',f),onJob:x=>j=x});
+    if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');markComp();return}
+    PSX.rec(id,p);applyMasked(L,r,F.name)}
+  catch(e){if(!PSX.cancelled(e)){console.error(e);toast(F.name+' impossible : '+(e.message||e),4000)}markComp()}
+  finally{busy(false)}};
+/* un filtre de plus : utilisable dans les actions et les effets modifiables (calcul direct), avec la fenêtre ci-dessus */
+PSX.filter=(id,def)=>{const F=Object.assign({preview:'scale'},def);
+  F.run=(s,p)=>{const q={...p};F.params.forEach(x=>{if(q[x[0]]==null)q[x[0]]=x[5]});PSX.rec(id,q);const[op,args]=F.job(PSX.img(s),q,1,null);const r=PSX.sync(op,args);
+    if(r&&typeof r.then==='function')throw new Error(F.name+' : calcul asynchrone, utilisez le menu');return PSX.canvas(r&&r.image?r.image:r)};
+  FILTERS[id]=F;return F};
+{const _fd=filterDialog;filterDialog=function(id){const F=FILTERS[id];if(F&&F.job)return PSX.dialog(id);return _fd.apply(this,arguments)}}
+window.PSX=PSX;
+
+}
+
+/* ===== feat: feat/ps_adjust.js ===== */
+{
+/* ===== Réglages de Photo Studio (MIT) : niveaux, mélangeur de couches, correction sélective, filtre photo, carte de dégradé, remplacement de couleur.
+   Ce sont des filtres Prism : modifiables ensuite (Filtre > Effets du calque…) et enregistrables dans les actions. ===== */
+const PSX=window.PSX;
+const adj=(img,kind,params)=>['adjust',{img,adj:{kind,params}}];
+const lv=(b=0,w=255,g=1,ob=0,ow=255)=>({inBlack:b,inWhite:w,gamma:g,outBlack:ob,outWhite:ow});
+const hex2=h=>{const v=parseInt(String(h||'#000000').slice(1),16);return[(v>>16)&255,(v>>8)&255,v&255]};
+
+/* Niveaux : un canal à la fois ; les réglages des autres canaux sont gardés */
+const LV_CH=['rgb','r','g','b'];
+PSX.filter('levels',{name:'Niveaux',
+  params:[['ch','Canal',0,3,1,0,''],['inBlack','Noir (entrée)',0,253,1,0,''],['gamma','Tons moyens',0.1,9.99,0.01,1,''],['inWhite','Blanc (entrée)',2,255,1,255,''],['outBlack','Noir (sortie)',0,255,1,0,''],['outWhite','Blanc (sortie)',0,255,1,255,'']],
+  choices:{ch:['RVB','Rouge','Vert','Bleu']},
+  onInput:(k,p,el)=>{p.lv=p.lv||{};const ch=LV_CH[p.ch|0],keys=['inBlack','gamma','inWhite','outBlack','outWhite'];
+    if(k==='ch'){const v=p.lv[ch]||lv();keys.forEach(x=>{p[x]=v[x];const i=$('#ps-'+x,el);if(i){i.value=v[x];const o=$('#ps-'+x+'-o',el);if(o)o.textContent=fmtN(v[x],+i.step)}})}
+    else{const v={...(p.lv[ch]||lv())};keys.forEach(x=>v[x]=p[x]);if(v.inWhite<=v.inBlack+2)v.inWhite=v.inBlack+2;p.lv={...p.lv,[ch]:v}}},
+  job:(img,p)=>{const L={rgb:lv(),r:lv(),g:lv(),b:lv(),...(p.lv||{})};if(!p.lv){L[LV_CH[p.ch|0]]=lv(p.inBlack,Math.max(p.inBlack+2,p.inWhite),p.gamma,p.outBlack,p.outWhite)}return adj(img,'levels',L)}});
+
+/* Mélangeur de couches : chaque couche de sortie est un mélange des trois couches d'entrée */
+const MX=[['r','Rouge'],['g','Vert'],['b','Bleu']],MXK={r:'red',g:'green',b:'blue'};
+PSX.filter('chmix',{name:'Mélangeur de couches',
+  params:[['mono','Monochrome (la sortie rouge donne le gris)',0,1,1,0,'']].concat(...MX.map(([o,ol])=>[[o+'r',ol+' ← rouge',-200,200,1,o==='r'?100:0,' %'],[o+'g',ol+' ← vert',-200,200,1,o==='g'?100:0,' %'],[o+'b',ol+' ← bleu',-200,200,1,o==='b'?100:0,' %'],[o+'c',ol+' : constante',-200,200,1,0,' %']])),
+  checks:['mono'],
+  job:(img,p)=>{const row=o=>({r:p[o+'r'],g:p[o+'g'],b:p[o+'b'],constant:p[o+'c']});return adj(img,'channel-mixer',{red:row('r'),green:row('g'),blue:row('b'),gray:row('r'),monochrome:!!p.mono})}});
+
+/* Correction sélective : cyan, magenta, jaune, noir ajoutés ou retirés dans une famille de couleurs */
+const SC=['reds','yellows','greens','cyans','blues','magentas','whites','neutrals','blacks'];
+const SCL=['Rouges','Jaunes','Verts','Cyans','Bleus','Magentas','Blancs','Neutres','Noirs'];
+const cmyk=()=>({cyan:0,magenta:0,yellow:0,black:0});
+PSX.filter('selcolor',{name:'Correction sélective',
+  params:[['range','Couleurs',0,8,1,0,''],['cyan','Cyan',-100,100,1,0,' %'],['magenta','Magenta',-100,100,1,0,' %'],['yellow','Jaune',-100,100,1,0,' %'],['black','Noir',-100,100,1,0,' %'],['method','Méthode',0,1,1,0,'']],
+  choices:{range:SCL,method:['Relative','Absolue']},
+  onInput:(k,p,el)=>{p.sc=p.sc||{};const r=SC[p.range|0],keys=['cyan','magenta','yellow','black'];
+    if(k==='range'){const v=p.sc[r]||cmyk();keys.forEach(x=>{p[x]=v[x];const i=$('#ps-'+x,el);if(i){i.value=v[x];const o=$('#ps-'+x+'-o',el);if(o)o.textContent=v[x]+' %'}})}
+    else if(keys.includes(k)){const v={};keys.forEach(x=>v[x]=p[x]);p.sc={...p.sc,[r]:v}}},
+  job:(img,p)=>{const ranges={};SC.forEach(n=>ranges[n]={...cmyk(),...((p.sc||{})[n]||{})});if(!p.sc)ranges[SC[p.range|0]]={cyan:p.cyan,magenta:p.magenta,yellow:p.yellow,black:p.black};
+    return adj(img,'selective-color',{ranges,method:p.method?'absolute':'relative'})}});
+
+/* Filtre photo : la teinte d'un filtre posé devant l'objectif */
+const PF=[['Réchauffant',[238,150,40]],['Réchauffant fort',[230,112,20]],['Refroidissant',[40,120,240]],['Refroidissant fort',[10,80,235]],['Sépia',[170,120,60]],['Eau profonde',[0,170,160]],['Couleur choisie',null]];
+PSX.filter('photofilter',{name:'Filtre photo',
+  params:[['preset','Filtre',0,6,1,0,''],['density','Densité',0,100,1,25,' %'],['keep','Conserver la luminosité',0,1,1,1,'']],
+  choices:{preset:PF.map(x=>x[0])},checks:['keep'],
+  extraBody:p=>`<div class="row"><label for="ps-col">Couleur choisie</label><input type="color" id="ps-col" value="${esc(p.col||'#ec8a00')}"><output></output></div>`,
+  onOpen:(el,p,refresh)=>{const c=$('#ps-col',el);p.col=c.value;c.oninput=()=>{p.col=c.value;p.preset=6;const s=$('#ps-preset',el);if(s)s.value=6;refresh()}},
+  job:(img,p)=>{const c=PF[p.preset|0][1]||hex2(p.col||'#ec8a00');return adj(img,'photo-filter',{preset:'custom',color:c,density:p.density,preserveLuminosity:!!p.keep})}});
+
+/* Carte de dégradé : la luminosité de chaque pixel choisit une couleur du dégradé */
+const GM=[['Noir vers blanc',[[0,[0,0,0]],[1,[255,255,255]]]],['Bleu nuit vers crème',[[0,[18,24,58]],[0.55,[150,120,110]],[1,[250,236,210]]]],['Sépia',[[0,[30,18,8]],[0.5,[150,105,60]],[1,[250,235,205]]]],
+  ['Bichromie bleu et orange',[[0,[10,40,90]],[0.5,[120,120,120]],[1,[255,170,60]]]],['Coucher de soleil',[[0,[40,10,60]],[0.4,[200,50,60]],[0.75,[250,150,50]],[1,[255,240,180]]]],['Vert forêt',[[0,[8,24,14]],[0.6,[90,140,80]],[1,[235,245,215]]]],['Infrarouge',[[0,[20,0,40]],[0.35,[180,20,90]],[0.7,[255,200,40]],[1,[255,255,255]]]]];
+PSX.filter('gradmap',{name:'Carte de dégradé',
+  params:[['preset','Dégradé',0,GM.length-1,1,0,''],['reverse','Inverser',0,1,1,0,''],['amount','Intensité',0,100,1,100,' %']],
+  choices:{preset:GM.map(x=>x[0])},checks:['reverse'],
+  job:(img,p)=>{const g={stops:GM[p.preset|0][1].map(([location,color])=>({location,color}))};
+    const sel=p.amount<100?{width:img.width,height:img.height,data:new Uint8Array(img.width*img.height).fill(Math.round(p.amount*2.55))}:undefined;
+    return['adjust',{img,adj:{kind:'gradient-map',params:{gradient:g,reverse:!!p.reverse,dither:true}},selection:sel}]}});
+
+/* Remplacement de couleur : une couleur prélevée (et ses voisines) change de teinte, saturation, luminosité */
+PSX.filter('replcolor',{name:'Remplacement de couleur',
+  note:'Choisissez la couleur à changer (la pipette de la barre d’outils prélève dans la photo), puis décalez-la.',
+  params:[['fuzz','Tolérance',0,200,1,40,''],['hue','Teinte',-180,180,1,0,'°'],['sat','Saturation',-100,100,1,0,''],['light','Luminosité',-100,100,1,0,'']],
+  extraBody:p=>`<div class="row"><label for="ps-col">Couleur à changer</label><input type="color" id="ps-col" value="${esc(p.col||S.color||'#c03030')}"><output></output></div>`,
+  onOpen:(el,p,refresh)=>{const c=$('#ps-col',el);p.col=c.value;c.oninput=()=>{p.col=c.value;refresh()}},
+  job:(img,p)=>['replaceColor',{img,p:{color:hex2(p.col||'#c03030'),fuzziness:p.fuzz,hue:p.hue,saturation:p.sat,lightness:p.light}}]});
+
+const items=()=>{const o=(id,l)=>MI(l,{dis:S.doc?false:NODOC,fn:()=>filterDialog(id)});
+  return[o('levels','Niveaux…'),o('shhl','Ombres et hautes lumières…'),o('chmix','Mélangeur de couches…'),o('selcolor','Correction sélective…'),o('photofilter','Filtre photo…'),o('gradmap','Carte de dégradé…'),o('replcolor','Remplacement de couleur…')]};
+PSX.addToMenu('image','Réglages avancés',items,/^Taille de l’image/);
+
+}
+
+/* ===== feat: feat/ps_compose.js ===== */
+{
+/* ===== Photo Studio (MIT), suite : harmoniser un calque, remplacer le ciel, mise à l'échelle selon le contenu,
+   sélection des zones nettes, nettoyage des franges de couleur, export d'une LUT .cube depuis les calques de réglage. ===== */
+const PSX=window.PSX;
+const hex=c=>'#'+c.map(v=>Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join('');
+const fillC=(w,h,col)=>{const c=mk(w,h),g=cx(c);g.fillStyle=col;g.fillRect(0,0,w,h);return c};
+const docOK=()=>S.doc?false:NODOC;
+
+/* ---------- Calque > Harmoniser avec le dessous… : le calque prend la lumière et la dominante de ce qu'il recouvre ---------- */
+let HZ=null;/* {img, mask} : ce qu'il y a sous le calque, autour de lui (mesuré à l'ouverture de la fenêtre) */
+async function harmonizeOpen(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;const i=d.layers.indexOf(L);
+  if(i<1){toast('Il n’y a rien sous ce calque : placez-le au-dessus de la photo');return}
+  const b=maskBBox(L.canvas);if(!b){toast('Ce calque est vide');return}
+  busy(true,'Analyse du calque…',null);
+  try{const k=Math.min(1,1200/Math.max(d.w,d.h)),below=await renderDoc(k,{upto:i});
+    /* la zone à imiter : le cadre du calque élargi d'un quart de chaque côté */
+    const mx=(b.x1-b.x0)*.25,my=(b.y1-b.y0)*.25,x0=Math.max(0,(b.x0-mx)*k|0),y0=Math.max(0,(b.y0-my)*k|0),x1=Math.min(below.width,Math.ceil((b.x1+mx)*k)),y1=Math.min(below.height,Math.ceil((b.y1+my)*k));
+    HZ={img:PSX.img(below,x0,y0,Math.max(1,x1-x0),Math.max(1,y1-y0))}}
+  catch(e){console.error(e);toast('Analyse impossible : '+(e.message||e),4000);return}finally{busy(false)}
+  filterDialog('harmonize')}
+PSX.filter('harmonize',{name:'Harmoniser avec le dessous',
+  note:'Le calque prend la lumière et la dominante de couleur de ce qu’il recouvre, pour un montage plus crédible.',
+  params:[['strength','Intensité',0,100,1,100,' %'],['luminance','Luminosité et contraste',0,100,1,50,' %'],['color','Couleur',0,100,1,35,' %']],
+  job:(img,p)=>{if(!HZ)throw new Error('ouvrez Calque > Harmoniser avec le dessous');return['harmonize',{img,target:{...HZ.img,data:HZ.img.data.slice()},o:{strength:p.strength,luminance:p.luminance,color:p.color}}]}});
+
+/* ---------- Image > Remplacer le ciel… ---------- */
+const SKY_FR={clear:'Bleu dégagé',fair:'Beau temps',scattered:'Nuages épars',sunset:'Coucher de soleil',dusk:'Heure bleue',storm:'Orage',overcast:'Ciel couvert'};
+const SKY_IDS=['clear','fair','scattered','sunset','dusk','storm','overcast'];
+const SKYST={preset:1,shift:0,fade:12,brightness:0,temperature:0,scale:100,offsetX:0,offsetY:0,flip:false,lighting:40,mode:0,color:50};
+async function skyOpen(){const d=S.doc;if(!d)return;await PSX.load();let mc=d.sel;
+  if(!mc){busy(true,'Recherche du ciel…',0);try{mc=AI.skyMask?await AI.skyMask(p=>busy(true,'Recherche du ciel…',p)):null}catch(e){console.error(e)}finally{busy(false)}
+    if(S.doc!==d)return;if(!mc||!maskBBox(mc)){toast('Aucun ciel trouvé : sélectionnez-le d’abord (Sélection > Sélectionner le ciel), puis réessayez',5000);return}}
+  const W=d.w,H=d.h,full=PSX.mask(mc,W,H),horizon=PSI.run('skyHorizon',{mask:full});
+  /* aperçu dans la fenêtre : tout est recalculé à petite taille, sur la page (quelques millisecondes) */
+  const k=Math.min(1,420/Math.max(W,H)),pw=Math.max(8,Math.round(W*k)),ph=Math.max(8,Math.round(H*k));
+  const base=PSX.up(await renderDoc(Math.min(1,900/Math.max(W,H))),pw,ph),smallMask=PSX.mask(PSX.maskCanvas(full),pw,ph),hS=Math.max(1,Math.round(horizon*k));
+  const st={...SKYST},cache=new Map();let custom=null;
+  const skyBase=(id,w,h)=>{if(id==='custom'&&custom)return custom;const key=id+w;if(!cache.has(key))cache.set(key,PSI.run('skyRender',{preset:id,width:w,height:h,seed:7}));return cache.get(key)};
+  const skyH=w=>Math.max(16,Math.round(w*Math.max(horizon,H*.3)/W));
+  function parts(w,h,mask,hz,kk){const id=st.preset===7?'custom':SKY_IDS[st.preset],sw=Math.min(2400,w);
+    const sky=PSI.run('skyLayer',{sky:skyBase(id,sw,skyH(sw)),width:w,height:h,placement:{scale:st.scale/100,flip:st.flip,offsetX:st.offsetX/100,offsetY:st.offsetY/100},horizon:hz,brightness:st.brightness,temperature:st.temperature});
+    const m=PSI.run('skyMask',{mask:mask,shift:Math.round(st.shift*kk),fade:st.fade*kk});
+    const light=PSI.run('skyLight',{sky,mask:m,horizon:hz}),fg=PSI.run('foregroundLight',{mask:m,horizon:hz});return{sky,m,light,fg}}
+  function compose(g,w,h,P){const sky=PSX.canvas(P.sky),sm=PSX.maskCanvas(P.m),fg=PSX.maskCanvas(P.fg),col=hex(P.light);
+    const lay=(c,mask,blend,op)=>{const t=cloneC(c),tg=cx(t);tg.globalCompositeOperation='destination-in';tg.drawImage(mask,0,0,w,h);g.globalCompositeOperation=blend;g.globalAlpha=op;g.drawImage(t,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over'};
+    lay(fillC(w,h,col),fg,st.mode?'screen':'multiply',st.lighting/100*.6);lay(fillC(w,h,col),fg,'color',st.color/100*.4);lay(sky,sm,'source-over',1)}
+  let tmr=null;const draw=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{const cv=$('#sk-prev');if(!cv)return;try{const P=parts(pw,ph,smallMask,hS,k),g=cx(cv);g.clearRect(0,0,pw,ph);g.drawImage(base,0,0);compose(g,pw,ph,P)}catch(e){console.error(e)}},40)};
+  const R=(key,l,a,b,s,u)=>rangeRow('sk-'+key,l,a,b,s,st[key],u),SEC=(t,open,h)=>`<details class="sk-s" ${open?'open':''}><summary><b>${t}</b></summary>${h}</details>`;
+  dialog({title:'Remplacer le ciel',light:true,
+    body:`<canvas id="sk-prev" width="${pw}" height="${ph}" style="max-width:100%;max-height:200px;border-radius:6px;display:block;margin:0 auto 8px"></canvas>
+      <div class="row"><label for="sk-preset">Ciel</label><select id="sk-preset">${SKY_IDS.map((id,i)=>`<option value="${i}" ${st.preset===i?'selected':''}>${SKY_FR[id]}</option>`).join('')}<option value="7">Ma photo…</option></select><output></output></div>`+
+      /* trois volets, un seul ouvert : la fenêtre reste assez basse pour laisser voir la photo et les boutons */
+      SEC('Ciel',true,R('shift','Bord du ciel',-50,50,1,' px')+R('fade','Fondu',0,100,1,' px')+R('brightness','Luminosité du ciel',-100,100,1,'')+R('temperature','Température du ciel',-100,100,1,''))+
+      SEC('Position',false,R('scale','Échelle',50,300,1,' %')+R('offsetX','Décalage horizontal',-50,50,1,' %')+R('offsetY','Décalage vertical',-50,50,1,' %')+
+        `<div class="row"><label for="sk-flip">Miroir</label><input type="checkbox" id="sk-flip" ${st.flip?'checked':''} style="justify-self:start"><output></output></div>`)+
+      SEC('Premier plan',false,R('lighting','Éclairage du premier plan',0,100,1,' %')+`<div class="row"><label for="sk-mode">Mode d’éclairage</label><select id="sk-mode"><option value="0">Produit</option><option value="1" ${st.mode?'selected':''}>Superposition claire</option></select><output></output></div>`+R('color','Couleur du premier plan',0,100,1,' %'))+
+      '<p class="muted" style="margin:6px 0 0">Le résultat arrive en calques groupés (ciel masqué, éclairage, couleur) : chacun reste modifiable.</p>',
+    onOpen:el=>{['shift','fade','brightness','temperature','scale','offsetX','offsetY','lighting','color'].forEach(key=>{const i=$('#sk-'+key,el);i.oninput=()=>{st[key]=+i.value;$('#sk-'+key+'-o',el).textContent=i.value+(i.parentNode.querySelector('output').textContent.replace(/^-?[\d.]+/,''));draw()}});
+      $$('details.sk-s',el).forEach(dt=>dt.addEventListener('toggle',()=>{if(dt.open)$$('details.sk-s',el).forEach(o=>{if(o!==dt)o.open=false})}));
+      $('#sk-flip',el).onchange=e=>{st.flip=e.target.checked;draw()};$('#sk-mode',el).onchange=e=>{st.mode=+e.target.value;draw()};
+      $('#sk-preset',el).onchange=e=>{const v=+e.target.value;if(v<7){st.preset=v;draw();return}
+        const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f){e.target.value=st.preset;return}
+          try{const bm=await createImageBitmap(f),kk=Math.min(1,2400/bm.width),c=mk(bm.width*kk,bm.height*kk);cx(c).drawImage(bm,0,0,c.width,c.height);custom=PSX.img(c);st.preset=7;draw()}catch(err){toast('Photo illisible');e.target.value=st.preset}};inp.click()};
+      draw()},
+    buttons:[{label:'Annuler',onClick:()=>clearTimeout(tmr)},{label:'Remplacer',primary:true,onClick:()=>{clearTimeout(tmr);Object.assign(SKYST,st,{preset:st.preset===7?1:st.preset});skyApply(d,full,horizon,st,custom)}}]})}
+async function skyApply(d,full,horizon,st,custom){const W=d.w,H=d.h;busy(true,'Remplacement du ciel…',0);
+  try{const id=st.preset===7&&custom?'custom':SKY_IDS[st.preset===7?1:st.preset],sw=Math.min(2400,W),sh=Math.max(16,Math.round(sw*Math.max(horizon,H*.3)/W));
+    const base=id==='custom'?custom:await PSX.run('skyRender',{preset:id,width:sw,height:sh,seed:7}).promise;busy(true,'Remplacement du ciel…',.3);
+    const sky=await PSX.run('skyLayer',{sky:base,width:W,height:H,placement:{scale:st.scale/100,flip:st.flip,offsetX:st.offsetX/100,offsetY:st.offsetY/100},horizon,brightness:st.brightness,temperature:st.temperature},{copy:true}).promise;busy(true,'Remplacement du ciel…',.6);
+    const m=await PSX.run('skyMask',{mask:full,shift:st.shift,fade:st.fade},{copy:true}).promise;busy(true,'Remplacement du ciel…',.8);
+    const light=PSI.run('skyLight',{sky,mask:m,horizon}),fg=PSI.run('foregroundLight',{mask:m,horizon});
+    if(S.doc!==d){toast('La photo a changé : ciel non remplacé');return}
+    const col=hex(light),fgC=PSX.maskCanvas(fg),grp={id:'g'+uid8(),name:'Remplacement du ciel'};
+    const Ll=newPixel('Éclairage du ciel',fillC(W,H,col));Ll.mask=fgC;Ll.blend=st.mode?'screen':'multiply';Ll.opacity=st.lighting/100*.6;Ll.grp={...grp};
+    const Lc=newPixel('Couleur du ciel',fillC(W,H,col));Lc.mask=cloneC(fgC);Lc.blend='color';Lc.opacity=st.color/100*.4;Lc.grp={...grp};
+    const Ls=newPixel('Ciel',PSX.canvas(sky));Ls.mask=PSX.maskCanvas(m);Ls.grp={...grp};
+    d.layers.push(Ll,Lc,Ls);d.active=d.layers.length-1;markComp();pushHistory('Remplacer le ciel');syncAll()}
+  catch(e){if(!PSX.cancelled(e)){console.error(e);toast('Remplacement du ciel impossible : '+(e.message||e),4000)}}
+  finally{busy(false)}}
+
+/* ---------- Image > Mise à l'échelle selon le contenu… : change le format en retirant ou doublant des « coutures » peu visibles ---------- */
+function seamOpen(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;let lock=false;
+  dialog({title:'Mise à l’échelle selon le contenu',
+    body:`<p class="muted" style="margin:0 0 8px">Change la largeur ou la hauteur en retirant (ou doublant) des lignes de pixels là où l’image a peu de détails : le sujet garde ses proportions. Le calque « ${esc(L.name)} » est traité ainsi, les autres sont simplement redimensionnés.</p>
+      <div class="inline"><label class="field">Largeur (px)<input type="number" id="cs-w" value="${d.w}" min="16" max="30000"></label><label class="field">Hauteur (px)<input type="number" id="cs-h" value="${d.h}" min="16" max="30000"></label></div>
+      <div class="row"><label for="cs-r">Format</label><select id="cs-r"><option value="">Libre</option>${[['1:1','Carré 1:1'],['4:5','Portrait 4:5'],['2:3','Portrait 2:3'],['3:2','Paysage 3:2'],['16:9','Paysage 16:9']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select><output></output></div>
+      <div class="row"><label for="cs-p">Protéger</label><select id="cs-p"><option value="subj">Le sujet (IA)</option><option value="skin">Les tons chair</option>${d.sel?'<option value="sel">La sélection</option>':''}<option value="none">Rien</option></select><output></output></div>
+      ${rangeRow('cs-a','Part des coutures',0,100,1,100,' %')}`,
+    onOpen:el=>{$('#cs-r',el).onchange=e=>{const v=e.target.value;if(!v)return;const[a,b]=v.split(':').map(Number);/* on garde la plus grande dimension possible sans agrandir */
+        if(d.w/d.h>a/b){$('#cs-h',el).value=d.h;$('#cs-w',el).value=Math.round(d.h*a/b)}else{$('#cs-w',el).value=d.w;$('#cs-h',el).value=Math.round(d.w*b/a)}};
+      $('#cs-a',el).oninput=e=>{$('#cs-a-o',el).textContent=e.target.value+' %'}},
+    buttons:[{label:'Annuler'},{label:'Appliquer',primary:true,onClick:el=>{const w=clamp(Math.round(+$('#cs-w',el).value||0),16,30000),h=clamp(Math.round(+$('#cs-h',el).value||0),16,30000);
+      if(w===d.w&&h===d.h){toast('Choisissez une autre taille');return false}if(w*h>MAX_PX){toast('Taille trop grande pour ce navigateur');return false}
+      seamApply(d,L,w,h,$('#cs-p',el).value,+$('#cs-a',el).value/100)}}]})}
+async function seamApply(d,L,w,h,prot,amount){const orig=L.canvas,NAME='Mise à l’échelle selon le contenu';
+  try{let protect=null,skin=false;
+    if(prot==='subj'){const m=AI.subjectMask?await AI.subjectMask():null;if(m)protect=PSX.mask(m,d.w,d.h);else toast('Pas de sujet trouvé : rien n’est protégé',3500)}
+    else if(prot==='sel'&&d.sel)protect=PSX.mask(d.sel,d.w,d.h);else if(prot==='skin')skin=true;
+    busy(true,NAME+'…',0);
+    const r=await PSX.run('seamScale',{img:PSX.img(orig),width:w,height:h,amount,protect,skin},{onProgress:f=>busy(true,NAME+'…',f)}).promise;
+    if(!PSX.alive(d,L)||L.canvas!==orig||d.w!==orig.width){toast('La photo a changé pendant le calcul : rien n’a été modifié');return}
+    const out=PSX.canvas(r);resizeDoc(w,h,NAME);
+    /* le calque traité reçoit le résultat des coutures (les autres ont été redimensionnés normalement) ; une seule étape d'historique */
+    if(PSX.alive(d,L)){L.canvas=out;delete L.hi;S.history[S.hi]=snap(NAME);markComp();scheduleSave();syncAll()}}
+  catch(e){if(!PSX.cancelled(e)){console.error(e);toast(NAME+' impossible : '+(e.message||e),4000)}}
+  finally{busy(false)}}
+
+/* ---------- Sélection > Zones nettes… : sélectionne ce qui est au point ---------- */
+async function focusOpen(){const d=S.doc;if(!d)return;await PSX.load();const flatC=flatSync(),sm=PSX.small(flatC,1000),img=PSX.img(sm.c);
+  const st={range:Math.round(PSI.run('autoFocusRange',{img})),noise:0,soft:1},sel0=d.sel;let tmr=null,job=null;
+  const show=()=>{clearTimeout(tmr);tmr=setTimeout(async()=>{if(job)job.cancel();job=PSX.run('focusArea',{img,o:{range:st.range,noise:st.noise,softenEdges:!!st.soft}},{copy:true});
+    try{const m=await job.promise;job=null;if(S.doc!==d)return;d.sel=PSX.up(PSX.maskCanvas(m),d.w,d.h);selChanged();markComp()}catch(e){if(!PSX.cancelled(e))console.error(e)}},150)};
+  dialog({title:'Zones nettes',light:true,body:'<p class="muted" style="margin:0 0 8px">Sélectionne les parties de la photo qui sont au point.</p>'+rangeRow('fa-r','Plage de netteté',0,100,1,st.range,'')+rangeRow('fa-n','Bruit à ignorer',0,100,1,0,'')+
+      `<div class="row"><label for="fa-s">Adoucir les bords</label><input type="checkbox" id="fa-s" checked style="justify-self:start"><output></output></div>`,
+    onOpen:el=>{$('#fa-r',el).oninput=e=>{st.range=+e.target.value;$('#fa-r-o',el).textContent=e.target.value;show()};$('#fa-n',el).oninput=e=>{st.noise=+e.target.value;$('#fa-n-o',el).textContent=e.target.value;show()};$('#fa-s',el).onchange=e=>{st.soft=e.target.checked;show()};show()},
+    buttons:[{label:'Annuler',onClick:()=>{clearTimeout(tmr);if(job)job.cancel();d.sel=sel0;selChanged();markComp()}},
+      {label:'Sélectionner',primary:true,onClick:()=>{clearTimeout(tmr);const m=d.sel;d.sel=sel0;if(m&&m!==sel0)combineSel(m,'new','Sélectionner les zones nettes');else selChanged()}}]})}
+
+/* ---------- Calque > Masque > Nettoyer les franges de couleur… : retire le liseré de l'ancien fond autour d'un détourage ---------- */
+PSX.filter('decontam',{name:'Nettoyer les franges de couleur',
+  note:'Pour un calque détouré : les bords prennent la couleur du sujet au lieu de celle de l’ancien fond. Utilise le masque du calque (ou la sélection).',
+  params:[['amount','Intensité',0,100,1,80,' %']],
+  job:(img,p)=>{const d=S.doc,L=pixelTarget(),src=(L&&L.mask)||(d&&d.sel);if(!src)throw new Error('ajoutez d’abord un masque au calque ou faites une sélection');
+    return['decontaminate',{img,mask:PSX.mask(src,img.width,img.height),amount:p.amount/100}]}});
+
+/* ---------- Image > Looks et LUT > Exporter une LUT .cube… : les calques de réglage globaux visibles, en table de couleurs ---------- */
+const SPATIAL=['texture','clarity','dehaze','sharpen','noise','vignette','grain'];
+async function exportCube(){const d=S.doc;if(!d)return;const Ls=d.layers.filter(L=>L.kind==='adjust'&&L.visible!==false&&!L.mask&&L.dev);
+  if(!Ls.length){toast('Aucun calque de réglage global visible à exporter');return}
+  const N=33,n=N*N*N,w=N*N,h=N,c=mk(w,h),g=rx(c),im=g.createImageData(w,h),a=im.data;
+  for(let b=0;b<N;b++)for(let gg=0;gg<N;gg++)for(let r=0;r<N;r++){const i=((gg*w)+b*N+r)*4;a[i]=Math.round(r*255/(N-1));a[i+1]=Math.round(gg*255/(N-1));a[i+2]=Math.round(b*255/(N-1));a[i+3]=255}
+  let skipped=false;
+  for(const L of Ls){const dv=JSON.parse(JSON.stringify(L.dev));SPATIAL.forEach(k=>{if(dv[k]){skipped=true;dv[k]=0}});developCPU(im,dv,{scale:1,ox:0,oy:0,docW:w,docH:h},null,L.opacity==null?1:L.opacity)}
+  const lines=['# Prism : calques de réglage de « '+String(d.name||'photo').replace(/[\r\n]/g,' ')+' »','TITLE "'+String(d.name||'Prism').replace(/["\r\n]/g,'')+'"','LUT_3D_SIZE '+N,'DOMAIN_MIN 0 0 0','DOMAIN_MAX 1 1 1'];
+  for(let b=0;b<N;b++)for(let gg=0;gg<N;gg++)for(let r=0;r<N;r++){const i=((gg*w)+b*N+r)*4;lines.push((a[i]/255).toFixed(6)+' '+(a[i+1]/255).toFixed(6)+' '+(a[i+2]/255).toFixed(6))}
+  const name=String(d.name||'prism').replace(/\.[^.]+$/,'').replace(/[\\/:*?"<>|]/g,'_')+'.cube';
+  await saveFile(new Blob([lines.join('\n')+'\n'],{type:'text/plain'}),name);
+  if(skipped)toast('LUT exportée. Texture, clarté, voile, netteté, bruit, vignette et grain ne tiennent pas dans une LUT : ils n’y sont pas.',6000)}
+Object.assign(PSX,{exportCube,harmonizeOpen,skyOpen,skyApply,seamOpen,seamApply,focusOpen});
+
+/* ---------- menus ---------- */
+PSX.addToMenu('layer',null,()=>[MI('Harmoniser avec le dessous…',{icon:'filter',dis:docOK(),fn:harmonizeOpen})],/^Monter le calque/);
+PSX.addToMenu('image',null,()=>[MI('Remplacer le ciel…',{icon:'filter',dis:docOK(),fn:skyOpen}),MI('Mise à l’échelle selon le contenu…',{icon:'filter',dis:docOK(),fn:seamOpen})],/^Rotation/);
+PSX.addToMenu('image','Looks et LUT',()=>[MI('Exporter une LUT .cube…',{dis:docOK(),fn:exportCube})]);
+PSX.addToMenu('select',null,()=>[MI('Zones nettes…',{dis:docOK(),fn:focusOpen})],/^Détourer le sujet/);
+{const _ms=maskSub;maskSub=function(){const a=_ms.apply(this,arguments)||[];return a.concat([SEP,MI('Nettoyer les franges de couleur…',{dis:docOK(),fn:()=>filterDialog('decontam')})])}}
+Object.assign(PSX,{harmonizeOpen,skyOpen,seamOpen,focusOpen});
+
+}
+
+/* ===== feat: feat/ps_fill.js ===== */
+{
+/* ===== Remplissage d'après le contenu (PatchMatch multi-échelle + adaptation des couleurs par équation de Poisson, Photo Studio, MIT).
+   - remplace l'ancien remplissage par patchs de la gomme magique quand le modèle LaMa n'est pas là ;
+   - gomme magique : méthode « Rapide » sans IA au choix quand LaMa est disponible ;
+   - Édition > Remplir d'après le contenu… pour la sélection. ===== */
+const PSX=window.PSX;
+
+/* l'ancien point d'entrée (0110) : rgb flottant n*3 + trou 0/1 -> rgb flottant */
+{const _ri=runInpaint;
+ runInpaint=function(w,h,rgb,hole,onProg){const n=w*h,data=new Uint8ClampedArray(n*4),m=new Uint8Array(n);
+   for(let i=0;i<n;i++){data[i*4]=rgb[i*3];data[i*4+1]=rgb[i*3+1];data[i*4+2]=rgb[i*3+2];data[i*4+3]=255;m[i]=hole[i]?255:0}
+   const keep=[rgb.slice(),hole.slice()];
+   return PSX.run('contextFill',{img:{width:w,height:h,data},hole:{width:w,height:h,data:m},o:{colorAdaptation:'default'}},{onProgress:onProg}).promise
+     .then(r=>{const o=new Float32Array(n*3),d=r.data;for(let i=0;i<n;i++){o[i*3]=d[i*4];o[i*3+1]=d[i*4+1];o[i*3+2]=d[i*4+2]}return o})
+     .catch(e=>{console.warn('remplissage contextuel : repli sur l’ancienne méthode',e);return _ri.call(this,w,h,keep[0],keep[1],onProg)})}}
+
+/* gomme magique : IA (LaMa) ou rapide (sans modèle) */
+S.opts.remove.method=PREF.get('removeMethod','ai')==='fast'?'fast':'ai';
+{const _pe=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe.apply(this,arguments)||'';
+  if(t==='remove')h+=`<label title="IA : meilleur sur les grandes zones. Rapide : sans modèle, instantané sur les petites zones.">Méthode</label>`+seg('remove.method',[['ai','IA'],['fast','Rapide']]);return h}}
+document.addEventListener('click',e=>{const b=e.target&&e.target.closest&&e.target.closest('[data-seg="remove.method"]');if(b)PREF.set('removeMethod',b.dataset.v)},true);
+{const _ro=removeObject;
+ removeObject=async function(){if(S.opts.remove.method!=='fast')return _ro.apply(this,arguments);
+   const was=window.LAMA_DISABLE;window.LAMA_DISABLE=true;try{return await _ro.apply(this,arguments)}finally{window.LAMA_DISABLE=was}}}
+
+/* Édition > Remplir d'après le contenu… */
+const CF_COL=['none','default','high'],CF_ROT=['none','low','medium','high','full'];
+function contentFillDialog(){const d=S.doc;if(!d)return;if(!d.sel){toast('Sélectionnez d’abord la zone à remplir');return}
+  const L=PSX.target();if(!L)return;const b=maskBBox(d.sel);if(!b){toast('La sélection est vide');return}
+  const p={col:1,rot:0,scale:1,mirror:0,...(contentFillDialog.last||{})};
+  const sel=(k,l,opts)=>`<div class="row"><label for="cf-${k}">${l}</label><select id="cf-${k}">${opts.map((t,i)=>`<option value="${i}" ${p[k]===i?'selected':''}>${t}</option>`).join('')}</select><output></output></div>`;
+  const chk=(k,l)=>`<div class="row"><label for="cf-${k}">${l}</label><input type="checkbox" id="cf-${k}" ${p[k]?'checked':''} style="justify-self:start"><output></output></div>`;
+  dialog({title:'Remplir d’après le contenu',light:true,
+    body:'<p class="muted" style="margin:0 0 8px">La sélection est remplacée par de la matière prise ailleurs dans la photo, sans IA. Pour un grand objet, la gomme magique (IA) fait souvent mieux.</p>'+
+      sel('col','Adaptation des couleurs',['Aucune','Normale','Forte'])+sel('rot','Adaptation de l’angle',['Aucune','Faible','Moyenne','Forte','Complète'])+chk('scale','Essayer d’autres tailles')+chk('mirror','Essayer en miroir'),
+    buttons:[{label:'Annuler'},{label:'Remplir',primary:true,onClick:el=>{p.col=+$('#cf-col',el).value;p.rot=+$('#cf-rot',el).value;p.scale=$('#cf-scale',el).checked?1:0;p.mirror=$('#cf-mirror',el).checked?1:0;contentFillDialog.last={...p};contentFill(d,L,b,p)}}]})}
+async function contentFill(d,L,b,p){const W=d.w,H=d.h,hw=b.x1-b.x0,hh=b.y1-b.y0,m=Math.max(80,Math.round(Math.max(hw,hh)*1.2));
+  const x0=Math.max(0,b.x0-m),y0=Math.max(0,b.y0-m),x1=Math.min(W,b.x1+m),y1=Math.min(H,b.y1+m),w=x1-x0,h=y1-y0;
+  const orig=L.canvas,img=PSX.img(orig,x0,y0,w,h),hole=PSX.mask(d.sel,w,h,x0,y0);
+  busy(true,'Remplissage d’après le contenu…',0);
+  try{const r=await PSX.run('contextFill',{img,hole,o:{colorAdaptation:CF_COL[p.col],rotationAdaptation:CF_ROT[p.rot],scale:!!p.scale,mirror:!!p.mirror}},{onProgress:f=>busy(true,'Remplissage d’après le contenu…',f)}).promise;
+    if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');return}
+    const out=cloneC(orig);cx(out).drawImage(PSX.canvas(r),x0,y0);applyMasked(L,out,'Remplir d’après le contenu')}
+  catch(e){if(!PSX.cancelled(e)){console.error(e);toast('Remplissage impossible : '+(e.message||e),4000)}}
+  finally{busy(false)}}
+PSX.contentFill=contentFill;
+PSX.addToMenu('edit',null,()=>[MI('Remplir d’après le contenu…',{icon:'fill',dis:!S.doc?NODOC:!S.doc.sel?'Faites d’abord une sélection':false,fn:contentFillDialog})],/^Effacer le contenu/);
+
+}
+
+/* ===== feat: feat/ps_filters.js ===== */
+{
+/* ===== Netteté des détails, débruitage rapide, ombres et hautes lumières (Photo Studio, MIT) ===== */
+const PSX=window.PSX;
+
+/* déconvolution de Richardson-Lucy régularisée : rend du piqué à un léger flou de bougé ou de mise au point sans gonfler le bruit */
+PSX.filter('sharpdet',{name:'Netteté des détails',preview:'crop',
+  note:'Pour une photo un peu floue (bougé léger, mise au point à côté). Le bruit mesuré dans la photo n’est pas renforcé.',
+  params:[['amount','Quantité',0,300,1,100,' %'],['radius','Rayon du flou',0.3,8,0.1,1.2,' px'],['model','Type de flou',0,1,1,0,''],['iterations','Itérations',1,60,1,20,''],['noise','Protection du bruit',0,100,1,30,' %']],
+  choices:{model:['Flou doux','Flou de mise au point']},
+  job:(img,p,sc)=>['deconvolve',{img,o:{model:p.model?'lens':'gaussian',radius:Math.max(0.2,p.radius*sc),iterations:Math.round(p.iterations),noise:p.noise/100,amount:p.amount/100}}]});
+
+/* moyennes non locales sur la luminance, bruit estimé tout seul ; couleur lissée par filtre guidé */
+PSX.filter('nlmeans',{name:'Débruitage rapide',preview:'crop',
+  note:'Sans IA : le niveau de bruit est mesuré dans la photo. Plus rapide que le débruitage IA, un peu moins fin.',
+  params:[['strength','Luminance',0,100,1,50,' %'],['color','Couleur',0,100,1,60,' %'],['detail','Préserver les détails',0,100,1,35,' %'],['wide','Recherche étendue (plus lisse, plus lent)',0,1,1,0,'']],
+  checks:['wide'],
+  job:(img,p)=>['denoise',{img,o:{strength:p.strength/100,color:p.color/100,detail:p.detail/100,wide:!!p.wide}}]});
+
+/* ombres et hautes lumières adaptatives (luminosité du voisinage), comme Image > Réglages > Tons foncés/Tons clairs */
+PSX.filter('shhl',{name:'Ombres et hautes lumières',
+  params:[['shadowsAmount','Ombres : quantité',0,100,1,35,' %'],['shadowsTone','Ombres : étendue',0,100,1,50,' %'],['shadowsRadius','Ombres : rayon',1,500,1,30,' px'],
+    ['highlightsAmount','Hautes lumières : quantité',0,100,1,0,' %'],['highlightsTone','Hautes lumières : étendue',0,100,1,50,' %'],['highlightsRadius','Hautes lumières : rayon',1,500,1,30,' px'],
+    ['colorCorrection','Saturation des zones corrigées',-100,100,1,20,''],['midtoneContrast','Contraste des tons moyens',-100,100,1,0,'']],
+  job:(img,p,sc)=>['shadowsHighlights',{img,p:{...p},scale:sc}]});
+
+PSX.addToMenu('filter','Netteté et bruit',()=>[MI('Netteté des détails…',{dis:S.doc?false:NODOC,fn:()=>filterDialog('sharpdet')}),MI('Débruitage rapide…',{dis:S.doc?false:NODOC,fn:()=>filterDialog('nlmeans')})]);
+
+}
+
+/* ===== feat: feat/ps_restore.js ===== */
+{
+/* ===== Filtre > Portrait et restauration… : l'atelier de Photo Studio (MIT), avec le masque de peau de l'IA de Prism.
+   Peau (séparation de fréquences qui garde les pores), artefacts JPEG, poussières et rayures, colorisation par points,
+   transfert de couleurs d'une photo de référence, flou de profondeur, style artistique. Les filtres cochés s'enchaînent
+   dans un ordre fixe (réparations, puis portrait et couleur, puis effets). ===== */
+const PSX=window.PSX;
+const NAME='Portrait et restauration';
+/* [clé, libellé, min, max, pas, défaut, unité] ; c: liste de [valeur, libellé] ; k: case à cocher */
+const RF=[
+ {id:'skin',label:'Lissage de la peau',help:'Unifie la peau en gardant les pores et le grain fin.',params:[
+   {key:'area',label:'Peau',c:[['mask','Détectée par l’IA'],['auto','D’après sa couleur'],['selection','Sélection seulement'],['all','Toute l’image']],def:'mask'},
+   ['smoothness','Lissage',0,100,1,50,' %'],['detail','Détails gardés',0,100,1,60,' %'],['tone','Teint uniforme',0,100,1,30,' %'],['tolerance','Plage de couleurs',0,100,1,50,' %']]},
+ {id:'jpeg',label:'Artefacts JPEG',help:'Retire les carrés de 8 × 8 pixels, les halos autour des contours et les taches de couleur d’une image trop compressée.',params:[
+   {key:'strength',label:'Force',c:[['auto','Automatique'],['low','Faible'],['medium','Moyenne'],['high','Forte']],def:'auto'}]},
+ {id:'restore',label:'Restauration de photo',help:'Répare poussières et rayures, réduit le bruit, ravive les couleurs passées et efface la trame d’impression.',params:[
+   ['scratches','Rayures',0,100,1,50,' %'],['dust','Poussières',0,100,1,50,' %'],['size','Taille des défauts',1,20,1,4,' px'],['denoise','Réduction du bruit',0,100,1,20,' %'],['fade','Couleurs et contraste',0,100,1,50,' %'],['halftone','Trame d’impression',0,100,1,0,' %']]},
+ {id:'colorize',label:'Colorisation',help:'Cliquez sur la photo pour poser la couleur choisie : elle se diffuse dans les zones semblables et s’arrête aux contours.',params:[
+   ['saturation','Saturation',0,200,1,100,' %'],['spread','Diffusion',0,100,1,60,' %'],['radius','Taille des points',1,100,1,6,' px']]},
+ {id:'transfer',label:'Transfert de couleurs',help:'Reprend l’ambiance de couleur d’une autre photo, séparément dans les ombres, les tons moyens et les hautes lumières.',params:[
+   ['strength','Intensité',0,100,1,80,' %'],{key:'preserve',label:'Garder la luminosité',k:1,def:true},['shadows','Ombres',0,100,1,100,' %'],['midtones','Tons moyens',0,100,1,100,' %'],['highlights','Hautes lumières',0,100,1,100,' %']]},
+ {id:'depth',label:'Flou de profondeur',help:'Floute selon la distance estimée, comme un grand diaphragme.',params:[
+   {key:'subject',label:'Garder le sujet proche',k:1,def:true},{key:'invert',label:'Inverser la profondeur',k:1,def:false},['focal','Distance de mise au point',0,100,1,20,' %'],['range','Profondeur de champ',0,100,1,20,' %'],['blur','Intensité du flou',0,100,1,40,' %'],
+   {key:'shape',label:'Diaphragme',c:[['0','Rond'],['5','Pentagone'],['6','Hexagone'],['8','Octogone']],def:'6'},['brightness','Éclat du bokeh',0,100,1,20,' %'],['haze','Brume',0,100,1,0,' %'],['warmth','Chaleur',-100,100,1,0,''],['grain','Grain',0,100,1,0,' %']]},
+ {id:'style',label:'Style artistique',help:'Transforme la photo en peinture, dessin ou impression.',params:[
+   {key:'style',label:'Style',c:[['painterly','Peinture'],['ink','Dessin à l’encre'],['pencil','Crayon'],['watercolor','Aquarelle'],['print','Trame imprimée']],def:'painterly'},['strength','Intensité',0,100,1,100,' %'],['brush','Taille du pinceau',1,50,1,6,' px']]}];
+const pk=q=>Array.isArray(q)?q[0]:q.key,pdef=q=>Array.isArray(q)?q[5]:q.def;
+const defaults=()=>{const o={};RF.forEach(f=>{o[f.id]={enabled:false,params:{}};f.params.forEach(q=>o[f.id].params[pk(q)]=pdef(q))});return o};
+let LAST=null;
+
+function toParams(st){return{filters:RF.map(f=>{const e={id:f.id,enabled:!!st[f.id].enabled,params:{...st[f.id].params}};
+  if(f.id==='colorize')e.hints=(st.hints||[]).map(h=>({...h}));if(f.id==='transfer'&&st.ref)e.reference=st.ref;return e})}}
+const rowHTML=(fid,q,v)=>{const id=`rs-${fid}-${pk(q)}`;
+  if(Array.isArray(q))return rangeRow(id,q[1],q[2],q[3],q[4],v,q[6]);
+  if(q.k)return`<div class="row"><label for="${id}">${q.label}</label><input type="checkbox" id="${id}" ${v?'checked':''} style="justify-self:start"><output></output></div>`;
+  return`<div class="row"><label for="${id}">${q.label}</label><select id="${id}">${q.c.map(([val,l])=>`<option value="${esc(val)}" ${val===v?'selected':''}>${esc(l)}</option>`).join('')}</select><output></output></div>`};
+
+/* masque de peau de l'IA (Prism), gardé pour la photo en cours */
+const SK={key:null,m:null};
+async function aiSkin(d,L){const key=L.canvas;if(SK.key===key)return SK.m;let m=null;try{m=await AI.categoryMask('skin')}catch(e){console.warn(e)}SK.key=key;SK.m=m;return m}
+
+function restoreDialog(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;
+  const st=LAST?JSON.parse(JSON.stringify(LAST)):defaults();st.hints=st.hints||[];st.ref=st.ref||null;st.refName=st.refName||'';st.hintColor=st.hintColor||'#c8875a';st.newLayer=!!st.newLayer;
+  const orig=L.canvas,small=PSX.small(orig,1200);let tmr=null,job=null,seq=0,closed=false,skinSmall=null;
+  const stop=()=>{clearTimeout(tmr);seq++;if(job){job.cancel();job=null}};
+  const clear=()=>{closed=true;stop();delete L.preview;view.removeEventListener('pointerdown',onPick,true);markComp()};
+  const state=t=>{const e=$('#rs-state');if(e)e.textContent=t||''};
+  const needSkin=()=>st.skin.enabled&&st.skin.params.area==='mask';
+  async function skinFor(w,h){if(!needSkin())return undefined;const m=await aiSkin(d,L);if(!m){if(!closed){st.skin.params.area='auto';const s=$('#rs-skin-area');if(s)s.value='auto';toast('Pas de peau trouvée par l’IA : détection d’après la couleur',4000)}return undefined}
+    return PSX.mask(m,w,h)}
+  const refresh=()=>{stop();const my=seq;tmr=setTimeout(async()=>{if(closed||!PSX.alive(d,L))return;
+    if(!RF.some(f=>st[f.id].enabled)){delete L.preview;markComp();state('Cochez au moins un filtre.');return}
+    state('Calcul de l’aperçu…');
+    try{if(needSkin()&&!skinSmall)skinSmall=await skinFor(small.c.width,small.c.height);if(my!==seq||closed)return;
+      job=PSX.run('restore',{img:PSX.img(small.c),params:toParams(st),scale:small.k,skin:skinSmall&&{...skinSmall,data:skinSmall.data.slice()}});
+      const r=await job.promise;if(my!==seq||closed)return;job=null;let c=PSX.up(PSX.canvas(r.image),orig.width,orig.height);if(d.sel)c=PSX.mixSel(orig,c,d.sel);L.preview=c;markComp();state(small.k<1?'Aperçu sur une copie réduite ; l’application se fait en pleine résolution.':'')}
+    catch(e){if(PSX.cancelled(e))return;console.error(e);state('');toast('Aperçu impossible : '+(e.message||e),3000)}},200)};
+  /* colorisation : un clic sur la photo pose un point de la couleur choisie */
+  function onPick(e){if(closed||!st.colorize.enabled||e.button!==0||S.spaceDown)return;const p=evPos(e);if(p.x<0||p.y<0||p.x>d.w||p.y>d.h)return;
+    e.preventDefault();e.stopPropagation();st.hints.push({x:p.x/d.w,y:p.y/d.h,color:st.hintColor,radius:st.colorize.params.radius});hintCount();refresh()}
+  const hintCount=()=>{const e=$('#rs-hints');if(e)e.textContent=st.hints.length?st.hints.length+' point'+(st.hints.length>1?'s':'')+' de couleur':'Aucun point : cliquez sur la photo'};
+  const extra={colorize:()=>`<div class="row"><label for="rs-hc">Couleur à poser</label><input type="color" id="rs-hc" value="${esc(st.hintColor)}"><output></output></div><div class="row"><span class="muted" id="rs-hints"></span><button class="btn sm" id="rs-hclear" type="button">Effacer les points</button><output></output></div>`,
+    transfer:()=>`<div class="row"><span class="muted" id="rs-refn">${st.refName?esc('Référence : '+st.refName):'Aucune photo de référence'}</span><button class="btn sm" id="rs-ref" type="button">Choisir…</button><output></output></div>`};
+  const body=`<p class="muted" style="margin:0 0 8px">Cochez les retouches voulues ; l’aperçu se met à jour sur la photo.</p>`+RF.map((f,i)=>`<details class="rs-f" ${i===RF.findIndex(g=>st[g.id].enabled)?'open':''}><summary><label><input type="checkbox" id="rs-on-${f.id}" ${st[f.id].enabled?'checked':''}> <b>${f.label}</b></label></summary><p class="muted" style="margin:4px 0">${f.help}</p>${f.params.map(q=>rowHTML(f.id,q,st[f.id].params[pk(q)])).join('')}${extra[f.id]?extra[f.id]():''}</details>`).join('')+
+    `<div class="row"><label for="rs-new">Sur un nouveau calque</label><input type="checkbox" id="rs-new" ${st.newLayer?'checked':''} style="justify-self:start"><output></output></div>`+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':'')+'<p class="muted" id="rs-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>';
+  dialog({title:NAME,light:true,body,
+    onOpen:el=>{const dl=el.closest('.dlg');if(dl){dl.style.maxHeight='calc(100dvh - 120px)';dl.style.overflow='auto'}
+      /* une seule retouche dépliée à la fois : la fenêtre reste petite et la photo visible */
+      $$('details.rs-f',el).forEach(dt=>dt.addEventListener('toggle',()=>{if(dt.open)$$('details.rs-f',el).forEach(o=>{if(o!==dt)o.open=false})}));
+      RF.forEach(f=>{const on=$('#rs-on-'+f.id,el);on.onchange=()=>{st[f.id].enabled=on.checked;if(on.checked)on.closest('details').open=true;refresh()};on.onclick=e=>e.stopPropagation();
+        f.params.forEach(q=>{const k=pk(q),i=$(`#rs-${f.id}-${k}`,el);if(!i)return;const sel=i.tagName==='SELECT',chk=i.type==='checkbox';
+          i[sel||chk?'onchange':'oninput']=()=>{st[f.id].params[k]=chk?i.checked:sel?i.value:+i.value;if(!sel&&!chk){const o=$(`#rs-${f.id}-${k}-o`,el);if(o)o.textContent=fmtN(+i.value,q[4])+(q[6]||'')}
+            if(f.id==='skin'&&k==='area')skinSmall=null;if(!st[f.id].enabled){st[f.id].enabled=true;$('#rs-on-'+f.id,el).checked=true}refresh()}})});
+      $('#rs-hc',el).oninput=e=>{st.hintColor=e.target.value};$('#rs-hclear',el).onclick=()=>{st.hints=[];hintCount();refresh()};hintCount();
+      $('#rs-ref',el).onclick=()=>{const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;
+        try{const bm=await createImageBitmap(f),k=Math.min(1,512/Math.max(bm.width,bm.height)),c=mk(Math.max(1,bm.width*k),Math.max(1,bm.height*k));cx(c).drawImage(bm,0,0,c.width,c.height);
+          st.ref=await PSX.run('transferStats',{img:PSX.img(c)}).promise;st.refName=f.name;$('#rs-refn',el).textContent='Référence : '+f.name;st.transfer.enabled=true;$('#rs-on-transfer',el).checked=true;refresh()}
+        catch(e){console.error(e);toast('Photo de référence illisible : '+(e.message||e),4000)}};inp.click()};
+      $('#rs-new',el).onchange=e=>{st.newLayer=e.target.checked};
+      view.addEventListener('pointerdown',onPick,true);refresh()},
+    buttons:[{label:'Annuler',onClick:()=>clear()},
+      {label:'Appliquer',primary:true,onClick:()=>{clear();LAST=JSON.parse(JSON.stringify(st));apply(d,L,orig,st)}}]})}
+
+async function apply(d,L,orig,st){if(!RF.some(f=>st[f.id].enabled)){toast('Aucune retouche cochée');return}
+  busy(true,NAME+'…',0);
+  try{let skin;if(st.skin.enabled&&st.skin.params.area==='mask'){const m=await aiSkin(d,L);if(m)skin=PSX.mask(m,orig.width,orig.height)}
+    const r=await PSX.run('restore',{img:PSX.img(orig),params:toParams(st),scale:1,skin},{onProgress:f=>busy(true,NAME+'…',f)}).promise;
+    if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');return}
+    let c=PSX.canvas(r.image);
+    if(st.newLayer){if(d.sel){const t=mk(c.width,c.height),g=cx(t);g.drawImage(c,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);c=t}
+      const i=d.layers.indexOf(L);d.active=i;insertLayer(newPixel(NAME,c),NAME)}
+    else applyMasked(L,c,NAME)}
+  catch(e){if(!PSX.cancelled(e)){console.error(e);toast(NAME+' impossible : '+(e.message||e),4000)}markComp()}
+  finally{busy(false)}}
+PSX.restoreDialog=restoreDialog;PSX.restoreApply=apply;PSX.restoreDefaults=defaults;
+PSX.addToMenu('filter',null,()=>[MI(NAME+'…',{icon:'filter',dis:S.doc?false:NODOC,fn:restoreDialog})],/^Correction de l’objectif/);
 
 }
 
