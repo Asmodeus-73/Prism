@@ -97,7 +97,7 @@ cleanParams=function(p){const out={};if(!p||typeof p!=='object')return out;const
   const HUE={shH:1,midH:1,hiH:1},keys=Object.keys(out).filter(k=>typeof out[k]==='number'&&!HUE[k]);
   if(keys.length>8){const rank=keys.map(k=>{const K=ASSIST_KEYS.find(x=>x.k===k);return[k,K?Math.abs(out[k]-Z[k])/Math.max(Math.abs(K.max-Z[k]),Math.abs(K.min-Z[k]),1e-6):0]}).sort((a,b)=>b[1]-a[1]);rank.slice(8).forEach(([k])=>delete out[k])}
   return out};
-if(window.PrismAssist){const _st=PrismAssist.setText;PrismAssist.setText=t=>{TXT=t||'';if(_st)_st(t)};PrismAssist.clean=cleanParams}
+if(window.PrismAssist){PrismAssist.setText=t=>{TXT=t||''};PrismAssist.clean=cleanParams}
 })();
 
 /* ---- E. preset thumbnails: the highlighted one is only the one that is still exactly applied ---- */

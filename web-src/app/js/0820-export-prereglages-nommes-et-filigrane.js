@@ -45,7 +45,6 @@ window.PrismExport={WM,stamp,presets};
 
 /* wave37: library backup/restore in one archive + tabs reopened at launch */
 (()=>{
-const NAMEOF=m=>(m.name||'projet');
 async function backupLibrary(){
   busy(true,'Préparation de la sauvegarde…',null);
   try{
@@ -371,60 +370,6 @@ async function iccDialog(){if(!S.doc)return;let bytes=null,name='';if(await proo
   buttons:[{label:'Annuler'},{label:'Exporter',primary:true,onClick:el=>{if(!bytes){toast('Choisissez d’abord un profil ICC');return false}iccExport({bytes,name,fmt:$('#icF',el).value,intent:+$('#icI',el).value,bpc:$('#icB',el).checked,q:.92})}}],
   onOpen:el=>{$('#icPick',el).onclick=()=>{const i=document.createElement('input');i.type='file';i.accept='.icc,.icm';i.onchange=async()=>{const f=i.files[0];if(!f)return;bytes=new Uint8Array(await f.arrayBuffer());name=f.name.replace(/\.[^.]+$/,'');$('#icName',el).textContent=name};i.click()}}})}
 
-/* ---------- helpers for multi-photo tools ---------- */
-function pickMany(){return new Promise(res=>{const i=document.createElement('input');i.type='file';i.multiple=true;i.accept='image/*,.heic,.heif,.tif,.tiff,'+RAW_ACCEPT;i.onchange=()=>res([...i.files]);i.oncancel=()=>res([]);i.click()})}
-async function loadScaled(f,maxPx){let bm=null;if(!RAW_EXT.test(f.name||'')&&!/\.(heic|heif|avif|tiff?)$/i.test(f.name||'')){try{bm=await createImageBitmap(f)}catch(e){}}
-  if(!bm){const src=await styleFromFile(f);const s=Math.min(1,maxPx/Math.max(src.width,src.height)),c=mk(Math.round(src.width*s),Math.round(src.height*s));cx(c).drawImage(src,0,0,c.width,c.height);return c}
-  const s=Math.min(1,maxPx/Math.max(bm.width,bm.height)),c=mk(Math.round(bm.width*s),Math.round(bm.height*s));cx(c).drawImage(bm,0,0,c.width,c.height);bm.close&&bm.close();return c}
-/* translation that best aligns B onto A (normalised grey levels, so different exposures still match) */
-function alignShift(A,B){const w=200,h=Math.max(8,Math.round(A.height*200/A.width));const g=c=>{const t=mk(w,h);cx(t).drawImage(c,0,0,w,h);const a=grayOf(t);let m=0,v=0;for(const x of a)m+=x;m/=a.length;for(const x of a)v+=(x-m)*(x-m);const sd=Math.sqrt(v/a.length)||1;for(let i=0;i<a.length;i++)a[i]=(a[i]-m)/sd;return a};
-  const ga=g(A),gb=g(B),R=Math.round(w*.06);let best=1e9,bx=0,by=0;
-  for(let sy=-R;sy<=R;sy++)for(let sx=-R;sx<=R;sx++){let e=0,n=0;for(let y=Math.max(0,sy);y<Math.min(h,h+sy);y++)for(let x=Math.max(0,sx);x<Math.min(w,w+sx);x++){e+=Math.abs(ga[y*w+x]-gb[(y-sy)*w+(x-sx)]);n++}e/=n||1;if(e<best){best=e;bx=sx;by=sy}}
-  return{x:bx*A.width/w,y:by*A.height/h}}
-function boxBlur(a,w,h,r){const t=new Float32Array(a.length),o=new Float32Array(a.length),k=2*r+1;
-  for(let y=0;y<h;y++){let s=0;const b=y*w;for(let x=-r;x<=r;x++)s+=a[b+Math.max(0,Math.min(w-1,x))];for(let x=0;x<w;x++){t[b+x]=s/k;s+=a[b+Math.min(w-1,x+r+1)]-a[b+Math.max(0,x-r)]}}
-  for(let x=0;x<w;x++){let s=0;for(let y=-r;y<=r;y++)s+=t[Math.max(0,Math.min(h-1,y))*w+x];for(let y=0;y<h;y++){o[y*w+x]=s/k;s+=t[Math.min(h-1,y+r+1)*w+x]-t[Math.max(0,y-r)*w+x]}}
-  return o}
-/* ---------- exposure fusion ---------- */
-async function fuseExposures(files){busy(true,'Fusion des expositions…',0);await tick();
-  try{const imgs=[];for(const f of files)imgs.push(await loadScaled(f,3200));const W=imgs[0].width,H=imgs[0].height;let moved=0;for(let k=1;k<imgs.length;k++){const sh=alignShift(imgs[0],imgs[k]);if(Math.abs(sh.x)>=1||Math.abs(sh.y)>=1){const t2=mk(W,H);cx(t2).drawImage(imgs[k],sh.x,sh.y);imgs[k]=t2;moved++}}
-    const datas=imgs.map(c=>{if(c.width===W&&c.height===H)return cx(c).getImageData(0,0,W,H).data;const t=mk(W,H);cx(t).drawImage(c,0,0,W,H);return cx(t).getImageData(0,0,W,H).data});
-    const n=W*H,ws=[];let k=0;
-    for(const d of datas){const w=new Float32Array(n),gray=new Float32Array(n);
-      for(let i=0;i<n;i++){const r=d[i*4]/255,g=d[i*4+1]/255,b=d[i*4+2]/255;gray[i]=.299*r+.587*g+.114*b;const mean=(r+g+b)/3,sat=Math.sqrt(((r-mean)**2+(g-mean)**2+(b-mean)**2)/3);
-        const ex=Math.exp(-((r-.5)**2+(g-.5)**2+(b-.5)**2)/(2*.2*.2*3/3));w[i]=(sat+.02)*ex+1e-6}
-      for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,lap=Math.abs(4*gray[i]-gray[i-1]-gray[i+1]-gray[i-W]-gray[i+W]);w[i]*=(lap+.01)}
-      ws.push(boxBlur(w,W,H,Math.max(3,Math.round(Math.min(W,H)/80))));busy(true,'Fusion des expositions…',++k/(datas.length*2));await tick()}
-    const out=mk(W,H),og=cx(out),oi=og.createImageData(W,H),od=oi.data;
-    for(let i=0;i<n;i++){let s=0;for(let j=0;j<ws.length;j++)s+=ws[j][i];let r=0,g=0,b=0;for(let j=0;j<ws.length;j++){const a=ws[j][i]/s;r+=datas[j][i*4]*a;g+=datas[j][i*4+1]*a;b+=datas[j][i*4+2]*a}od[i*4]=r;od[i*4+1]=g;od[i*4+2]=b;od[i*4+3]=255}
-    og.putImageData(oi,0,0);busy(false);setDoc(out,'fusion-expositions.jpg',{});toast('Expositions fusionnées'+(moved?' (alignement corrigé sur '+moved+' photo'+(moved>1?'s':'')+')':'')+'. Un petit décalage est corrigé, pas une rotation.',6000)
-  }catch(e){busy(false);console.error(e);toast('Fusion impossible : '+(e.message||e),5000)}}
-async function fusionDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fuseExposures(fs)}
-
-/* ---------- panorama (translation only) ---------- */
-function grayOf(c){const d=cx(c).getImageData(0,0,c.width,c.height).data,g=new Float32Array(c.width*c.height);for(let i=0;i<g.length;i++)g[i]=.299*d[i*4]+.587*d[i*4+1]+.114*d[i*4+2];return g}
-function shiftErr(A,B,w,h,sx,sy){let s=0,n=0;const x0=Math.max(0,sx),x1=Math.min(w,sx+w);if(x1-x0<w*.12)return 1e9;
-  for(let y=Math.max(0,sy);y<Math.min(h,h+sy);y+=2)for(let x=x0;x<x1;x+=2){const a=A[y*w+x],b=B[(y-sy)*w+(x-sx)];s+=Math.abs(a-b);n++}return n?s/n:1e9}
-async function stitch(files){busy(true,'Assemblage du panorama…',0);await tick();
-  try{const fulls=[];for(const f of files)fulls.push(await loadScaled(f,4000));
-    const SC=200/fulls[0].width,sm=fulls.map(c=>{const t=mk(Math.round(c.width*SC),Math.round(c.height*SC));cx(t).drawImage(c,0,0,t.width,t.height);return t});
-    const pos=[{x:0,y:0}];
-    for(let k=1;k<fulls.length;k++){const A=sm[k-1],B=sm[k];if(A.width!==B.width||A.height!==B.height){const t=mk(A.width,A.height);cx(t).drawImage(B,0,0,A.width,A.height);sm[k]=t}
-      const w=A.width,h=A.height,ga=grayOf(A),gb=grayOf(sm[k]);let best=1e9,bx=0,by=0;const my=Math.round(h*.12);
-      for(let sx=Math.round(w*.15);sx<=w*.9;sx++)for(let sy=-my;sy<=my;sy++){const e=shiftErr(ga,gb,w,h,sx,sy);if(e<best){best=e;bx=sx;by=sy}}
-      const f=fulls[k-1].width/w;const prev=pos[k-1];pos.push({x:prev.x+bx*f,y:prev.y+by*f});busy(true,'Assemblage du panorama…',k/fulls.length);await tick()}
-    let minX=0,minY=0,maxX=0,maxY=0;pos.forEach((p,i)=>{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+fulls[i].width);maxY=Math.max(maxY,p.y+fulls[i].height)});
-    const W=Math.round(maxX-minX),H=Math.round(maxY-minY);if(W*H>MAX_PX)throw new Error('panorama trop grand');
-    const out=mk(W,H),g=cx(out);
-    for(let i=0;i<fulls.length;i++){const c=fulls[i],x=Math.round(pos[i].x-minX),y=Math.round(pos[i].y-minY);
-      if(i===0){g.drawImage(c,x,y);continue}
-      const prevEnd=Math.round(pos[i-1].x-minX)+fulls[i-1].width,ov=Math.max(1,prevEnd-x),t=mk(c.width,c.height),tg=cx(t);tg.drawImage(c,0,0);
-      tg.globalCompositeOperation='destination-in';const gr=tg.createLinearGradient(0,0,Math.min(ov,c.width),0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,1)');tg.fillStyle=gr;tg.fillRect(0,0,c.width,c.height);
-      g.drawImage(t,x,y)}
-    busy(false);setDoc(out,'panorama.jpg',{});toast('Panorama assemblé (translation seule). Recadrez ensuite les bords.',6000)
-  }catch(e){busy(false);console.error(e);toast('Panorama impossible : '+(e.message||e),5000)}}
-async function panoDialog(){const fs=await pickMany();if(fs.length<2){if(fs.length)toast('Choisissez au moins deux photos');return}fs.sort((a,b)=>(a.name||'').localeCompare(b.name||''));stitch(fs)}
-
 /* ---------- puppet warp ---------- */
 function mls(pins,x,y,a){let sw=0,px=0,py=0,qx=0,qy=0;const ws=[];
   for(const p of pins){const dx=p.sx-x,dy=p.sy-y,d2=dx*dx+dy*dy;if(d2<1e-6)return[p.dx,p.dy];const w=1/Math.pow(d2,a);ws.push(w);sw+=w;px+=w*p.sx;py+=w*p.sy;qx+=w*p.dx;qy+=w*p.dy}
@@ -441,7 +386,7 @@ function warpMesh(img,pins,cell,out,scale){const W=img.width,H=img.height,g=cx(o
   const nx=Math.ceil(W/cell),ny=Math.ceil(H/cell),V=[];for(let j=0;j<=ny;j++){V[j]=[];for(let i=0;i<=nx;i++){const x=Math.min(W,i*cell),y=Math.min(H,j*cell);V[j][i]=[x,y,mls(pins,x,y,1.6)]}}
   g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const a=V[j][i],b=V[j][i+1],c=V[j+1][i+1],d=V[j+1][i];
-    const S_=(v)=>[v[0],v[1]],D_=(v)=>[v[2][0]*scale,v[2][1]*scale];
+    const D_=(v)=>[v[2][0]*scale,v[2][1]*scale];
     const sa=[a[0],a[1]],sb=[b[0],b[1]],sc=[c[0],c[1]],sd=[d[0],d[1]];
     drawTri(g,img,sa,sb,sc,D_(a),D_(b),D_(c));drawTri(g,img,sa,sc,sd,D_(a),D_(c),D_(d))}}
 function puppetDialog(){const d=S.doc,L=AL();if(!d||!L||L.kind!=='pixel'||L.editMask){toast('Choisissez un calque de pixels');return}
@@ -474,9 +419,9 @@ function puppetDialog(){const d=S.doc,L=AL();if(!d||!L||L.kind!=='pixel'||L.edit
 /* ---------- menus ---------- */
 const _ii=MENU2.image.items;MENU2.image.items=()=>{const a=_ii();a.push(SEP,MI('Mode : niveaux de gris',{dis:S.doc?false:NODOC,fn:toGray}),MI('Mode : couleurs indexées…',{dis:S.doc?false:NODOC,fn:indexedDialog}));return a};
 const _ly=MENU2.layer.items;MENU2.layer.items=()=>{const a=_ly();a.push(MI('Déformation marionnette…',{icon:'layer',dis:S.doc?false:NODOC,fn:puppetDialog}));return a};
-const _fi=MENU2.file.items;MENU2.file.items=()=>{const a=_fi();const k=a.findIndex(x=>x&&x.label==='Sauvegarder la photothèque…');const items=[MI('Exporter avec un profil ICC…',{dis:S.doc?false:NODOC,fn:iccDialog}),MI('Fusion d’expositions (HDR)…',{fn:fusionDialog}),MI('Panorama…',{fn:panoDialog})];
+const _fi=MENU2.file.items;MENU2.file.items=()=>{const a=_fi();const k=a.findIndex(x=>x&&x.label==='Sauvegarder la photothèque…');const items=[MI('Exporter avec un profil ICC…',{dis:S.doc?false:NODOC,fn:iccDialog}),MI('Fusion d’expositions (HDR)…'),MI('Panorama…')];/* commandes branchées par 0840 (fusion) et feat/pano.js (panorama) */
   if(k>0)a.splice(k-1,0,...items);else a.push(SEP,...items);return a};
-window.PrismD={toGray,indexed,iccExport,fuseExposures,stitch,puppetDialog,warpMesh,mls};
+window.PrismD={toGray,indexed,iccExport,puppetDialog,warpMesh,mls};
 })();
 
 /* wave41: smart objects (non-destructive layer transforms from the original pixels) */
@@ -597,9 +542,7 @@ window.PrismHist={keep,decode,saveHist,schedule,restoreHist};
 /* wave44: the assistant does what was asked, no more */
 (()=>{
 const _prompt=assistPrompt;
-const INTENSE=/beaucoup|tr[eè]s|fort(?:ement)?|vraiment|extr[eê]me|[àa] fond|maximum|\bmax\b|[ée]norm[ée]ment|nettement|radical|intense|bien plus|bien moins/i;
-let lastText='';
-assistPrompt=function(text){lastText=text||'';const d=S.doc;
+assistPrompt=function(text){const d=S.doc;
   const layers=d.layers.map((L,i)=>L.kind==='adjust'?{index:i,name:L.name,kind:'adjust',masked:!!L.mask,visible:L.visible!==false,params:nonDefaultDev(L.dev)}:{index:i,name:L.name,kind:'pixel'});
   const act=d.layers[d.active];
   const sel=d.sel?'OUI : une sélection est active. Si la demande vise « la sélection », « cette zone » ou ne précise pas de zone, utilise {"type":"selection"}.':'non';
@@ -632,14 +575,7 @@ Si la demande est impossible avec ces outils, renvoie "ops":[] et explique-le da
   return head+rules+'\n'+fmt};
 const _am=areaMask;
 areaMask=async function(a){if(a&&a.type==='selection'){const d=S.doc;if(!d.sel)throw new Error('aucune sélection active');return cloneC(d.sel)}return _am.apply(this,arguments)};
-/* safety net on the numbers the model returns */
-const _cp=cleanParams;
-cleanParams=function(p){const out=_cp.apply(this,arguments);
-  const keys=Object.keys(out).filter(k=>typeof out[k]==='number');
-  if(!INTENSE.test(lastText)){for(const {k,min,max} of ASSIST_KEYS){if(typeof out[k]!=='number')continue;const lim=k==='exposure'?1:Math.max(Math.abs(min),Math.abs(max))*.4;out[k]=clamp(out[k],Math.max(min,-lim),Math.min(max,lim))}}
-  if(keys.length>8){const rank=keys.map(k=>{const K=ASSIST_KEYS.find(x=>x.k===k);return[k,K?Math.abs(out[k])/Math.max(Math.abs(K.min),Math.abs(K.max)||1):0]}).sort((a,b)=>b[1]-a[1]);rank.slice(8).forEach(([k])=>delete out[k])}
-  return out};
-window.PrismAssist={prompt:()=>assistPrompt('test'),clean:cleanParams,setText:t=>{lastText=t}};
+window.PrismAssist={prompt:()=>assistPrompt('test'),clean:p=>cleanParams(p),setText:()=>{}};
 })();
 
 /* wave45: new features reachable from the command palette and the quick actions */

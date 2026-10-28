@@ -51,5 +51,5 @@ function renderPill(){const t=S.tool,o=S.opts,ob=$('#pill'),A=AL();const name=(T
   const oc=$('#optColor');if(oc)oc.oninput=e=>{S.color=e.target.value;$('#fg').value=S.color};
   const sb=$('#srcBtn');if(sb)sb.onclick=()=>{S.pickSource=!S.pickSource;sb.classList.toggle('on',S.pickSource);if(S.pickSource)toast('Touchez la zone à copier')};
   if(t==='crop'){$('#cropAng').oninput=e=>{if(!S.crop)return;S.crop.angle=+e.target.value;$('#cropAngV').textContent=S.crop.angle.toFixed(1)+'°';applyRatio();markContent()};$('#cropApply').onclick=applyCrop;$('#cropReset').onclick=cancelCrop}}
-function srcBtn(){return`<button class="btn sm ${S.pickSource?'on':''}" id="srcBtn">Définir la source</button><span class="hint">${S.cloneSrc?'Source définie. ':''}${ALT}+clic pour choisir la zone à copier.</span>`}
+var srcBtn; /* défini dans 0880-retouching-tools-heal-remove-clone.js */
 

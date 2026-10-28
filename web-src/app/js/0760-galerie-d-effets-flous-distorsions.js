@@ -42,12 +42,7 @@ Object.assign(FILTERS,{
  duotone:{name:'Bichromie',params:[P('hs','Teinte des ombres',0,360,1,235,'°'),P('hh','Teinte des hautes lumières',0,360,1,35,'°'),P('s','Saturation',0,100,1,70,' %'),P('k','Intensité',0,100,1,100,' %')],run:(s,p)=>{const A=hsl(p.hs,p.s/100,.2),B=hsl(p.hh,p.s/100,.78),k=p.k/100;return pixFilter(s,a=>{for(let i=0;i<a.length;i+=4){const l=luma(a,i)/255;for(let c=0;c<3;c++){const v=(A[c]+(B[c]-A[c])*l)*255;a[i+c]=a[i+c]*(1-k)+v*k}}})}}
 });
 
-/* les rayons s'adaptent à la résolution de la photo */
-const base=new WeakMap();
-const _fd=filterDialog;
-filterDialog=function(id){const F=FILTERS[id],d=S.doc;
-  if(F&&d){if(!base.has(F))base.set(F,F.params.map(q=>q.slice()));const k=Math.max(1,Math.max(d.w,d.h)/2400);F.params=base.get(F).map(q=>{q=q.slice();if(q[7]){q[3]=Math.round(q[3]*k);q[5]=Math.round(q[5]*k)}return q})}
-  return _fd(id)};
+/* rayons en pixels : filterDialog (0840) les adapte à la résolution de la photo */
 ['blur','pixelate'].forEach(k=>{const F=FILTERS[k];if(F)F.params[0][7]=true});
 FILTERS.unsharp.params[1][7]=true;
 

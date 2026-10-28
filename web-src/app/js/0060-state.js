@@ -20,5 +20,5 @@ function setDoc(src,name,opts={}){setCS(opts.space||(src._raw&&src._cs)||'srgb')
   if(opts.dev)Object.assign(S.doc.layers[1].dev,opts.dev);
   S.sample=!!opts.sample;S.meta=opts.meta||'';S.history=[];S.hi=-1;S.crop=null;S.cloneSrc=null;S.cloneOff=null;S.maxHist=clamp(Math.floor(HIST_BUDGET/(w*h*4)),3,40);AI.subjectCache=null;
   pushHistory(opts.raw?'Ouverture du RAW':'Ouverture');selChanged();markComp();fit(true);syncAll();$('#empty').hidden=true;updateDocName();if(S.tool==='crop')initCrop()}
-function updateDocName(){const d=S.doc;$('#docname').innerHTML=d?`<b>${esc(d.name)}</b> · ${d.w|0} × ${d.h|0}${S.meta?' · '+esc(S.meta):''}`:''}
+var updateDocName; /* défini dans 0530-prism-interface-brand-tooltips-command.js */
 

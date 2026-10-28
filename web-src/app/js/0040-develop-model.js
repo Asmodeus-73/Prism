@@ -9,16 +9,7 @@ function curveFn(pts){const p=pts.slice().sort((a,b)=>a[0]-b[0]),m=p.length,xs=p
   return x=>{if(x<=xs[0])return ys[0];if(x>=xs[m-1])return ys[m-1];let i=0;while(i<m-2&&x>xs[i+1])i++;const t=x-xs[i];return clamp(ys[i]+c1[i]*t+c2[i]*t*t+c3[i]*t*t*t,0,1)}}
 const isIdCurve=p=>p.length===2&&p[0][0]===0&&p[0][1]===0&&p[1][0]===1&&p[1][1]===1;
 const lutMap=new Map();
-function getLUTs(dv){const key=JSON.stringify([dv.temp,dv.tint,dv.exposure,dv.contrast,dv.highlights,dv.shadows,dv.whites,dv.blacks,dv.dehaze,dv.curve]);let r=lutMap.get(key);if(r)return r;
-  const t=dv.temp/100,ti=dv.tint/100;let g=[1+0.3*t,1-0.22*ti,1-0.3*t];const nrm=0.2126*g[0]+0.7152*g[1]+0.0722*g[2];g=g.map(v=>v/nrm);
-  const ev=Math.pow(2,dv.exposure),hl=dv.highlights/100,sh=dv.shadows/100,wh=dv.whites/100,bl=dv.blacks/100,dh=dv.dehaze/100,c=dv.contrast/100+dh*0.35,k=c>=0?1+c*1.5:1+c*0.65;
-  const mf=isIdCurve(dv.curve.rgb)?null:curveFn(dv.curve.rgb);
-  r=['r','g','b'].map((ch,ci)=>{const L=new Float32Array(4096),gain=g[ci]*ev,knee=gain>1?1-Math.min(0.3,(gain-1)*0.35):1,cf=isIdCurve(dv.curve[ch])?null:curveFn(dv.curve[ch]);
-    for(let i=0;i<4096;i++){let x=i/4095;if(dh>0)x=(x-0.1*dh)/(1-0.1*dh);else if(dh<0)x=x+(0.78-x)*(-dh)*0.35;if(x<0)x=0;x=Math.pow(Math.pow(x,2.2)*gain,1/2.2);
-      if(x>knee&&knee<1)x=knee+(1-knee)*(1-Math.exp(-(x-knee)/(1-knee)));if(x>1)x=1;
-      x+=sh*1.35*x*(1-x)*(1-x);x+=hl*1.35*x*x*(1-x);x+=wh*0.25*x*x*x;x+=bl*0.2*(1-x)*(1-x)*(1-x);x=clamp(x,0,1);
-      if(k!==1)x=x<0.5?0.5*Math.pow(2*x,k):1-0.5*Math.pow(2-2*x,k);if(mf)x=mf(x);if(cf)x=cf(x);L[i]=x}return L});
-  if(lutMap.size>24)lutMap.delete(lutMap.keys().next().value);lutMap.set(key,r);return r}
+var getLUTs; /* défini dans 0830-reglages-developper-panel.js */
 const HSL_C=[0,30,60,120,180,240,275,310];const hslMap=new Map();
 function getHSLT(dv){const key=dv.hslH.join()+'|'+dv.hslS.join()+'|'+dv.hslL.join();if(hslMap.has(key))return hslMap.get(key);let t=null;
   if(dv.hslH.some(v=>v)||dv.hslS.some(v=>v)||dv.hslL.some(v=>v)){const H=new Float32Array(360),Sa=new Float32Array(360),Lu=new Float32Array(360);

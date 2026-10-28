@@ -2,11 +2,7 @@
 const RAW_EXT=/\.(dng|cr2|cr3|crw|nef|nrw|arw|srf|sr2|raf|orf|rw2|pef|srw|3fr|iiq|erf|mef|mos|kdc|dcr|x3f|raw|rwl)$/i;
 function openFile(){$('#fileOpen').click()}
 function loadImageFile(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),im=new Image();im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{URL.revokeObjectURL(url);res(im)})};im.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('format'))};im.src=url})}
-async function decodeRaw(file){busy(true,'Développement du fichier RAW…',null);try{const mod=await import(asset('raw/index.js'));const raw=new mod.default();const buf=new Uint8Array(await file.arrayBuffer());
-    await raw.open(buf,{useCameraWb:true,outputBps:8,outputColor:1,userQual:3,noAutoBright:false});let meta={};try{meta=await raw.metadata()}catch(e){}const im=await raw.imageData();try{raw.dispose&&raw.dispose()}catch(e){}
-    const W=im.width,H=im.height,c=mk(W,H),g=cx(c),id=g.createImageData(W,H),s=im.data,col=im.colors||3;for(let i=0,j=0;i<W*H;i++,j+=col){id.data[i*4]=s[j];id.data[i*4+1]=s[j+1];id.data[i*4+2]=s[j+2];id.data[i*4+3]=255}g.putImageData(id,0,0);
-    const bits=[];const mk_=meta.camera_make||meta.make,md_=meta.camera_model||meta.model;if(mk_||md_)bits.push([mk_,md_].filter(Boolean).join(' ').trim());if(meta.iso_speed)bits.push('ISO '+Math.round(meta.iso_speed));if(meta.shutter)bits.push(meta.shutter>=1?meta.shutter+' s':'1/'+Math.round(1/meta.shutter)+' s');if(meta.aperture)bits.push('f/'+(+meta.aperture).toFixed(1));if(meta.focal_len)bits.push(Math.round(meta.focal_len)+' mm');
-    return{c,meta:bits.join(' · ')}}finally{busy(false)}}
+var decodeRaw; /* défini dans 0440-raw-16-bit-linear-development.js */
 async function openBlob(file,asLayer){try{if(!asLayer&&(/\.png$/i.test(file.name||'')||file.type==='image/png')&&await open16(file))return;if(/\.(psd|psb)$/i.test(file.name||'')&&!asLayer){await importPSD(file);return}if(/\.zip$/i.test(file.name||'')||file.type==='application/zip'){busy(true,'Lecture de l’archive…',null);try{await importZip(file)}finally{busy(false)}return}let src,meta='',isRaw=RAW_EXT.test(file.name||'');
     if(isRaw){const r=await decodeRaw(file);src=r.c;meta=r.meta}else{try{src=await loadImageFile(file)}catch(e){if(/\.(tif|tiff)$/i.test(file.name||'')){const r=await decodeRaw(file);src=r.c}else throw e}}
     if(asLayer&&S.doc)pasteClip(src.tagName==='IMG'?(()=>{const c=mk(src.naturalWidth,src.naturalHeight);cx(c).drawImage(src,0,0);return c})():src,(file.name||'Image').replace(/\.[^.]+$/,''));
