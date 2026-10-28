@@ -32,6 +32,8 @@ export type RestoreContext = {
   // Lets the caller handle messages (cancellation) between stages.
   yield?: () => Promise<void>;
   seed?: number;
+  // Prism: skin found by Prism's own AI model (area 'mask'), at the size of the source.
+  skin?: Mask8;
 };
 export type RestoreOutput = { image: RGBA8; overlay?: Mask8; affected?: Mask8 };
 type StageOut = { image: RGBA8; overlay?: Mask8; area?: Mask8 };
@@ -102,10 +104,13 @@ async function stage(e: RestoreEntry, img: RGBA8, ctx: RestoreContext, first: bo
       // "Selection only" smooths everywhere here: the stack's result is limited
       // by the selection at the end, and limiting it here too would apply a
       // feathered selection twice. The overlay still shows the selection.
-      const mask = area === 'auto' ? memo(`skin-mask:${sig}:${e.params.tolerance}`, () => skinMask(img, { tolerance: num(e, 'tolerance') })) : full();
-      const scale = area === 'auto' ? skinScale(mask) : Math.min(img.width, img.height) * 0.12;
+      // Prism: 'mask' takes the skin mask of Prism's AI model (ctx.skin) instead of the color-based detection.
+      const ai = area === 'mask' && ctx.skin && ctx.skin.width === img.width && ctx.skin.height === img.height ? ctx.skin : undefined;
+      const mask = ai ?? (area === 'auto' || area === 'mask' ? memo(`skin-mask:${sig}:${e.params.tolerance}`, () => skinMask(img, { tolerance: num(e, 'tolerance') })) : full());
+      const local = area === 'auto' || area === 'mask';
+      const scale = local ? skinScale(mask) : Math.min(img.width, img.height) * 0.12;
       const smooth = smoothSkin(img, { smoothness: num(e, 'smoothness'), detail: num(e, 'detail'), tone: num(e, 'tone'), scale });
-      return { image: area === 'auto' ? mixMask(img, smooth, mask) : smooth, overlay: area === 'selection' && ctx.selection ? ctx.selection : mask, area: mask };
+      return { image: local ? mixMask(img, smooth, mask) : smooth, overlay: area === 'selection' && ctx.selection ? ctx.selection : mask, area: mask };
     }
     case 'colorize': {
       const prior = str(e, 'source') === 'ai' && e.aux ? ctx.aux?.(e.aux) : undefined;

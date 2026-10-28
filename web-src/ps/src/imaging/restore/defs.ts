@@ -46,7 +46,7 @@ export const RESTORE_FILTERS: RestoreFilterDef[] = [
     description: 'Evens out skin while keeping pores and fine texture. Skin is found automatically, or limited to the selection.',
     overlay: 'Skin mask',
     params: [
-      sel('area', 'Skin Area', [['auto', 'Detect skin'], ['selection', 'Selection only'], ['all', 'Whole image']], 'auto'),
+      sel('area', 'Skin Area', [['auto', 'Detect skin'], ['mask', 'AI skin mask (Prism)'], ['selection', 'Selection only'], ['all', 'Whole image']], 'auto'),
       numP('smoothness', 'Smoothness', 0, 100, 50, '%'),
       numP('detail', 'Detail', 0, 100, 60, '%'),
       numP('tone', 'Even Tone', 0, 100, 30, '%'),

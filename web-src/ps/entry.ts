@@ -32,7 +32,7 @@ const ops: Record<string, (a: Args, report: Report) => any> = {
   deconvolve: (a, r) => deconvolve(a.img, a.o, prog(r)),
   contextFill: (a, r) => contextFill(a.img, a.hole, a.o || {}, prog(r)),
   restore: async (a, r) => {
-    const out = await runRestore(a.img, a.params, { scale: a.scale || 1, selection: a.selection, overlay: a.overlay, seed: 7 }, prog(r));
+    const out = await runRestore(a.img, a.params, { scale: a.scale || 1, selection: a.selection, overlay: a.overlay, skin: a.skin, seed: 7 }, prog(r));
     return { image: out.image, overlay: out.overlay };
   },
   transferStats: (a) => transferStats(a.img),
