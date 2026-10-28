@@ -1724,7 +1724,7 @@ async function openBlob(file,asLayer){try{if(!asLayer&&(/\.png$/i.test(file.name
     if(isRaw){const r=await decodeRaw(file);src=r.c;meta=r.meta}else{try{src=await loadImageFile(file)}catch(e){if(/\.(tif|tiff)$/i.test(file.name||'')){const r=await decodeRaw(file);src=r.c}else throw e}}
     if(asLayer&&S.doc)pasteClip(src.tagName==='IMG'?(()=>{const c=mk(src.naturalWidth,src.naturalHeight);cx(c).drawImage(src,0,0);return c})():src,(file.name||'Image').replace(/\.[^.]+$/,''));
     else{setDoc(src,file.name||'photo',{meta,raw:isRaw});if(isRaw&&RAWC&&RAWC.file===file)attachRaw(file,RAWC.set);toast((isRaw?'RAW développé : ':'Photo ouverte : ')+(file.name||'image collée'))}}
-  catch(e){if(e&&e.cancel)return;console.error(e);toast(RAW_EXT.test(file.name||'')?'Ce fichier RAW n’a pas pu être décodé ('+(e.message||e)+').':'Impossible de lire ce fichier ('+(e.message||'format inconnu')+'). Prism lit JPEG, HEIC, PNG, TIFF, WebP, AVIF, PSD, PDF, GIF, BMP, TGA, SVG et les RAW.',5000)}}
+  catch(e){if(e&&e.cancel)return;console.error(e);toast(RAW_EXT.test(file.name||'')?'Ce fichier RAW n’a pas pu être décodé ('+(e.message||e)+').':'Impossible de lire ce fichier ('+(e.message||'format inconnu')+'). Prism lit JPEG, HEIC, PNG, TIFF, WebP, AVIF, JPEG XL, JPEG 2000, PSD, PDF, GIF, BMP, TGA, SVG, QOI, PPM et les RAW.',5000)}}
 $('#fileProject').onchange=e=>{const f=e.target.files[0];if(f)openBlob(f,false);e.target.value=''};$('#bProjEmpty').onclick=projectsDialog;
 $('#fileOpen').onchange=e=>{const f=e.target.files[0];if(f)openBlob(f,false);e.target.value=''};$('#fileLayer').onchange=e=>{const f=e.target.files[0];if(f)openBlob(f,true);e.target.value=''};$('#bOpenEmpty').onclick=openFile;
 ['dragover','drop'].forEach(t=>document.addEventListener(t,e=>{if(!e.target.closest||!e.target.closest('input[type=file]'))e.preventDefault()}));let dragN=0;stage.addEventListener('dragenter',e=>{e.preventDefault();dragN++;$('#drop').hidden=false});stage.addEventListener('dragleave',()=>{if(--dragN<=0){dragN=0;$('#drop').hidden=true}});stage.addEventListener('dragover',e=>e.preventDefault());
@@ -3307,14 +3307,14 @@ document.addEventListener('contextmenu',e=>{const f=ctxFor(e.target);if(!f)retur
 function shortcutsDialog(){const tools=TOOLS.filter(Boolean).map(t=>`<tr><td>${esc(t[1])}</td><td><kbd>${t[2]}</kbd></td></tr>`).join('');
   const gen=[['Rechercher une commande',MOD+'K'],['Ouvrir',MOD+'O'],['Photothèque',MOD+'⇧O'],['Enregistrer',MOD+'S'],['Exporter',MOD+'⇧E'],['Annuler / rétablir',MOD+'Z  /  '+MOD+'⇧Z'],['Couper / copier / coller',MOD+'X / C / V'],['Tout sélectionner / désélectionner',MOD+'A  /  '+MOD+'D'],['Intervertir la sélection',MOD+'⇧I'],['Nouveau calque',MOD+'⌥N'],['Dupliquer le calque',MOD+'J'],['Fusionner avec le calque inférieur',MOD+'E'],['Ajuster à l’écran / 100 %',MOD+'0  /  '+MOD+'1'],['Zoom avant / arrière',MOD+'+  /  '+MOD+'−'],['Comparer avant / après','Y'],['Voir l’original (maintenir)','\\'],['Afficher le masque','⇧M'],['Réglages automatiques',MOD+'⇧L'],['Menu clic droit au clavier','⇧F10'],['Aller au menu','F10'],['Déplacer la vue','Espace + glisser'],['Masque rapide','Q'],['Inverser couleur de premier plan / arrière-plan','X'],['Taille du pinceau / dureté','[ ]  /  ⇧[ ]'],['Pinceau : ligne droite','⇧ + clic'],['Baguette : régler la tolérance en direct','Glisser après le clic'],['Lasso polygonal : fermer','Double-clic / Entrée'],['Transformation libre : valider / annuler','Entrée / Échap'],['Sélectionner plusieurs calques','Ctrl + clic  /  Maj + clic'],['Remettre un curseur à zéro','Double-clic'],['Saisir une valeur','Clic sur le chiffre'],['Aperçu rapide (photothèque)','Espace']].map(([a,b])=>`<tr><td>${esc(a)}</td><td><kbd>${esc(b)}</kbd></td></tr>`).join('');
   const dl=dialog({title:'Raccourcis clavier',body:`<div class="keys"><table><caption>Général</caption>${gen}</table><table><caption>Outils</caption>${tools}</table></div>`,buttons:[{label:'Fermer',primary:true}]});dl.classList.add('wide')}
-function formatsDialog(){dialog({title:'Formats pris en charge',body:`<table class="fmts"><tr><th>Ouvrir</th><td>JPEG, HEIC / HEIF, PNG 8 et 16 bits, TIFF 8, 16 et 32 bits (LZW, ZIP, CMJN), WebP, AVIF, PSD / PSB, PDF, GIF, BMP, TGA, SVG, ICO et les RAW de tous les grands fabricants (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2…)</td></tr><tr><th>Exporter</th><td>JPEG (4:4:4), PNG 8 et 16 bits, TIFF 8 et 16 bits, WebP, AVIF 8 et 10 bits, PSD avec calques, PDF, GIF, BMP, TGA, ICO</td></tr><tr><th>Projet</th><td>.zip Prism (tous les calques, masques et réglages)</td></tr></table><p class="muted">Profils couleur et données de prise de vue (EXIF) conservés. Jusqu’à 120 Mpx sur ordinateur, 16,7 Mpx sur iPhone et iPad (limite de Safari).</p>`,buttons:[{label:'Fermer',primary:true}]})}
+function formatsDialog(){dialog({title:'Formats pris en charge',body:`<table class="fmts"><tr><th>Ouvrir</th><td>JPEG, HEIC / HEIF, PNG 8 et 16 bits, TIFF 8, 16 et 32 bits (LZW, ZIP, CMJN), WebP, AVIF, JPEG XL, JPEG 2000, PSD / PSB, PDF, GIF, BMP, TGA, SVG, ICO, QOI, PPM / PGM / PAM et les RAW de tous les grands fabricants (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2…)</td></tr><tr><th>Animé</th><td>Motion Photos (Google, Samsung), Live Photos (la photo et sa vidéo ouvertes ensemble), GIF et PNG animés : Image > Photo animée…</td></tr><tr><th>Exporter</th><td>JPEG (4:4:4), PNG 8 et 16 bits, TIFF 8 et 16 bits, WebP, AVIF 8 et 10 bits, PSD avec calques, PDF, GIF, BMP, TGA, ICO</td></tr><tr><th>Projet</th><td>.zip Prism (tous les calques, masques et réglages)</td></tr></table><p class="muted">Profils couleur et données de prise de vue (EXIF) conservés. Jusqu’à 120 Mpx sur ordinateur, 16,7 Mpx sur iPhone et iPad (limite de Safari).</p>`,buttons:[{label:'Fermer',primary:true}]})}
 function aboutDialog(){dialog({title:'À propos de Prism',body:`<div class="about">${PRISM_LOGO}<div><b>Prism</b><p class="muted">Retouche photo dans le navigateur : RAW 16 bits, calques et masques, réglages non destructifs, outils IA sur l’appareil, photothèque et export dans tous les formats courants.</p></div></div>
   <details class="credits" style="margin-top:12px;font-size:12px"><summary style="cursor:pointer">Logiciels et modèles intégrés</summary><ul class="muted" style="margin:6px 0 0;padding-left:18px;line-height:1.55">
   <li>ONNX Runtime (MIT), TensorFlow.js (Apache 2.0)</li><li>LibRaw (LGPL 2.1 / CDDL 1.0), Little CMS (MIT), libheif (LGPL 3), pdf.js (Apache 2.0), ag-psd (MIT), encodeur AVIF libavif/aom (BSD)</li>
   <li>Détourage : ISNet, DIS (Apache 2.0) · Scènes : DeepLabv3+ ADE20K, TensorFlow Models (Apache 2.0) · Personnes : MediaPipe Selfie Multiclass (Apache 2.0)</li>
   <li>Débruitage : SCUNet (Apache 2.0) · Suppression d’objet : LaMa (Apache 2.0) · Sélection d’objet : Segment Anything ViT-B, Meta AI (Apache 2.0) · Agrandissement : Real-ESRGAN (BSD 3 clauses)</li>
   <li>Profils d’objectif : base lensfun (CC BY-SA 3.0, lensfun.github.io)</li>
-  <li>Remplissage d’après le contenu, débruitage rapide, netteté des détails, restauration, ciel, mise à l’échelle selon le contenu : algorithmes de Photo Studio, Puter (MIT)</li></ul></details>`,buttons:[{label:'Fermer',primary:true}]})}
+  <li>Remplissage d’après le contenu, débruitage rapide, netteté des détails, restauration, ciel, mise à l’échelle selon le contenu, GIF et PNG animés : algorithmes de Photo Studio, Puter (MIT), pako (MIT)</li><li>JPEG XL : jxl-oxide (MIT / Apache 2.0)</li></ul></details>`,buttons:[{label:'Fermer',primary:true}]})}
 document.addEventListener('keydown',e=>{const t=e.target;if(t.closest&&t.closest('input,textarea,select,[contenteditable]'))return;if(e.key==='?'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();shortcutsDialog()}
   if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&(e.key==='x'||e.key==='X')&&S.doc&&S.doc.sel){e.preventDefault();cutSel()}});
 /* dialogs keep focus inside, and their first field gets focus */
@@ -11373,6 +11373,13 @@ PSX.run=(op,args,o={})=>{let w=null,done=false,rej=null;const id=++PSX.jobs;
     try{w.postMessage({id,op,args},o.copy?[]:psTransfer(args))}catch(e){done=true;try{w.terminate()}catch(x){}rj(e)}});
   return{promise,cancel(){if(done)return;done=true;if(w){try{w.terminate()}catch(e){}}if(rej)rej(Object.assign(new Error('annulé'),{code:'cancelled'}))}}};
 PSX.cancelled=e=>e&&e.code==='cancelled';
+/* calcul long en cours : bouton Annuler sous la barre de progression, et Échap */
+PSX.cur=null;
+PSX.track=j=>{PSX.cur=j;const box=document.querySelector('#busy>div');if(!box)return j;let e=box.querySelector('.ps-cancel');
+  if(!e){e=document.createElement('button');e.className='btn sm ps-cancel';e.textContent='Annuler';e.style.marginTop='10px';box.appendChild(e)}
+  e.disabled=false;e.textContent='Annuler';e.onclick=()=>{e.disabled=true;e.textContent='Annulation…';j.cancel()};return j};
+PSX.untrack=j=>{if(j&&PSX.cur!==j)return;PSX.cur=null;const e=document.querySelector('#busy .ps-cancel');if(e)e.remove()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&PSX.cur){e.preventDefault();e.stopPropagation();PSX.cur.cancel()}},true);
 
 /* ---------- conversions ---------- */
 PSX.img=(c,x=0,y=0,w=c.width,h=c.height)=>{const id=rx(c).getImageData(x,y,w,h);return{width:w,height:h,data:id.data}};
@@ -11407,7 +11414,7 @@ PSX.read=(def,el,p)=>{def.params.forEach(q=>{const k=q[0],i=$('#ps-'+k,el);if(!i
 PSX.target=()=>{const d=S.doc;if(!d)return null;if(maskTarget()){toast('Ce réglage s’applique à la photo, pas au masque : choisissez le calque de photo');return null}
   const L=pixelTarget();if(!L){toast('Aucun calque de pixels à modifier');return null}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return null}return L};
 /* calcule le filtre id sur un canvas, en arrière-plan ; résultat : canvas (null si annulé) */
-PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null;const[op,args]=F.job(PSX.img(src),p,sc,sel);
+PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null,jb=F.job(PSX.img(src),p,sc,sel);if(!jb)return Promise.reject(new Error(F.needs||'rien à calculer'));const[op,args]=jb;
   const j=PSX.run(op,args,{onProgress:o.onProgress});o.onJob&&o.onJob(j);return j.promise.then(r=>PSX.canvas(r&&r.image?r.image:r))};
 PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target();if(!L)return;
   const p={...(F.last||{})};F.params.forEach(q=>{if(p[q[0]]==null)p[q[0]]=q[5]});
@@ -11429,14 +11436,14 @@ PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target(
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();PSX.apply(id,d,L,orig,{...p})}}]})};
 PSX.apply=async(id,d,L,orig,p)=>{const F=FILTERS[id];F.last={...p};busy(true,F.name+'…',0);let j=null;
-  try{const r=await PSX.compute(id,orig,p,{onProgress:f=>busy(true,F.name+'…',f),onJob:x=>j=x});
+  try{const r=await PSX.compute(id,orig,p,{onProgress:f=>busy(true,F.name+'…',f),onJob:x=>PSX.track(j=x)});
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');markComp();return}
     PSX.rec(id,p);applyMasked(L,r,F.name)}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast(F.name+' impossible : '+(e.message||e),4000)}markComp()}
-  finally{busy(false)}};
+  finally{PSX.untrack(j);busy(false)}};
 /* un filtre de plus : utilisable dans les actions et les effets modifiables (calcul direct), avec la fenêtre ci-dessus */
 PSX.filter=(id,def)=>{const F=Object.assign({preview:'scale'},def);
-  F.run=(s,p)=>{const q={...p};F.params.forEach(x=>{if(q[x[0]]==null)q[x[0]]=x[5]});PSX.rec(id,q);const[op,args]=F.job(PSX.img(s),q,1,null);const r=PSX.sync(op,args);
+  F.run=(s,p)=>{const q={...p};F.params.forEach(x=>{if(q[x[0]]==null)q[x[0]]=x[5]});PSX.rec(id,q);const jb=F.job(PSX.img(s),q,1,null);if(!jb)return cloneC(s);/* ce qu'il faut n'existe plus (masque retiré…) : effet sans action */const[op,args]=jb;const r=PSX.sync(op,args);
     if(r&&typeof r.then==='function')throw new Error(F.name+' : calcul asynchrone, utilisez le menu');return PSX.canvas(r&&r.image?r.image:r)};
   FILTERS[id]=F;return F};
 {const _fd=filterDialog;filterDialog=function(id){const F=FILTERS[id];if(F&&F.job)return PSX.dialog(id);return _fd.apply(this,arguments)}}
@@ -11461,7 +11468,8 @@ PSX.filter('levels',{name:'Niveaux',
   onInput:(k,p,el)=>{p.lv=p.lv||{};const ch=LV_CH[p.ch|0],keys=['inBlack','gamma','inWhite','outBlack','outWhite'];
     if(k==='ch'){const v=p.lv[ch]||lv();keys.forEach(x=>{p[x]=v[x];const i=$('#ps-'+x,el);if(i){i.value=v[x];const o=$('#ps-'+x+'-o',el);if(o)o.textContent=fmtN(v[x],+i.step)}})}
     else{const v={...(p.lv[ch]||lv())};keys.forEach(x=>v[x]=p[x]);if(v.inWhite<=v.inBlack+2)v.inWhite=v.inBlack+2;p.lv={...p.lv,[ch]:v}}},
-  job:(img,p)=>{const L={rgb:lv(),r:lv(),g:lv(),b:lv(),...(p.lv||{})};if(!p.lv){L[LV_CH[p.ch|0]]=lv(p.inBlack,Math.max(p.inBlack+2,p.inWhite),p.gamma,p.outBlack,p.outWhite)}return adj(img,'levels',L)}});
+  /* les curseurs affichés valent pour le canal choisi (aussi quand l'effet est modifié plus tard, où seuls les curseurs changent) */
+  job:(img,p)=>{const L={rgb:lv(),r:lv(),g:lv(),b:lv(),...(p.lv||{})};L[LV_CH[p.ch|0]]=lv(p.inBlack,Math.max(p.inBlack+2,p.inWhite),p.gamma,p.outBlack,p.outWhite);return adj(img,'levels',L)}});
 
 /* Mélangeur de couches : chaque couche de sortie est un mélange des trois couches d'entrée */
 const MX=[['r','Rouge'],['g','Vert'],['b','Bleu']],MXK={r:'red',g:'green',b:'blue'};
@@ -11480,7 +11488,7 @@ PSX.filter('selcolor',{name:'Correction sélective',
   onInput:(k,p,el)=>{p.sc=p.sc||{};const r=SC[p.range|0],keys=['cyan','magenta','yellow','black'];
     if(k==='range'){const v=p.sc[r]||cmyk();keys.forEach(x=>{p[x]=v[x];const i=$('#ps-'+x,el);if(i){i.value=v[x];const o=$('#ps-'+x+'-o',el);if(o)o.textContent=v[x]+' %'}})}
     else if(keys.includes(k)){const v={};keys.forEach(x=>v[x]=p[x]);p.sc={...p.sc,[r]:v}}},
-  job:(img,p)=>{const ranges={};SC.forEach(n=>ranges[n]={...cmyk(),...((p.sc||{})[n]||{})});if(!p.sc)ranges[SC[p.range|0]]={cyan:p.cyan,magenta:p.magenta,yellow:p.yellow,black:p.black};
+  job:(img,p)=>{const ranges={};SC.forEach(n=>ranges[n]={...cmyk(),...((p.sc||{})[n]||{})});ranges[SC[p.range|0]]={cyan:p.cyan,magenta:p.magenta,yellow:p.yellow,black:p.black};
     return adj(img,'selective-color',{ranges,method:p.method?'absolute':'relative'})}});
 
 /* Filtre photo : la teinte d'un filtre posé devant l'objectif */
@@ -11526,7 +11534,6 @@ const fillC=(w,h,col)=>{const c=mk(w,h),g=cx(c);g.fillStyle=col;g.fillRect(0,0,w
 const docOK=()=>S.doc?false:NODOC;
 
 /* ---------- Calque > Harmoniser avec le dessous… : le calque prend la lumière et la dominante de ce qu'il recouvre ---------- */
-let HZ=null;/* {img, mask} : ce qu'il y a sous le calque, autour de lui (mesuré à l'ouverture de la fenêtre) */
 async function harmonizeOpen(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;const i=d.layers.indexOf(L);
   if(i<1){toast('Il n’y a rien sous ce calque : placez-le au-dessus de la photo');return}
   const b=maskBBox(L.canvas);if(!b){toast('Ce calque est vide');return}
@@ -11534,13 +11541,16 @@ async function harmonizeOpen(){const d=S.doc;if(!d)return;const L=PSX.target();i
   try{const k=Math.min(1,1200/Math.max(d.w,d.h)),below=await renderDoc(k,{upto:i});
     /* la zone à imiter : le cadre du calque élargi d'un quart de chaque côté */
     const mx=(b.x1-b.x0)*.25,my=(b.y1-b.y0)*.25,x0=Math.max(0,(b.x0-mx)*k|0),y0=Math.max(0,(b.y0-my)*k|0),x1=Math.min(below.width,Math.ceil((b.x1+mx)*k)),y1=Math.min(below.height,Math.ceil((b.y1+my)*k));
-    HZ={img:PSX.img(below,x0,y0,Math.max(1,x1-x0),Math.max(1,y1-y0))}}
+    await PSX.load();const ts=PSI.run('labStats',{img:PSX.img(below,x0,y0,Math.max(1,x1-x0),Math.max(1,y1-y0))});
+    FILTERS.harmonize.last={...(FILTERS.harmonize.last||{}),ts}}
   catch(e){console.error(e);toast('Analyse impossible : '+(e.message||e),4000);return}finally{busy(false)}
   filterDialog('harmonize')}
 PSX.filter('harmonize',{name:'Harmoniser avec le dessous',
   note:'Le calque prend la lumière et la dominante de couleur de ce qu’il recouvre, pour un montage plus crédible.',
   params:[['strength','Intensité',0,100,1,100,' %'],['luminance','Luminosité et contraste',0,100,1,50,' %'],['color','Couleur',0,100,1,35,' %']],
-  job:(img,p)=>{if(!HZ)throw new Error('ouvrez Calque > Harmoniser avec le dessous');return['harmonize',{img,target:{...HZ.img,data:HZ.img.data.slice()},o:{strength:p.strength,luminance:p.luminance,color:p.color}}]}});
+    needs:'ouvrez Calque > Harmoniser avec le dessous',
+  /* p.ts : la lumière et la couleur du dessous, mesurées à l'ouverture et gardées avec l'effet modifiable */
+  job:(img,p)=>p.ts?['harmonize',{img,targetStats:p.ts,o:{strength:p.strength,luminance:p.luminance,color:p.color}}]:null});
 
 /* ---------- Image > Remplacer le ciel… ---------- */
 const SKY_FR={clear:'Bleu dégagé',fair:'Beau temps',scattered:'Nuages épars',sunset:'Coucher de soleil',dusk:'Heure bleue',storm:'Orage',overcast:'Ciel couvert'};
@@ -11582,20 +11592,22 @@ async function skyOpen(){const d=S.doc;if(!d)return;await PSX.load();let mc=d.se
           try{const bm=await createImageBitmap(f),kk=Math.min(1,2400/bm.width),c=mk(bm.width*kk,bm.height*kk);cx(c).drawImage(bm,0,0,c.width,c.height);custom=PSX.img(c);st.preset=7;draw()}catch(err){toast('Photo illisible');e.target.value=st.preset}};inp.click()};
       draw()},
     buttons:[{label:'Annuler',onClick:()=>clearTimeout(tmr)},{label:'Remplacer',primary:true,onClick:()=>{clearTimeout(tmr);Object.assign(SKYST,st,{preset:st.preset===7?1:st.preset});skyApply(d,full,horizon,st,custom)}}]})}
-async function skyApply(d,full,horizon,st,custom){const W=d.w,H=d.h;busy(true,'Remplacement du ciel…',0);
+async function skyApply(d,full,horizon,st,custom){const W=d.w,H=d.h;busy(true,'Remplacement du ciel…',0);let j=null;const T=x=>(j=PSX.track(x)).promise;
   try{const id=st.preset===7&&custom?'custom':SKY_IDS[st.preset===7?1:st.preset],sw=Math.min(2400,W),sh=Math.max(16,Math.round(sw*Math.max(horizon,H*.3)/W));
-    const base=id==='custom'?custom:await PSX.run('skyRender',{preset:id,width:sw,height:sh,seed:7}).promise;busy(true,'Remplacement du ciel…',.3);
-    const sky=await PSX.run('skyLayer',{sky:base,width:W,height:H,placement:{scale:st.scale/100,flip:st.flip,offsetX:st.offsetX/100,offsetY:st.offsetY/100},horizon,brightness:st.brightness,temperature:st.temperature},{copy:true}).promise;busy(true,'Remplacement du ciel…',.6);
-    const m=await PSX.run('skyMask',{mask:full,shift:st.shift,fade:st.fade},{copy:true}).promise;busy(true,'Remplacement du ciel…',.8);
+    const base=id==='custom'?custom:await T(PSX.run('skyRender',{preset:id,width:sw,height:sh,seed:7}));busy(true,'Remplacement du ciel…',.3);
+    const sky=await T(PSX.run('skyLayer',{sky:base,width:W,height:H,placement:{scale:st.scale/100,flip:st.flip,offsetX:st.offsetX/100,offsetY:st.offsetY/100},horizon,brightness:st.brightness,temperature:st.temperature},{copy:true}));busy(true,'Remplacement du ciel…',.6);
+    const m=await T(PSX.run('skyMask',{mask:full,shift:st.shift,fade:st.fade},{copy:true}));busy(true,'Remplacement du ciel…',.8);
     const light=PSI.run('skyLight',{sky,mask:m,horizon}),fg=PSI.run('foregroundLight',{mask:m,horizon});
     if(S.doc!==d){toast('La photo a changé : ciel non remplacé');return}
     const col=hex(light),fgC=PSX.maskCanvas(fg),grp={id:'g'+uid8(),name:'Remplacement du ciel'};
     const Ll=newPixel('Éclairage du ciel',fillC(W,H,col));Ll.mask=fgC;Ll.blend=st.mode?'screen':'multiply';Ll.opacity=st.lighting/100*.6;Ll.grp={...grp};
     const Lc=newPixel('Couleur du ciel',fillC(W,H,col));Lc.mask=cloneC(fgC);Lc.blend='color';Lc.opacity=st.color/100*.4;Lc.grp={...grp};
     const Ls=newPixel('Ciel',PSX.canvas(sky));Ls.mask=PSX.maskCanvas(m);Ls.grp={...grp};
-    d.layers.push(Ll,Lc,Ls);d.active=d.layers.length-1;markComp();pushHistory('Remplacer le ciel');syncAll()}
+    /* au-dessus de la photo, mais sous les calques de réglage du haut : le ciel reçoit le même rendu que le reste */
+    let at=d.layers.length;while(at>0&&d.layers[at-1].kind==='adjust')at--;
+    d.layers.splice(at,0,Ll,Lc,Ls);d.active=at+2;markComp();pushHistory('Remplacer le ciel');syncAll()}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast('Remplacement du ciel impossible : '+(e.message||e),4000)}}
-  finally{busy(false)}}
+  finally{PSX.untrack(j);busy(false)}}
 
 /* ---------- Image > Mise à l'échelle selon le contenu… : change le format en retirant ou doublant des « coutures » peu visibles ---------- */
 function seamOpen(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;let lock=false;
@@ -11611,18 +11623,18 @@ function seamOpen(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return
     buttons:[{label:'Annuler'},{label:'Appliquer',primary:true,onClick:el=>{const w=clamp(Math.round(+$('#cs-w',el).value||0),16,30000),h=clamp(Math.round(+$('#cs-h',el).value||0),16,30000);
       if(w===d.w&&h===d.h){toast('Choisissez une autre taille');return false}if(w*h>MAX_PX){toast('Taille trop grande pour ce navigateur');return false}
       seamApply(d,L,w,h,$('#cs-p',el).value,+$('#cs-a',el).value/100)}}]})}
-async function seamApply(d,L,w,h,prot,amount){const orig=L.canvas,NAME='Mise à l’échelle selon le contenu';
+async function seamApply(d,L,w,h,prot,amount){const orig=L.canvas,NAME='Mise à l’échelle selon le contenu';let j=null;
   try{let protect=null,skin=false;
     if(prot==='subj'){const m=AI.subjectMask?await AI.subjectMask():null;if(m)protect=PSX.mask(m,d.w,d.h);else toast('Pas de sujet trouvé : rien n’est protégé',3500)}
     else if(prot==='sel'&&d.sel)protect=PSX.mask(d.sel,d.w,d.h);else if(prot==='skin')skin=true;
     busy(true,NAME+'…',0);
-    const r=await PSX.run('seamScale',{img:PSX.img(orig),width:w,height:h,amount,protect,skin},{onProgress:f=>busy(true,NAME+'…',f)}).promise;
+    j=PSX.track(PSX.run('seamScale',{img:PSX.img(orig),width:w,height:h,amount,protect,skin},{onProgress:f=>busy(true,NAME+'…',f)}));const r=await j.promise;
     if(!PSX.alive(d,L)||L.canvas!==orig||d.w!==orig.width){toast('La photo a changé pendant le calcul : rien n’a été modifié');return}
     const out=PSX.canvas(r);resizeDoc(w,h,NAME);
     /* le calque traité reçoit le résultat des coutures (les autres ont été redimensionnés normalement) ; une seule étape d'historique */
     if(PSX.alive(d,L)){L.canvas=out;delete L.hi;S.history[S.hi]=snap(NAME);markComp();scheduleSave();syncAll()}}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast(NAME+' impossible : '+(e.message||e),4000)}}
-  finally{busy(false)}}
+  finally{PSX.untrack(j);busy(false)}}
 
 /* ---------- Sélection > Zones nettes… : sélectionne ce qui est au point ---------- */
 async function focusOpen(){const d=S.doc;if(!d)return;await PSX.load();const flatC=flatSync(),sm=PSX.small(flatC,1000),img=PSX.img(sm.c);
@@ -11639,7 +11651,8 @@ async function focusOpen(){const d=S.doc;if(!d)return;await PSX.load();const fla
 PSX.filter('decontam',{name:'Nettoyer les franges de couleur',
   note:'Pour un calque détouré : les bords prennent la couleur du sujet au lieu de celle de l’ancien fond. Utilise le masque du calque (ou la sélection).',
   params:[['amount','Intensité',0,100,1,80,' %']],
-  job:(img,p)=>{const d=S.doc,L=pixelTarget(),src=(L&&L.mask)||(d&&d.sel);if(!src)throw new Error('ajoutez d’abord un masque au calque ou faites une sélection');
+  needs:'ajoutez d’abord un masque au calque ou faites une sélection',
+  job:(img,p)=>{const d=S.doc,L=pixelTarget(),src=(L&&L.mask)||(d&&d.sel);if(!src)return null;
     return['decontaminate',{img,mask:PSX.mask(src,img.width,img.height),amount:p.amount/100}]}});
 
 /* ---------- Image > Looks et LUT > Exporter une LUT .cube… : les calques de réglage globaux visibles, en table de couleurs ---------- */
@@ -11707,12 +11720,12 @@ function contentFillDialog(){const d=S.doc;if(!d)return;if(!d.sel){toast('Sélec
 async function contentFill(d,L,b,p){const W=d.w,H=d.h,hw=b.x1-b.x0,hh=b.y1-b.y0,m=Math.max(80,Math.round(Math.max(hw,hh)*1.2));
   const x0=Math.max(0,b.x0-m),y0=Math.max(0,b.y0-m),x1=Math.min(W,b.x1+m),y1=Math.min(H,b.y1+m),w=x1-x0,h=y1-y0;
   const orig=L.canvas,img=PSX.img(orig,x0,y0,w,h),hole=PSX.mask(d.sel,w,h,x0,y0);
-  busy(true,'Remplissage d’après le contenu…',0);
-  try{const r=await PSX.run('contextFill',{img,hole,o:{colorAdaptation:CF_COL[p.col],rotationAdaptation:CF_ROT[p.rot],scale:!!p.scale,mirror:!!p.mirror}},{onProgress:f=>busy(true,'Remplissage d’après le contenu…',f)}).promise;
+  busy(true,'Remplissage d’après le contenu…',0);let j=null;
+  try{const r=await (j=PSX.track(PSX.run('contextFill',{img,hole,o:{colorAdaptation:CF_COL[p.col],rotationAdaptation:CF_ROT[p.rot],scale:!!p.scale,mirror:!!p.mirror}},{onProgress:f=>busy(true,'Remplissage d’après le contenu…',f)}))).promise;
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');return}
     const out=cloneC(orig);cx(out).drawImage(PSX.canvas(r),x0,y0);applyMasked(L,out,'Remplir d’après le contenu')}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast('Remplissage impossible : '+(e.message||e),4000)}}
-  finally{busy(false)}}
+  finally{PSX.untrack(j);busy(false)}}
 PSX.contentFill=contentFill;
 PSX.addToMenu('edit',null,()=>[MI('Remplir d’après le contenu…',{icon:'fill',dis:!S.doc?NODOC:!S.doc.sel?'Faites d’abord une sélection':false,fn:contentFillDialog})],/^Effacer le contenu/);
 
@@ -11745,6 +11758,187 @@ PSX.filter('shhl',{name:'Ombres et hautes lumières',
   job:(img,p,sc)=>['shadowsHighlights',{img,p:{...p},scale:sc}]});
 
 PSX.addToMenu('filter','Netteté et bruit',()=>[MI('Netteté des détails…',{dis:S.doc?false:NODOC,fn:()=>filterDialog('sharpdet')}),MI('Débruitage rapide…',{dis:S.doc?false:NODOC,fn:()=>filterDialog('nlmeans')})]);
+
+}
+
+/* ===== feat: feat/ps_media.js ===== */
+{
+/* ===== Photos animées et formats en plus.
+   - Motion Photos (Google Pixel, Samsung et autres Android : la vidéo est rangée à la fin du JPEG ou du HEIC),
+     Live Photos d'iPhone (photo + .MOV du même nom ouverts ensemble), GIF et PNG animés :
+     Image > Photo animée… pour lire, garder une autre image, tout mettre en calques, enregistrer la vidéo ou un GIF.
+   - JPEG XL (décodeur jxl-oxide quand le navigateur ne le lit pas), JPEG 2000 (décodeur de pdf.js), QOI, PPM / PGM / PBM / PAM.
+   Écrit d'après les spécifications publiques : format Motion Photo de Google (XMP Container), QOI, APNG, ISO BMFF. ===== */
+const PSX=window.PSX;
+const MOT={files:[]};
+const ascii=(u8,o,n)=>{let s='';for(let i=0;i<n&&o+i<u8.length;i++)s+=String.fromCharCode(u8[o+i]);return s};
+const be32=(u8,o)=>((u8[o]<<24)>>>0)+(u8[o+1]<<16)+(u8[o+2]<<8)+u8[o+3];
+const base=n=>String(n||'').replace(/\.[^.]+$/,'').toLowerCase();
+const isVideoFile=f=>/^video\//.test(f.type)||/\.(mov|mp4|m4v|qt)$/i.test(f.name||'');
+
+/* ---------- formats ---------- */
+function sniffMore(u8,name){const n=(name||'').toLowerCase();
+  if(ascii(u8,0,4)==='qoif')return'qoi';
+  if((u8[0]===0xFF&&u8[1]===0x0A)||(be32(u8,0)===12&&ascii(u8,4,4)==='JXL '))return'jxl';
+  if((be32(u8,0)===12&&ascii(u8,4,4)==='jP  ')||(u8[0]===0xFF&&u8[1]===0x4F&&u8[2]===0xFF&&u8[3]===0x51))return'jpx';
+  if(u8[0]===0x50&&u8[1]>=0x31&&u8[1]<=0x37&&(u8[2]===10||u8[2]===13||u8[2]===32||u8[2]===9)&&/\.(p[bgpn]m|pam)$/.test(n))return'pnm';
+  return''}
+/* QOI (qoiformat.org) : en-tête de 14 octets, puis six codes d'une couleur à la suivante */
+function decodeQOI(u8){if(ascii(u8,0,4)!=='qoif')throw new Error('QOI invalide');const w=be32(u8,4),h=be32(u8,8);if(!w||!h||w*h>MAX_PX)throw new Error('taille QOI invalide');
+  const out=new Uint8ClampedArray(w*h*4),idx=new Uint8Array(256);let r=0,g=0,b=0,a=255,p=14,run=0;const end=u8.length-8;
+  for(let o=0;o<out.length;o+=4){
+    if(run>0)run--;
+    else if(p<end){const c=u8[p++];
+      if(c===0xFE){r=u8[p++];g=u8[p++];b=u8[p++]}
+      else if(c===0xFF){r=u8[p++];g=u8[p++];b=u8[p++];a=u8[p++]}
+      else if((c>>6)===0){const k=(c&63)*4;r=idx[k];g=idx[k+1];b=idx[k+2];a=idx[k+3]}
+      else if((c>>6)===1){r=(r+((c>>4)&3)-2)&255;g=(g+((c>>2)&3)-2)&255;b=(b+(c&3)-2)&255}
+      else if((c>>6)===2){const c2=u8[p++],dg=(c&63)-32;r=(r+dg-8+((c2>>4)&15))&255;g=(g+dg)&255;b=(b+dg-8+(c2&15))&255}
+      else run=c&63}
+    const k=((r*3+g*5+b*7+a*11)%64)*4;idx[k]=r;idx[k+1]=g;idx[k+2]=b;idx[k+3]=a;
+    out[o]=r;out[o+1]=g;out[o+2]=b;out[o+3]=a}
+  const c=mk(w,h);rx(c).putImageData(new ImageData(out,w,h),0,0);return c}
+/* JPEG XL : jxl-oxide (MIT / Apache 2.0), chargé seulement quand le navigateur ne lit pas le fichier lui-même */
+let jxlMod=null;
+async function decodeJXL(file){busy(true,'Lecture du JPEG XL…',null);
+  try{if(!jxlMod){const m=await import(asset('jxl/jxl_oxide_wasm.js'));await m.default({module_or_path:asset('jxl/jxl_oxide_wasm_bg.wasm')});jxlMod=m}
+    const im=new jxlMod.JxlImage();try{im.feedBytes(new Uint8Array(await file.arrayBuffer()));if(!im.tryInit())throw new Error('fichier JPEG XL incomplet');im.forceSrgb=true;
+      const r=im.render();const png=r.encodeToPng();/* encodeToPng libère le résultat */
+      const bm=await createImageBitmap(new Blob([png],{type:'image/png'})),c=mk(bm.width,bm.height);cx(c).drawImage(bm,0,0);bm.close&&bm.close();FMT.info.set(c,{meta:'JPEG XL'+(im.animated?' (première image)':'')});return c}
+    finally{im.free()}}
+  finally{busy(false)}}
+/* JPEG 2000 (.jp2, .j2k) : l'image est glissée dans un PDF d'une page que pdf.js (déjà dans Prism) décode avec OpenJPEG */
+function jpxSize(u8){for(let i=0;i+20<u8.length&&i<1<<20;i++)if(u8[i]===0xFF&&u8[i+1]===0x4F&&u8[i+2]===0xFF&&u8[i+3]===0x51){const o=i+8;return{w:be32(u8,o)-be32(u8,o+8),h:be32(u8,o+4)-be32(u8,o+12)}}return null}
+function jpxPDF(u8,w,h){const enc=new TextEncoder(),parts=[],offs=[];let len=0;const put=x=>{const b=typeof x==='string'?enc.encode(x):x;parts.push(b);len+=b.length};
+  const obj=(n,s)=>{offs[n]=len;put(n+' 0 obj\n');if(typeof s==='string')put(s+'\nendobj\n');else{s();put('\nendobj\n')}};
+  const content=`q ${w} 0 0 ${h} 0 0 cm /Im0 Do Q`;
+  put('%PDF-1.5\n');obj(1,'<< /Type /Catalog /Pages 2 0 R >>');obj(2,'<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  obj(3,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`);
+  obj(4,()=>{put(`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /Filter /JPXDecode /Length ${u8.length} >>\nstream\n`);put(u8);put('\nendstream')});
+  obj(5,`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+  const x=len;put('xref\n0 6\n0000000000 65535 f \n'+[1,2,3,4,5].map(n=>String(offs[n]).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n'+x+'\n%%EOF\n');
+  const out=new Uint8Array(len);let o=0;for(const b of parts){out.set(b,o);o+=b.length}return out}
+async function decodeJPX(file){const u8=new Uint8Array(await file.arrayBuffer()),sz=jpxSize(u8);if(!sz||!(sz.w>0&&sz.h>0))throw new Error('JPEG 2000 invalide');if(sz.w*sz.h>MAX_PX)throw new Error('image trop grande');
+  busy(true,'Lecture du JPEG 2000…',null);let doc;
+  try{if(!FMT.pdf){FMT.pdf=await import(asset('pdf/pdf.min.js'));FMT.pdf.GlobalWorkerOptions.workerSrc=asset('pdf/pdf.worker.min.js')}
+    doc=await FMT.pdf.getDocument({data:jpxPDF(u8,sz.w,sz.h),wasmUrl:asset('pdf/wasm/'),isEvalSupported:false}).promise;
+    const page=await doc.getPage(1),vp=page.getViewport({scale:1}),c=mk(sz.w,sz.h),g=cx(c);g.fillStyle='#fff';g.fillRect(0,0,sz.w,sz.h);
+    await page.render({canvasContext:g,canvas:c,viewport:vp}).promise;FMT.info.set(c,{meta:'JPEG 2000'});return c}
+  finally{try{doc&&doc.destroy()}catch(e){}busy(false)}}
+async function decodePNM(file){await PSX.load();const r=PSI.run('netpbm',{bytes:new Uint8Array(await file.arrayBuffer())});const c=PSX.canvas(r.rgba);FMT.info.set(c,{meta:'Netpbm'});return c}
+{const _lif=loadImageFile;
+ loadImageFile=async function(file){const u8=new Uint8Array(await file.slice(0,64).arrayBuffer()),k=sniffMore(u8,file.name);
+   if(k==='qoi')return decodeQOI(new Uint8Array(await file.arrayBuffer()));
+   if(k==='pnm')return decodePNM(file);
+   if(k==='jpx')return decodeJPX(file);
+   if(k==='jxl'){try{return await _lif.apply(this,arguments)}catch(e){return decodeJXL(file)}}
+   return _lif.apply(this,arguments)}}
+
+/* ---------- photos animées : où est la vidéo ? ---------- */
+/* boîtes ISO BMFF de premier niveau, à partir de o */
+function* boxes(u8,o,end){while(o+8<=end){let n=be32(u8,o),h=8;const t=ascii(u8,o+4,4);if(n===1){n=be32(u8,o+8)*4294967296+be32(u8,o+12);h=16}else if(n===0)n=end-o;if(n<h||o+n>end)return;yield{t,o,h,n};o+=n}}
+const isMP4=(u8,o)=>o>=0&&o+12<=u8.length&&(ascii(u8,o+4,4)==='ftyp'||(['free','skip','wide'].includes(ascii(u8,o+4,4))&&be32(u8,o)>=8&&ascii(u8,o+be32(u8,o)+4,4)==='ftyp'));
+function jpegXMP(u8){let p=2,out='';while(p+4<u8.length&&u8[p]===0xFF){const mk=u8[p+1];if(mk===0xDA||mk===0xD9)break;const len=(u8[p+2]<<8)|u8[p+3];
+    if(mk===0xE1){const id=ascii(u8,p+4,29);if(id==='http://ns.adobe.com/xap/1.0/\0')out+=new TextDecoder().decode(u8.subarray(p+33,p+2+len))}p+=2+len}return out}
+const attr=(s,name)=>{const m=s.match(new RegExp('[\\w-]+:'+name+'\\s*=\\s*"([^"]*)"'))||s.match(new RegExp('<[\\w-]+:'+name+'>([^<]*)<'));return m?m[1]:null};
+/* -> {start, end, ts (µs, moment de la photo dans la vidéo, ou -1)} ou null */
+function findMotion(u8){const N=u8.length;
+  if(u8[0]===0xFF&&u8[1]===0xD8){const x=jpegXMP(u8);let ts=-1;
+    if(x){const t=attr(x,'MotionPhotoPresentationTimestampUs')||attr(x,'MicroVideoPresentationTimestampUs');if(t!=null&&+t>=0)ts=+t;
+      /* format actuel : la liste Container:Directory donne la longueur de chaque élément rangé après le JPEG ; la vidéo est le dernier */
+      const items=[...x.matchAll(/<[\w-]+:Item\b([^>]*?)\/?>/g)].map(m=>m[1]).concat([...x.matchAll(/<rdf:li\b[^>]*>\s*<[\w-]+:Item\b([^>]*?)\/?>/g)].map(m=>m[1]));
+      const it=items.find(s=>/Semantic\s*=\s*"MotionPhoto"/.test(s));if(it){const L=+attr(it,'Length');if(L>0&&L<N){const s=N-L;if(isMP4(u8,s))return{start:s,end:N,ts}}}
+      /* ancien format (MicroVideo) : décalage compté depuis la fin */
+      const off=+attr(x,'MicroVideoOffset');if(off>0&&off<N&&isMP4(u8,N-off))return{start:N-off,end:N,ts}}
+    /* Samsung : « MotionPhoto_Data » juste avant la vidéo, après la fin du JPEG */
+    const tag=new TextEncoder().encode('MotionPhoto_Data');for(let i=N-tag.length;i>2&&i>N-(64<<20);i--){if(u8[i]!==0x4D)continue;let ok=true;for(let k=1;k<tag.length;k++)if(u8[i+k]!==tag[k]){ok=false;break}
+      if(ok){const s=i+tag.length;if(isMP4(u8,s))return{start:s,end:N,ts}}}
+    return null}
+  /* HEIC / AVIF : boîte « mpvd » de premier niveau qui contient la vidéo */
+  if(ascii(u8,4,4)==='ftyp'){for(const b of boxes(u8,0,N))if(b.t==='mpvd'&&isMP4(u8,b.o+b.h)){let e=b.o+b.n;for(const c of boxes(u8,b.o+b.h,b.o+b.n)){e=c.o+c.n}return{start:b.o+b.h,end:e,ts:-1}}}
+  return null}
+const animKind=u8=>{if(ascii(u8,0,6)==='GIF89a'||ascii(u8,0,6)==='GIF87a')return'gif';
+  if(u8[0]===137&&ascii(u8,1,3)==='PNG'){for(const b of(function*(){let o=8;while(o+8<=u8.length){const n=be32(u8,o),t=ascii(u8,o+4,4);yield t;if(t==='IDAT'||t==='IEND')return;o+=12+n}})())if(b==='acTL')return'apng'}return''};
+async function gifFrames(u8){let n=0,p=13;if(u8[10]&0x80)p+=3*(2<<(u8[10]&7));/* compte les images sans tout décoder */
+  while(p<u8.length&&n<3){const c=u8[p];if(c===0x2C){n++;p+=10;if(u8[p-1]&0x80)p+=3*(2<<(u8[p-1]&7));p++;while(p<u8.length&&u8[p])p+=u8[p]+1;p++}else if(c===0x21){p+=2;while(p<u8.length&&u8[p])p+=u8[p]+1;p++}else break}return n}
+
+/* ouverture : la vidéo d'une Motion Photo, le .MOV d'une Live Photo ouvert avec elle, les images d'un GIF ou PNG animé */
+async function attach(d,file){if(!d||S.doc!==d)return;const name=file.name||'photo';
+  try{const head=new Uint8Array(await file.slice(0,Math.min(file.size,64)).arrayBuffer());
+    const sib=MOT.files.find(f=>f!==file&&isVideoFile(f)&&base(f.name)===base(name));
+    if(sib){d.motion={blob:sib,type:sib.type||'video/quicktime',ts:-1,from:'Live Photo'};toast('Live Photo : Image > Photo animée… pour la lire ou garder une autre image',4500);return}
+    const ak=animKind(new Uint8Array(await file.slice(0,Math.min(file.size,1<<16)).arrayBuffer()));
+    if(ak){const u8=new Uint8Array(await file.arrayBuffer());if(ak==='gif'&&await gifFrames(u8)<2)return;d.anim={file,kind:ak};toast((ak==='gif'?'GIF':'PNG')+' animé : Image > Photo animée… pour choisir l’image ou mettre toutes les images en calques',5000);return}
+    if(!(head[0]===0xFF&&head[1]===0xD8)&&ascii(head,4,4)!=='ftyp')return;
+    const u8=new Uint8Array(await file.arrayBuffer()),m=findMotion(u8);if(!m||S.doc!==d)return;
+    d.motion={blob:new Blob([u8.subarray(m.start,m.end)],{type:'video/mp4'}),type:'video/mp4',ts:m.ts,from:'Motion Photo'};
+    toast('Photo animée : Image > Photo animée… pour la lire ou garder une autre image',4500)}
+  catch(e){console.warn('photo animée',e)}}
+{const _ob=openBlob;
+ openBlob=async function(file,asLayer){if(file&&!MOT.files.includes(file))MOT.files=[];
+   /* Live Photo : la vidéo n'est pas ouverte seule, elle accompagne la photo du même nom (ouverte avant ou après elle) */
+   if(file&&isVideoFile(file)){if(!MOT.files.some(f=>f!==file&&!isVideoFile(f)&&base(f.name)===base(file.name)))toast('Ouvrez la photo et sa vidéo ensemble (Live Photo), ou une Motion Photo');return}
+   const d0=S.doc,r=await _ob.call(this,file,asLayer);if(!asLayer&&S.doc&&S.doc!==d0)await attach(S.doc,file);return r}}
+document.addEventListener('drop',e=>{MOT.files=e.dataTransfer?[...e.dataTransfer.files]:[]},true);
+{const fo=$('#fileOpen');if(fo){fo.multiple=true;fo.accept+=',.qoi,.jp2,.j2k,.j2c,.jpf,.jpx,.ppm,.pgm,.pbm,.pam,.pnm,.mov,.mp4';document.addEventListener('change',e=>{if(e.target===fo)MOT.files=[...fo.files]},true)}
+ const fl=$('#fileLayer');if(fl)fl.accept+=',.qoi,.jp2,.j2k,.j2c,.jpf,.jpx,.ppm,.pgm,.pbm,.pam,.pnm'}
+/* les fichiers glissés ou ouverts que l'ancien filtre ignorait */
+document.addEventListener('drop',e=>{const fs=e.dataTransfer?[...e.dataTransfer.files]:[];if(!fs.length)return;
+  const known=f=>f.type.startsWith('image/')||RAW_EXT.test(f.name)||/\.(heic|heif|psd|psb|zip|tiff?|pdf|tga|svg|jxl)$/i.test(f.name);
+  if(fs.some(known))return;const f=fs.find(f=>/\.(qoi|jp2|j2k|j2c|jpf|jpx|ppm|pgm|pbm|pam|pnm)$/i.test(f.name));if(f&&e.target&&e.target.closest&&e.target.closest('#stage')){setTimeout(()=>openBlob(f,e.shiftKey),0)}},true);
+
+/* ---------- Image > Photo animée… ---------- */
+const seekTo=(v,t)=>new Promise(res=>{if(Math.abs(v.currentTime-t)<1e-3&&v.readyState>=2){res();return}const f=()=>{v.removeEventListener('seeked',f);res()};v.addEventListener('seeked',f);v.currentTime=t});
+const coverC=(src,w,h)=>{const sw=src.width||src.videoWidth,sh=src.height||src.videoHeight,k=Math.max(w/sw,h/sh),c=mk(w,h),g=cx(c);g.imageSmoothingQuality='high';g.drawImage(src,(w-sw*k)/2,(h-sh*k)/2,sw*k,sh*k);return c};
+async function motionDialog(){const d=S.doc;if(!d||!(d.motion||d.anim))return;
+  const nm=String(d.name||'photo').replace(/\.[^.]+$/,'');let frames=null,v=null,url=null,timer=null,cur=0;
+  if(d.anim){busy(true,'Lecture des images…',null);try{await PSX.load();const u8=new Uint8Array(await d.anim.file.arrayBuffer());
+      const r=await PSX.run('animDecode',{bytes:u8,kind:d.anim.kind,max:Math.max(2,Math.min(300,Math.floor(6e8/(d.w*d.h*4))))}).promise;frames=r.frames}
+    catch(e){console.error(e);toast('Animation illisible : '+(e.message||e),4000);return}finally{busy(false)}}
+  const grab=()=>{if(frames)return PSX.canvas(frames[cur].rgba);const c=mk(v.videoWidth,v.videoHeight);cx(c).drawImage(v,0,0);return c};
+  const stop=()=>{clearInterval(timer);timer=null;if(v)v.pause();if(url){URL.revokeObjectURL(url);url=null}};
+  const total=frames?frames.length:0;
+  const body=`<p class="muted" style="margin:0 0 8px">${frames?`${total} images. Choisissez celle à garder, ou mettez-les toutes en calques.`:`${esc(d.motion.from)} : choisissez le moment à garder. La vidéo est moins définie que la photo.`}</p>
+    <div style="display:grid;place-items:center;background:var(--raise);border-radius:6px;margin-bottom:8px">${frames?'<canvas id="mo-c" style="max-width:100%;max-height:300px;display:block"></canvas>':'<video id="mo-v" muted playsinline loop style="max-width:100%;max-height:300px;display:block"></video>'}</div>
+    <div class="row"><label for="mo-t">Image</label><input type="range" id="mo-t" min="0" max="${frames?total-1:1000}" step="1" value="0"><output id="mo-t-o"></output></div>
+    <div class="inline" style="gap:6px;flex-wrap:wrap"><button class="btn sm" id="mo-play">Lire</button>${frames?'<button class="btn sm" id="mo-all">Toutes en calques</button>':'<button class="btn sm" id="mo-vid">Enregistrer la vidéo</button><button class="btn sm" id="mo-gif">Enregistrer en GIF animé</button>'}</div>
+    <p class="muted" id="mo-st" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>`;
+  const el=dialog({title:frames?'Images de l’animation':'Photo animée',light:true,body,
+    onOpen:el=>{const t=$('#mo-t',el),o=$('#mo-t-o',el),st=$('#mo-st',el);
+      if(frames){const c=$('#mo-c',el);c.width=frames[0].rgba.width;c.height=frames[0].rgba.height;const show=i=>{cur=i;rx(c).putImageData(new ImageData(new Uint8ClampedArray(frames[i].rgba.data),c.width,c.height),0,0);t.value=i;o.textContent=(i+1)+' / '+total};show(0);
+        t.oninput=()=>show(+t.value);
+        $('#mo-play',el).onclick=e=>{if(timer){clearInterval(timer);timer=null;e.target.textContent='Lire';return}e.target.textContent='Pause';const step=()=>{show((cur+1)%total)};timer=setInterval(step,Math.max(20,frames[0].delayMs||100))};
+        $('#mo-all',el).onclick=()=>{stop();closeDialog();allLayers(d,frames,nm)}}
+      else{v=$('#mo-v',el);url=URL.createObjectURL(d.motion.blob);v.src=url;
+        v.onerror=()=>{st.textContent='Cette vidéo ne se lit pas dans ce navigateur (souvent HEVC) : vous pouvez l’enregistrer et l’ouvrir ailleurs.';$('#mo-gif',el).disabled=true};
+        v.onloadedmetadata=()=>{const dur=v.duration||0;const ts=d.motion.ts>=0?d.motion.ts/1e6:0;seekTo(v,Math.min(dur,ts));t.value=dur?Math.round(Math.min(dur,ts)/dur*1000):0;o.textContent=fmtT(v.currentTime)+(d.motion.ts>=0?' (moment de la photo)':'')};
+        v.ontimeupdate=()=>{if(!v.paused&&v.duration){t.value=Math.round(v.currentTime/v.duration*1000);o.textContent=fmtT(v.currentTime)}};
+        t.oninput=()=>{v.pause();$('#mo-play',el).textContent='Lire';if(v.duration){seekTo(v,+t.value/1000*v.duration);o.textContent=fmtT(+t.value/1000*v.duration)}};
+        $('#mo-play',el).onclick=e=>{if(v.paused){v.play().catch(()=>{});e.target.textContent='Pause'}else{v.pause();e.target.textContent='Lire'}};
+        $('#mo-vid',el).onclick=()=>saveFile(d.motion.blob,nm+(/quicktime/.test(d.motion.type)?'.mov':'.mp4'));
+        $('#mo-gif',el).onclick=()=>videoGif(v,nm,st)}},
+    buttons:[{label:'Fermer',onClick:stop},
+      {label:'Ajouter en calque',onClick:()=>{const c=grab();stop();if(S.doc!==d)return;pasteClip(coverC(c,d.w,d.h),'Image de l’animation')}},
+      {label:'Ouvrir cette image',primary:true,onClick:()=>{const c=grab();stop();setDoc(c,nm+'-image.png',{meta:frames?'Image d’une animation':'Image d’une '+(d.motion.from)})}}]});
+  return el}
+const fmtT=s=>(Math.round(s*100)/100).toFixed(2).replace('.',',')+' s';
+function allLayers(d,frames,nm){if(S.doc!==d)return;const n=frames.length;
+  const grp={id:'g'+uid8(),name:'Animation ('+n+' images)'};
+  /* sous les calques de réglage du haut, comme une photo */
+  let at=d.layers.length;while(at>0&&d.layers[at-1].kind==='adjust')at--;
+  const Ls=frames.map((f,i)=>{const L=newPixel('Image '+(i+1),coverC(PSX.canvas(f.rgba),d.w,d.h));if(i>0)L.visible=false;L.grp={...grp};return L});
+  d.layers.splice(at,0,...Ls);d.active=at;markComp();pushHistory('Images de l’animation en calques');syncAll();toast(n+' calques ajoutés (seul le premier est visible)')}
+/* GIF animé : jusqu'à 6 s de la vidéo, 12 images par seconde, 480 px de large au plus */
+async function videoGif(v,nm,st){const dur=Math.min(6,v.duration||0);if(!dur){st.textContent='Vidéo vide';return}
+  const k=Math.min(1,480/Math.max(v.videoWidth,v.videoHeight)),w=Math.max(2,Math.round(v.videoWidth*k)),h=Math.max(2,Math.round(v.videoHeight*k)),fps=12,n=Math.max(2,Math.round(dur*fps)),frames=[];
+  v.pause();const t0=v.currentTime;busy(true,'Préparation du GIF…',0);let j=null;
+  try{for(let i=0;i<n;i++){await seekTo(v,i/fps);const c=mk(w,h);cx(c).drawImage(v,0,0,w,h);frames.push({rgba:PSX.img(c),delayMs:Math.round(1000/fps)});busy(true,'Préparation du GIF…',i/n*.4)}
+    j=PSX.track(PSX.run('encodeGif',{frames},{onProgress:f=>busy(true,'Préparation du GIF…',.4+f*.6)}));const out=await j.promise;
+    saveFile(new Blob([out],{type:'image/gif'}),nm+'.gif');st.textContent='GIF enregistré ('+n+' images, '+w+' × '+h+' px)'}
+  catch(e){if(!PSX.cancelled(e)){console.error(e);st.textContent='GIF impossible : '+(e.message||e)}}
+  finally{PSX.untrack(j);busy(false);seekTo(v,t0)}}
+PSX.motionDialog=motionDialog;PSX.findMotion=findMotion;PSX.decodeQOI=decodeQOI;PSX.jpxPDF=jpxPDF;
+PSX.addToMenu('image',null,()=>{const d=S.doc;return[MI(d&&d.anim?'Images de l’animation…':'Photo animée…',{icon:'filter',dis:!d?NODOC:(d.motion||d.anim)?false:'Ouvrez une photo animée (Motion Photo, Live Photo avec sa vidéo), un GIF ou un PNG animé',fn:motionDialog})]},/^Taille de l’image/);
 
 }
 
@@ -11832,16 +12026,16 @@ function restoreDialog(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)r
       {label:'Appliquer',primary:true,onClick:()=>{clear();LAST=JSON.parse(JSON.stringify(st));apply(d,L,orig,st)}}]})}
 
 async function apply(d,L,orig,st){if(!RF.some(f=>st[f.id].enabled)){toast('Aucune retouche cochée');return}
-  busy(true,NAME+'…',0);
+  busy(true,NAME+'…',0);let j=null;
   try{let skin;if(st.skin.enabled&&st.skin.params.area==='mask'){const m=await aiSkin(d,L);if(m)skin=PSX.mask(m,orig.width,orig.height)}
-    const r=await PSX.run('restore',{img:PSX.img(orig),params:toParams(st),scale:1,skin},{onProgress:f=>busy(true,NAME+'…',f)}).promise;
+    j=PSX.track(PSX.run('restore',{img:PSX.img(orig),params:toParams(st),scale:1,skin},{onProgress:f=>busy(true,NAME+'…',f)}));const r=await j.promise;
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');return}
     let c=PSX.canvas(r.image);
     if(st.newLayer){if(d.sel){const t=mk(c.width,c.height),g=cx(t);g.drawImage(c,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);c=t}
       const i=d.layers.indexOf(L);d.active=i;insertLayer(newPixel(NAME,c),NAME)}
     else applyMasked(L,c,NAME)}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast(NAME+' impossible : '+(e.message||e),4000)}markComp()}
-  finally{busy(false)}}
+  finally{PSX.untrack(j);busy(false)}}
 PSX.restoreDialog=restoreDialog;PSX.restoreApply=apply;PSX.restoreDefaults=defaults;
 PSX.addToMenu('filter',null,()=>[MI(NAME+'…',{icon:'filter',dis:S.doc?false:NODOC,fn:restoreDialog})],/^Correction de l’objectif/);
 

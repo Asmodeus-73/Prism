@@ -18,6 +18,9 @@ import { seamOrder, contextScale, protectionMap, KEPT } from './src/imaging/warp
 import { resize } from './src/imaging/filters/resample';
 import { labStats } from './src/features/adjust/match-color';
 import { harmonizePixels } from './src/features/assist/harmonize-math';
+import { decodeApng, encodeApng } from './src/imaging/codecs/apng';
+import { decodeGif, encodeGif } from './src/imaging/codecs/gif';
+import { decodeNetpbm } from './src/imaging/codecs/netpbm';
 
 type Args = Record<string, any>;
 type Report = (f: number) => void;
@@ -89,7 +92,21 @@ const ops: Record<string, (a: Args, report: Report) => any> = {
     r(0.92);
     return contextScale(img, { vertical, horizontal }, a.width, a.height, a.amount ?? 1);
   },
-  harmonize: (a) => harmonizePixels(a.img, labStats(a.img, cover(a.layerMask)), labStats(a.target, cover(a.targetMask)), a.o),
+  // Prism: the target can be given as its statistics (a few numbers kept with an editable effect) instead of pixels
+  harmonize: (a) => harmonizePixels(a.img, labStats(a.img, cover(a.layerMask)), a.targetStats || labStats(a.target, cover(a.targetMask)), a.o),
+  labStats: (a) => labStats(a.img, cover(a.mask)),
+  // Prism: animated GIF / APNG frames (each one the full picture after it is drawn), Netpbm stills,
+  // and GIF / APNG writers for frames taken from a motion photo
+  animDecode: (a) => {
+    const d = a.kind === 'gif' ? decodeGif(a.bytes, { maxFrames: a.max }) : decodeApng(a.bytes, { maxFrames: a.max });
+    return { width: d.width, height: d.height, frames: d.frames.map((f) => ({ rgba: f.rgba, delayMs: f.delayMs })) };
+  },
+  netpbm: (a) => {
+    const d = decodeNetpbm(a.bytes);
+    return { rgba: d.rgba8, data16: d.data16, width: d.width, height: d.height };
+  },
+  encodeGif: (a, r) => encodeGif(a.frames, { loop: 0, dither: true, palette: 'global', progress: prog(r) }),
+  encodeApng: (a, r) => encodeApng(a.frames, { plays: 0, progress: prog(r) }),
   defaults: (a) => (a.kind === 'shadowsHighlights' ? { ...DEFAULT_SHADOWS_HIGHLIGHTS } : defaultParams(a.kind)),
 };
 

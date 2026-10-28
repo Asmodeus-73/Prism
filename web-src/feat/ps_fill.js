@@ -36,11 +36,11 @@ function contentFillDialog(){const d=S.doc;if(!d)return;if(!d.sel){toast('Sélec
 async function contentFill(d,L,b,p){const W=d.w,H=d.h,hw=b.x1-b.x0,hh=b.y1-b.y0,m=Math.max(80,Math.round(Math.max(hw,hh)*1.2));
   const x0=Math.max(0,b.x0-m),y0=Math.max(0,b.y0-m),x1=Math.min(W,b.x1+m),y1=Math.min(H,b.y1+m),w=x1-x0,h=y1-y0;
   const orig=L.canvas,img=PSX.img(orig,x0,y0,w,h),hole=PSX.mask(d.sel,w,h,x0,y0);
-  busy(true,'Remplissage d’après le contenu…',0);
-  try{const r=await PSX.run('contextFill',{img,hole,o:{colorAdaptation:CF_COL[p.col],rotationAdaptation:CF_ROT[p.rot],scale:!!p.scale,mirror:!!p.mirror}},{onProgress:f=>busy(true,'Remplissage d’après le contenu…',f)}).promise;
+  busy(true,'Remplissage d’après le contenu…',0);let j=null;
+  try{const r=await (j=PSX.track(PSX.run('contextFill',{img,hole,o:{colorAdaptation:CF_COL[p.col],rotationAdaptation:CF_ROT[p.rot],scale:!!p.scale,mirror:!!p.mirror}},{onProgress:f=>busy(true,'Remplissage d’après le contenu…',f)}))).promise;
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');return}
     const out=cloneC(orig);cx(out).drawImage(PSX.canvas(r),x0,y0);applyMasked(L,out,'Remplir d’après le contenu')}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast('Remplissage impossible : '+(e.message||e),4000)}}
-  finally{busy(false)}}
+  finally{PSX.untrack(j);busy(false)}}
 PSX.contentFill=contentFill;
 PSX.addToMenu('edit',null,()=>[MI('Remplir d’après le contenu…',{icon:'fill',dis:!S.doc?NODOC:!S.doc.sel?'Faites d’abord une sélection':false,fn:contentFillDialog})],/^Effacer le contenu/);

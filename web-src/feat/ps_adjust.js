@@ -13,7 +13,8 @@ PSX.filter('levels',{name:'Niveaux',
   onInput:(k,p,el)=>{p.lv=p.lv||{};const ch=LV_CH[p.ch|0],keys=['inBlack','gamma','inWhite','outBlack','outWhite'];
     if(k==='ch'){const v=p.lv[ch]||lv();keys.forEach(x=>{p[x]=v[x];const i=$('#ps-'+x,el);if(i){i.value=v[x];const o=$('#ps-'+x+'-o',el);if(o)o.textContent=fmtN(v[x],+i.step)}})}
     else{const v={...(p.lv[ch]||lv())};keys.forEach(x=>v[x]=p[x]);if(v.inWhite<=v.inBlack+2)v.inWhite=v.inBlack+2;p.lv={...p.lv,[ch]:v}}},
-  job:(img,p)=>{const L={rgb:lv(),r:lv(),g:lv(),b:lv(),...(p.lv||{})};if(!p.lv){L[LV_CH[p.ch|0]]=lv(p.inBlack,Math.max(p.inBlack+2,p.inWhite),p.gamma,p.outBlack,p.outWhite)}return adj(img,'levels',L)}});
+  /* les curseurs affichés valent pour le canal choisi (aussi quand l'effet est modifié plus tard, où seuls les curseurs changent) */
+  job:(img,p)=>{const L={rgb:lv(),r:lv(),g:lv(),b:lv(),...(p.lv||{})};L[LV_CH[p.ch|0]]=lv(p.inBlack,Math.max(p.inBlack+2,p.inWhite),p.gamma,p.outBlack,p.outWhite);return adj(img,'levels',L)}});
 
 /* Mélangeur de couches : chaque couche de sortie est un mélange des trois couches d'entrée */
 const MX=[['r','Rouge'],['g','Vert'],['b','Bleu']],MXK={r:'red',g:'green',b:'blue'};
@@ -32,7 +33,7 @@ PSX.filter('selcolor',{name:'Correction sélective',
   onInput:(k,p,el)=>{p.sc=p.sc||{};const r=SC[p.range|0],keys=['cyan','magenta','yellow','black'];
     if(k==='range'){const v=p.sc[r]||cmyk();keys.forEach(x=>{p[x]=v[x];const i=$('#ps-'+x,el);if(i){i.value=v[x];const o=$('#ps-'+x+'-o',el);if(o)o.textContent=v[x]+' %'}})}
     else if(keys.includes(k)){const v={};keys.forEach(x=>v[x]=p[x]);p.sc={...p.sc,[r]:v}}},
-  job:(img,p)=>{const ranges={};SC.forEach(n=>ranges[n]={...cmyk(),...((p.sc||{})[n]||{})});if(!p.sc)ranges[SC[p.range|0]]={cyan:p.cyan,magenta:p.magenta,yellow:p.yellow,black:p.black};
+  job:(img,p)=>{const ranges={};SC.forEach(n=>ranges[n]={...cmyk(),...((p.sc||{})[n]||{})});ranges[SC[p.range|0]]={cyan:p.cyan,magenta:p.magenta,yellow:p.yellow,black:p.black};
     return adj(img,'selective-color',{ranges,method:p.method?'absolute':'relative'})}});
 
 /* Filtre photo : la teinte d'un filtre posé devant l'objectif */

@@ -282,8 +282,20 @@ await test('Photo Studio : remplir d’après le contenu ne touche que la sélec
 await test('Photo Studio : remplacer le ciel donne trois calques groupés, annulables',async()=>{await sample();
   const n0=await ev(()=>{const d=S.doc,c=mk(d.w,d.h);cx(c).fillStyle='#fff';cx(c).fillRect(0,0,d.w,Math.round(d.h*.35));d.sel=c;selChanged();PSX.skyOpen();return S.doc.layers.length});
   await page.waitForSelector('#sk-preset');await page.selectOption('#sk-preset','3');await page.locator('#scrim .foot .btn',{hasText:'Remplacer'}).click();await psIdle();await page.waitForTimeout(200);
-  const r=await ev(n0=>{const L=S.doc.layers.slice(n0);const out={names:L.map(l=>l.name).join(),grp:new Set(L.map(l=>l.grp&&l.grp.id)).size,blends:L.map(l=>l.blend).join(),masked:L.every(l=>!!l.mask)};undo();out.undo=S.doc.layers.length-n0;return out},n0);
-  if(r.names!=='Éclairage du ciel,Couleur du ciel,Ciel'||r.grp!==1||r.blends!=='multiply,color,source-over'||!r.masked||r.undo!==0)throw new Error(JSON.stringify(r))});
+  const r=await ev(n0=>{const A=S.doc.layers,L=A.filter(l=>l.grp&&l.grp.name==='Remplacement du ciel');const out={n:A.length-n0,names:L.map(l=>l.name).join(),grp:new Set(L.map(l=>l.grp.id)).size,blends:L.map(l=>l.blend).join(),masked:L.every(l=>!!l.mask),
+      underAdjust:A.slice(A.indexOf(L[2])+1).every(l=>l.kind==='adjust'),active:A[S.doc.active]===L[2]};undo();out.undo=S.doc.layers.length-n0;return out},n0);
+  if(r.n!==3||r.names!=='Éclairage du ciel,Couleur du ciel,Ciel'||r.grp!==1||r.blends!=='multiply,color,source-over'||!r.masked||!r.underAdjust||!r.active||r.undo!==0)throw new Error(JSON.stringify(r))});
+await test('Photo Studio : Échap annule un long calcul sans rien modifier',async()=>{await sample();
+  await ev(()=>{const d=S.doc;PSX.seamApply(d,pixelTarget(),900,1200,'none',1)});await page.waitForFunction(()=>!!document.querySelector('#busy .ps-cancel'),null,{timeout:10000});
+  await page.keyboard.press('Escape');await psIdle();await page.waitForTimeout(200);
+  const r=await ev(()=>({size:[S.doc.w,S.doc.h],btn:!!document.querySelector('#busy .ps-cancel'),cur:!!PSX.cur,label:S.history[S.hi].label}));
+  if(r.size.join()!=='1800,1200'||r.btn||r.cur||/échelle/.test(r.label))throw new Error(JSON.stringify(r))});
+await test('Photo Studio : harmoniser reste un effet modifiable (mesure du dessous gardée)',async()=>{await sample();
+  await ev(()=>{const d=S.doc,c=mk(d.w,d.h);cx(c).fillStyle='#e02020';cx(c).fillRect(700,500,300,200);d.active=0;insertLayer(newPixel('Patch',c),'Patch')});
+  await ev(()=>PSX.harmonizeOpen());await page.waitForSelector('#ps-strength');await page.locator('#scrim .foot .btn.primary').click();await psIdle();await page.waitForTimeout(150);
+  const r=await ev(()=>{const L=pixelTarget(),f=(L.filters||[]).find(x=>x.id==='harmonize');const px=c=>Array.from(rx(c).getImageData(800,600,1,1).data).join();
+    const o={has:!!f,ts:!!(f&&f.p.ts&&f.p.ts.mean),px:px(L.canvas)};if(f){const again=FILTERS.harmonize.run(L.fbase,f.p);o.same=px(again)===o.px;delete f.p.ts;o.noTs=px(FILTERS.harmonize.run(L.fbase,f.p))}return o});
+  if(!r.has||!r.ts||r.px==='224,32,32,255'||!r.same||r.noTs!=='224,32,32,255')throw new Error(JSON.stringify(r))});
 await test('Photo Studio : mise à l’échelle selon le contenu, une seule étape d’historique',async()=>{await sample();
   await ev(()=>PSX.seamOpen());await page.waitForSelector('#cs-w');await page.selectOption('#cs-r','1:1');await page.selectOption('#cs-p','none');
   await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await psIdle();await page.waitForTimeout(200);
@@ -296,6 +308,31 @@ await test('Photo Studio : zones nettes donne une sélection, export .cube valid
     try{await PSX.exportCube()}finally{saveFile=sf}
     if(saved){const lines=saved[1].trim().split('\n').filter(l=>/^[\d.]+ [\d.]+ [\d.]+$/.test(l));o.name=saved[0];o.size=/LUT_3D_SIZE 33/.test(saved[1]);o.rows=lines.length;o.first=lines[0]}else o.toast=document.getElementById('toast').textContent;return o});
   if(!r.sel||(r.name?(!r.size||r.rows!==33*33*33||!/\.cube$/.test(r.name)):!/réglage/.test(r.toast||'')))throw new Error(JSON.stringify(r))});
+// ---- photos animées et formats en plus (QOI, JPEG 2000, PPM, PNG animé, Motion Photo), ouverts par Fichier > Ouvrir ----
+const FIX=path.join(path.dirname(new URL(import.meta.url).pathname),'fixtures');
+async function openFix(...names){await ev(()=>{window.__d0=S.doc});await page.setInputFiles('#fileOpen',names.map(n=>path.join(FIX,n)));
+  await page.waitForFunction(()=>S.doc&&S.doc!==window.__d0,null,{timeout:30000});await page.waitForFunction(()=>{const b=document.querySelector('#busy');return !b||b.hidden},null,{timeout:30000});await page.waitForTimeout(400)}
+const layerPx=(x,y)=>ev(([x,y])=>{const L=S.doc.layers.find(l=>l.kind==='pixel');return Array.from(rx(L.canvas).getImageData(x,y,1,1).data)},[x,y]);
+await test('formats : QOI, JPEG 2000 et PPM s’ouvrent au bon pixel',async()=>{await fresh();const e=[],near=(a,b,t=4)=>a.every((v,i)=>Math.abs(v-b[i])<=t);
+  await openFix('photo.qoi');let r=await ev(()=>[S.doc.w,S.doc.h]);if(r.join()!=='64,48')e.push('QOI taille '+r);let px=await layerPx(2,3);if(px.join()!=='8,24,90,255')e.push('QOI pixel '+px);px=await layerPx(62,3);if(px[3]!==128)e.push('QOI alpha '+px);px=await layerPx(32,24);if(px.join()!=='240,200,40,255')e.push('QOI centre '+px);
+  await openFix('photo.jp2');r=await ev(()=>[S.doc.w,S.doc.h,S.doc.name]);if(r.join()!=='64,48,photo.jp2')e.push('JP2 '+r);px=await layerPx(3,44);if(!near(px,[40,90,160,255]))e.push('JP2 pixel '+px);px=await layerPx(32,24);if(!near(px,[240,200,40,255]))e.push('JP2 centre '+px);
+  await openFix('photo.ppm');px=await layerPx(32,24);if(px.join()!=='240,200,40,255')e.push('PPM '+px);
+  if(e.length)throw new Error(e.join('\n'))});
+await test('photo animée : Motion Photo lue, image choisie ouverte, PNG animé en calques',async()=>{await fresh();
+  await openFix('motion.jpg');const m=await ev(()=>S.doc.motion&&{from:S.doc.motion.from,ts:S.doc.motion.ts,size:S.doc.motion.blob.size,type:S.doc.motion.type});
+  if(!m||m.from!=='Motion Photo'||m.ts!==500000||!(m.size>500))throw new Error('Motion Photo non détectée '+JSON.stringify(m));
+  await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-v');await page.waitForFunction(()=>document.querySelector('#mo-v').readyState>=2,null,{timeout:15000});
+  const sl=await page.locator('#mo-t').boundingBox();await page.mouse.click(sl.x+sl.width*0.2,sl.y+sl.height/2);await page.waitForTimeout(300);
+  await page.locator('#scrim .foot .btn',{hasText:'Ouvrir cette image'}).click();await page.waitForTimeout(500);
+  const o=await ev(()=>[S.doc.name,S.doc.w,S.doc.h]);if(o.join()!=='motion-image.png,64,48')throw new Error('image choisie '+o);
+  await openFix('anim.png');const ak=await ev(()=>S.doc.anim&&S.doc.anim.kind);if(ak!=='apng')throw new Error('PNG animé non détecté : '+ak);
+  await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-all');await page.locator('#mo-all').click();await page.waitForTimeout(300);
+  const L=await ev(()=>{const A=S.doc.layers,g=A.filter(l=>l.grp&&/Animation/.test(l.grp.name));return{n:g.length,vis:g.filter(l=>l.visible!==false).length,top:A.slice(A.indexOf(g[g.length-1])+1).every(l=>l.kind==='adjust')}});
+  if(L.n!==4||L.vis!==1||!L.top)throw new Error('calques '+JSON.stringify(L));
+  const live=await ev(()=>{const enc=s=>new TextEncoder().encode(s),u32=n=>[n>>>24&255,n>>>16&255,n>>>8&255,n&255],box=(t,body)=>[...u32(8+body.length),...enc(t),...body];
+    const mp4=[...box('ftyp',[...enc('isom'),0,0,0,0]),...box('mdat',[1,2,3,4])],heic=new Uint8Array([...box('ftyp',[...enc('heic'),0,0,0,0]),...box('meta',[0,0,0,0]),...box('mpvd',mp4)]);
+    const r=PSX.findMotion(heic);return r&&[r.end-r.start,mp4.length]});
+  if(!live||live[0]!==live[1])throw new Error('HEIC mpvd '+live)});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
