@@ -6,7 +6,6 @@ const fillC=(w,h,col)=>{const c=mk(w,h),g=cx(c);g.fillStyle=col;g.fillRect(0,0,w
 const docOK=()=>S.doc?false:NODOC;
 
 /* ---------- Calque > Harmoniser avec le dessous… : le calque prend la lumière et la dominante de ce qu'il recouvre ---------- */
-let HZ=null;/* {img, mask} : ce qu'il y a sous le calque, autour de lui (mesuré à l'ouverture de la fenêtre) */
 async function harmonizeOpen(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;const i=d.layers.indexOf(L);
   if(i<1){toast('Il n’y a rien sous ce calque : placez-le au-dessus de la photo');return}
   const b=maskBBox(L.canvas);if(!b){toast('Ce calque est vide');return}
@@ -14,13 +13,16 @@ async function harmonizeOpen(){const d=S.doc;if(!d)return;const L=PSX.target();i
   try{const k=Math.min(1,1200/Math.max(d.w,d.h)),below=await renderDoc(k,{upto:i});
     /* la zone à imiter : le cadre du calque élargi d'un quart de chaque côté */
     const mx=(b.x1-b.x0)*.25,my=(b.y1-b.y0)*.25,x0=Math.max(0,(b.x0-mx)*k|0),y0=Math.max(0,(b.y0-my)*k|0),x1=Math.min(below.width,Math.ceil((b.x1+mx)*k)),y1=Math.min(below.height,Math.ceil((b.y1+my)*k));
-    HZ={img:PSX.img(below,x0,y0,Math.max(1,x1-x0),Math.max(1,y1-y0))}}
+    await PSX.load();const ts=PSI.run('labStats',{img:PSX.img(below,x0,y0,Math.max(1,x1-x0),Math.max(1,y1-y0))});
+    FILTERS.harmonize.last={...(FILTERS.harmonize.last||{}),ts}}
   catch(e){console.error(e);toast('Analyse impossible : '+(e.message||e),4000);return}finally{busy(false)}
   filterDialog('harmonize')}
 PSX.filter('harmonize',{name:'Harmoniser avec le dessous',
   note:'Le calque prend la lumière et la dominante de couleur de ce qu’il recouvre, pour un montage plus crédible.',
   params:[['strength','Intensité',0,100,1,100,' %'],['luminance','Luminosité et contraste',0,100,1,50,' %'],['color','Couleur',0,100,1,35,' %']],
-  job:(img,p)=>{if(!HZ)throw new Error('ouvrez Calque > Harmoniser avec le dessous');return['harmonize',{img,target:{...HZ.img,data:HZ.img.data.slice()},o:{strength:p.strength,luminance:p.luminance,color:p.color}}]}});
+    needs:'ouvrez Calque > Harmoniser avec le dessous',
+  /* p.ts : la lumière et la couleur du dessous, mesurées à l'ouverture et gardées avec l'effet modifiable */
+  job:(img,p)=>p.ts?['harmonize',{img,targetStats:p.ts,o:{strength:p.strength,luminance:p.luminance,color:p.color}}]:null});
 
 /* ---------- Image > Remplacer le ciel… ---------- */
 const SKY_FR={clear:'Bleu dégagé',fair:'Beau temps',scattered:'Nuages épars',sunset:'Coucher de soleil',dusk:'Heure bleue',storm:'Orage',overcast:'Ciel couvert'};
@@ -62,20 +64,22 @@ async function skyOpen(){const d=S.doc;if(!d)return;await PSX.load();let mc=d.se
           try{const bm=await createImageBitmap(f),kk=Math.min(1,2400/bm.width),c=mk(bm.width*kk,bm.height*kk);cx(c).drawImage(bm,0,0,c.width,c.height);custom=PSX.img(c);st.preset=7;draw()}catch(err){toast('Photo illisible');e.target.value=st.preset}};inp.click()};
       draw()},
     buttons:[{label:'Annuler',onClick:()=>clearTimeout(tmr)},{label:'Remplacer',primary:true,onClick:()=>{clearTimeout(tmr);Object.assign(SKYST,st,{preset:st.preset===7?1:st.preset});skyApply(d,full,horizon,st,custom)}}]})}
-async function skyApply(d,full,horizon,st,custom){const W=d.w,H=d.h;busy(true,'Remplacement du ciel…',0);
+async function skyApply(d,full,horizon,st,custom){const W=d.w,H=d.h;busy(true,'Remplacement du ciel…',0);let j=null;const T=x=>(j=PSX.track(x)).promise;
   try{const id=st.preset===7&&custom?'custom':SKY_IDS[st.preset===7?1:st.preset],sw=Math.min(2400,W),sh=Math.max(16,Math.round(sw*Math.max(horizon,H*.3)/W));
-    const base=id==='custom'?custom:await PSX.run('skyRender',{preset:id,width:sw,height:sh,seed:7}).promise;busy(true,'Remplacement du ciel…',.3);
-    const sky=await PSX.run('skyLayer',{sky:base,width:W,height:H,placement:{scale:st.scale/100,flip:st.flip,offsetX:st.offsetX/100,offsetY:st.offsetY/100},horizon,brightness:st.brightness,temperature:st.temperature},{copy:true}).promise;busy(true,'Remplacement du ciel…',.6);
-    const m=await PSX.run('skyMask',{mask:full,shift:st.shift,fade:st.fade},{copy:true}).promise;busy(true,'Remplacement du ciel…',.8);
+    const base=id==='custom'?custom:await T(PSX.run('skyRender',{preset:id,width:sw,height:sh,seed:7}));busy(true,'Remplacement du ciel…',.3);
+    const sky=await T(PSX.run('skyLayer',{sky:base,width:W,height:H,placement:{scale:st.scale/100,flip:st.flip,offsetX:st.offsetX/100,offsetY:st.offsetY/100},horizon,brightness:st.brightness,temperature:st.temperature},{copy:true}));busy(true,'Remplacement du ciel…',.6);
+    const m=await T(PSX.run('skyMask',{mask:full,shift:st.shift,fade:st.fade},{copy:true}));busy(true,'Remplacement du ciel…',.8);
     const light=PSI.run('skyLight',{sky,mask:m,horizon}),fg=PSI.run('foregroundLight',{mask:m,horizon});
     if(S.doc!==d){toast('La photo a changé : ciel non remplacé');return}
     const col=hex(light),fgC=PSX.maskCanvas(fg),grp={id:'g'+uid8(),name:'Remplacement du ciel'};
     const Ll=newPixel('Éclairage du ciel',fillC(W,H,col));Ll.mask=fgC;Ll.blend=st.mode?'screen':'multiply';Ll.opacity=st.lighting/100*.6;Ll.grp={...grp};
     const Lc=newPixel('Couleur du ciel',fillC(W,H,col));Lc.mask=cloneC(fgC);Lc.blend='color';Lc.opacity=st.color/100*.4;Lc.grp={...grp};
     const Ls=newPixel('Ciel',PSX.canvas(sky));Ls.mask=PSX.maskCanvas(m);Ls.grp={...grp};
-    d.layers.push(Ll,Lc,Ls);d.active=d.layers.length-1;markComp();pushHistory('Remplacer le ciel');syncAll()}
+    /* au-dessus de la photo, mais sous les calques de réglage du haut : le ciel reçoit le même rendu que le reste */
+    let at=d.layers.length;while(at>0&&d.layers[at-1].kind==='adjust')at--;
+    d.layers.splice(at,0,Ll,Lc,Ls);d.active=at+2;markComp();pushHistory('Remplacer le ciel');syncAll()}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast('Remplacement du ciel impossible : '+(e.message||e),4000)}}
-  finally{busy(false)}}
+  finally{PSX.untrack(j);busy(false)}}
 
 /* ---------- Image > Mise à l'échelle selon le contenu… : change le format en retirant ou doublant des « coutures » peu visibles ---------- */
 function seamOpen(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;let lock=false;
@@ -91,18 +95,18 @@ function seamOpen(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return
     buttons:[{label:'Annuler'},{label:'Appliquer',primary:true,onClick:el=>{const w=clamp(Math.round(+$('#cs-w',el).value||0),16,30000),h=clamp(Math.round(+$('#cs-h',el).value||0),16,30000);
       if(w===d.w&&h===d.h){toast('Choisissez une autre taille');return false}if(w*h>MAX_PX){toast('Taille trop grande pour ce navigateur');return false}
       seamApply(d,L,w,h,$('#cs-p',el).value,+$('#cs-a',el).value/100)}}]})}
-async function seamApply(d,L,w,h,prot,amount){const orig=L.canvas,NAME='Mise à l’échelle selon le contenu';
+async function seamApply(d,L,w,h,prot,amount){const orig=L.canvas,NAME='Mise à l’échelle selon le contenu';let j=null;
   try{let protect=null,skin=false;
     if(prot==='subj'){const m=AI.subjectMask?await AI.subjectMask():null;if(m)protect=PSX.mask(m,d.w,d.h);else toast('Pas de sujet trouvé : rien n’est protégé',3500)}
     else if(prot==='sel'&&d.sel)protect=PSX.mask(d.sel,d.w,d.h);else if(prot==='skin')skin=true;
     busy(true,NAME+'…',0);
-    const r=await PSX.run('seamScale',{img:PSX.img(orig),width:w,height:h,amount,protect,skin},{onProgress:f=>busy(true,NAME+'…',f)}).promise;
+    j=PSX.track(PSX.run('seamScale',{img:PSX.img(orig),width:w,height:h,amount,protect,skin},{onProgress:f=>busy(true,NAME+'…',f)}));const r=await j.promise;
     if(!PSX.alive(d,L)||L.canvas!==orig||d.w!==orig.width){toast('La photo a changé pendant le calcul : rien n’a été modifié');return}
     const out=PSX.canvas(r);resizeDoc(w,h,NAME);
     /* le calque traité reçoit le résultat des coutures (les autres ont été redimensionnés normalement) ; une seule étape d'historique */
     if(PSX.alive(d,L)){L.canvas=out;delete L.hi;S.history[S.hi]=snap(NAME);markComp();scheduleSave();syncAll()}}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast(NAME+' impossible : '+(e.message||e),4000)}}
-  finally{busy(false)}}
+  finally{PSX.untrack(j);busy(false)}}
 
 /* ---------- Sélection > Zones nettes… : sélectionne ce qui est au point ---------- */
 async function focusOpen(){const d=S.doc;if(!d)return;await PSX.load();const flatC=flatSync(),sm=PSX.small(flatC,1000),img=PSX.img(sm.c);
@@ -119,7 +123,8 @@ async function focusOpen(){const d=S.doc;if(!d)return;await PSX.load();const fla
 PSX.filter('decontam',{name:'Nettoyer les franges de couleur',
   note:'Pour un calque détouré : les bords prennent la couleur du sujet au lieu de celle de l’ancien fond. Utilise le masque du calque (ou la sélection).',
   params:[['amount','Intensité',0,100,1,80,' %']],
-  job:(img,p)=>{const d=S.doc,L=pixelTarget(),src=(L&&L.mask)||(d&&d.sel);if(!src)throw new Error('ajoutez d’abord un masque au calque ou faites une sélection');
+  needs:'ajoutez d’abord un masque au calque ou faites une sélection',
+  job:(img,p)=>{const d=S.doc,L=pixelTarget(),src=(L&&L.mask)||(d&&d.sel);if(!src)return null;
     return['decontaminate',{img,mask:PSX.mask(src,img.width,img.height),amount:p.amount/100}]}});
 
 /* ---------- Image > Looks et LUT > Exporter une LUT .cube… : les calques de réglage globaux visibles, en table de couleurs ---------- */

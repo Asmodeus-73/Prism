@@ -89,7 +89,9 @@ const ops: Record<string, (a: Args, report: Report) => any> = {
     r(0.92);
     return contextScale(img, { vertical, horizontal }, a.width, a.height, a.amount ?? 1);
   },
-  harmonize: (a) => harmonizePixels(a.img, labStats(a.img, cover(a.layerMask)), labStats(a.target, cover(a.targetMask)), a.o),
+  // Prism: the target can be given as its statistics (a few numbers kept with an editable effect) instead of pixels
+  harmonize: (a) => harmonizePixels(a.img, labStats(a.img, cover(a.layerMask)), a.targetStats || labStats(a.target, cover(a.targetMask)), a.o),
+  labStats: (a) => labStats(a.img, cover(a.mask)),
   defaults: (a) => (a.kind === 'shadowsHighlights' ? { ...DEFAULT_SHADOWS_HIGHLIGHTS } : defaultParams(a.kind)),
 };
 

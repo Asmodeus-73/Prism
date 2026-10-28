@@ -26,6 +26,13 @@ PSX.run=(op,args,o={})=>{let w=null,done=false,rej=null;const id=++PSX.jobs;
     try{w.postMessage({id,op,args},o.copy?[]:psTransfer(args))}catch(e){done=true;try{w.terminate()}catch(x){}rj(e)}});
   return{promise,cancel(){if(done)return;done=true;if(w){try{w.terminate()}catch(e){}}if(rej)rej(Object.assign(new Error('annulé'),{code:'cancelled'}))}}};
 PSX.cancelled=e=>e&&e.code==='cancelled';
+/* calcul long en cours : bouton Annuler sous la barre de progression, et Échap */
+PSX.cur=null;
+PSX.track=j=>{PSX.cur=j;const box=document.querySelector('#busy>div');if(!box)return j;let e=box.querySelector('.ps-cancel');
+  if(!e){e=document.createElement('button');e.className='btn sm ps-cancel';e.textContent='Annuler';e.style.marginTop='10px';box.appendChild(e)}
+  e.disabled=false;e.textContent='Annuler';e.onclick=()=>{e.disabled=true;e.textContent='Annulation…';j.cancel()};return j};
+PSX.untrack=j=>{if(j&&PSX.cur!==j)return;PSX.cur=null;const e=document.querySelector('#busy .ps-cancel');if(e)e.remove()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&PSX.cur){e.preventDefault();e.stopPropagation();PSX.cur.cancel()}},true);
 
 /* ---------- conversions ---------- */
 PSX.img=(c,x=0,y=0,w=c.width,h=c.height)=>{const id=rx(c).getImageData(x,y,w,h);return{width:w,height:h,data:id.data}};
@@ -60,7 +67,7 @@ PSX.read=(def,el,p)=>{def.params.forEach(q=>{const k=q[0],i=$('#ps-'+k,el);if(!i
 PSX.target=()=>{const d=S.doc;if(!d)return null;if(maskTarget()){toast('Ce réglage s’applique à la photo, pas au masque : choisissez le calque de photo');return null}
   const L=pixelTarget();if(!L){toast('Aucun calque de pixels à modifier');return null}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return null}return L};
 /* calcule le filtre id sur un canvas, en arrière-plan ; résultat : canvas (null si annulé) */
-PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null;const[op,args]=F.job(PSX.img(src),p,sc,sel);
+PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null,jb=F.job(PSX.img(src),p,sc,sel);if(!jb)return Promise.reject(new Error(F.needs||'rien à calculer'));const[op,args]=jb;
   const j=PSX.run(op,args,{onProgress:o.onProgress});o.onJob&&o.onJob(j);return j.promise.then(r=>PSX.canvas(r&&r.image?r.image:r))};
 PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target();if(!L)return;
   const p={...(F.last||{})};F.params.forEach(q=>{if(p[q[0]]==null)p[q[0]]=q[5]});
@@ -82,14 +89,14 @@ PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target(
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();PSX.apply(id,d,L,orig,{...p})}}]})};
 PSX.apply=async(id,d,L,orig,p)=>{const F=FILTERS[id];F.last={...p};busy(true,F.name+'…',0);let j=null;
-  try{const r=await PSX.compute(id,orig,p,{onProgress:f=>busy(true,F.name+'…',f),onJob:x=>j=x});
+  try{const r=await PSX.compute(id,orig,p,{onProgress:f=>busy(true,F.name+'…',f),onJob:x=>PSX.track(j=x)});
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');markComp();return}
     PSX.rec(id,p);applyMasked(L,r,F.name)}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast(F.name+' impossible : '+(e.message||e),4000)}markComp()}
-  finally{busy(false)}};
+  finally{PSX.untrack(j);busy(false)}};
 /* un filtre de plus : utilisable dans les actions et les effets modifiables (calcul direct), avec la fenêtre ci-dessus */
 PSX.filter=(id,def)=>{const F=Object.assign({preview:'scale'},def);
-  F.run=(s,p)=>{const q={...p};F.params.forEach(x=>{if(q[x[0]]==null)q[x[0]]=x[5]});PSX.rec(id,q);const[op,args]=F.job(PSX.img(s),q,1,null);const r=PSX.sync(op,args);
+  F.run=(s,p)=>{const q={...p};F.params.forEach(x=>{if(q[x[0]]==null)q[x[0]]=x[5]});PSX.rec(id,q);const jb=F.job(PSX.img(s),q,1,null);if(!jb)return cloneC(s);/* ce qu'il faut n'existe plus (masque retiré…) : effet sans action */const[op,args]=jb;const r=PSX.sync(op,args);
     if(r&&typeof r.then==='function')throw new Error(F.name+' : calcul asynchrone, utilisez le menu');return PSX.canvas(r&&r.image?r.image:r)};
   FILTERS[id]=F;return F};
 {const _fd=filterDialog;filterDialog=function(id){const F=FILTERS[id];if(F&&F.job)return PSX.dialog(id);return _fd.apply(this,arguments)}}

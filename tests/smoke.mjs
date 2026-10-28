@@ -282,8 +282,20 @@ await test('Photo Studio : remplir d’après le contenu ne touche que la sélec
 await test('Photo Studio : remplacer le ciel donne trois calques groupés, annulables',async()=>{await sample();
   const n0=await ev(()=>{const d=S.doc,c=mk(d.w,d.h);cx(c).fillStyle='#fff';cx(c).fillRect(0,0,d.w,Math.round(d.h*.35));d.sel=c;selChanged();PSX.skyOpen();return S.doc.layers.length});
   await page.waitForSelector('#sk-preset');await page.selectOption('#sk-preset','3');await page.locator('#scrim .foot .btn',{hasText:'Remplacer'}).click();await psIdle();await page.waitForTimeout(200);
-  const r=await ev(n0=>{const L=S.doc.layers.slice(n0);const out={names:L.map(l=>l.name).join(),grp:new Set(L.map(l=>l.grp&&l.grp.id)).size,blends:L.map(l=>l.blend).join(),masked:L.every(l=>!!l.mask)};undo();out.undo=S.doc.layers.length-n0;return out},n0);
-  if(r.names!=='Éclairage du ciel,Couleur du ciel,Ciel'||r.grp!==1||r.blends!=='multiply,color,source-over'||!r.masked||r.undo!==0)throw new Error(JSON.stringify(r))});
+  const r=await ev(n0=>{const A=S.doc.layers,L=A.filter(l=>l.grp&&l.grp.name==='Remplacement du ciel');const out={n:A.length-n0,names:L.map(l=>l.name).join(),grp:new Set(L.map(l=>l.grp.id)).size,blends:L.map(l=>l.blend).join(),masked:L.every(l=>!!l.mask),
+      underAdjust:A.slice(A.indexOf(L[2])+1).every(l=>l.kind==='adjust'),active:A[S.doc.active]===L[2]};undo();out.undo=S.doc.layers.length-n0;return out},n0);
+  if(r.n!==3||r.names!=='Éclairage du ciel,Couleur du ciel,Ciel'||r.grp!==1||r.blends!=='multiply,color,source-over'||!r.masked||!r.underAdjust||!r.active||r.undo!==0)throw new Error(JSON.stringify(r))});
+await test('Photo Studio : Échap annule un long calcul sans rien modifier',async()=>{await sample();
+  await ev(()=>{const d=S.doc;PSX.seamApply(d,pixelTarget(),900,1200,'none',1)});await page.waitForFunction(()=>!!document.querySelector('#busy .ps-cancel'),null,{timeout:10000});
+  await page.keyboard.press('Escape');await psIdle();await page.waitForTimeout(200);
+  const r=await ev(()=>({size:[S.doc.w,S.doc.h],btn:!!document.querySelector('#busy .ps-cancel'),cur:!!PSX.cur,label:S.history[S.hi].label}));
+  if(r.size.join()!=='1800,1200'||r.btn||r.cur||/échelle/.test(r.label))throw new Error(JSON.stringify(r))});
+await test('Photo Studio : harmoniser reste un effet modifiable (mesure du dessous gardée)',async()=>{await sample();
+  await ev(()=>{const d=S.doc,c=mk(d.w,d.h);cx(c).fillStyle='#e02020';cx(c).fillRect(700,500,300,200);d.active=0;insertLayer(newPixel('Patch',c),'Patch')});
+  await ev(()=>PSX.harmonizeOpen());await page.waitForSelector('#ps-strength');await page.locator('#scrim .foot .btn.primary').click();await psIdle();await page.waitForTimeout(150);
+  const r=await ev(()=>{const L=pixelTarget(),f=(L.filters||[]).find(x=>x.id==='harmonize');const px=c=>Array.from(rx(c).getImageData(800,600,1,1).data).join();
+    const o={has:!!f,ts:!!(f&&f.p.ts&&f.p.ts.mean),px:px(L.canvas)};if(f){const again=FILTERS.harmonize.run(L.fbase,f.p);o.same=px(again)===o.px;delete f.p.ts;o.noTs=px(FILTERS.harmonize.run(L.fbase,f.p))}return o});
+  if(!r.has||!r.ts||r.px==='224,32,32,255'||!r.same||r.noTs!=='224,32,32,255')throw new Error(JSON.stringify(r))});
 await test('Photo Studio : mise à l’échelle selon le contenu, une seule étape d’historique',async()=>{await sample();
   await ev(()=>PSX.seamOpen());await page.waitForSelector('#cs-w');await page.selectOption('#cs-r','1:1');await page.selectOption('#cs-p','none');
   await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await psIdle();await page.waitForTimeout(200);

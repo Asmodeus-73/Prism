@@ -80,15 +80,15 @@ function restoreDialog(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)r
       {label:'Appliquer',primary:true,onClick:()=>{clear();LAST=JSON.parse(JSON.stringify(st));apply(d,L,orig,st)}}]})}
 
 async function apply(d,L,orig,st){if(!RF.some(f=>st[f.id].enabled)){toast('Aucune retouche cochée');return}
-  busy(true,NAME+'…',0);
+  busy(true,NAME+'…',0);let j=null;
   try{let skin;if(st.skin.enabled&&st.skin.params.area==='mask'){const m=await aiSkin(d,L);if(m)skin=PSX.mask(m,orig.width,orig.height)}
-    const r=await PSX.run('restore',{img:PSX.img(orig),params:toParams(st),scale:1,skin},{onProgress:f=>busy(true,NAME+'…',f)}).promise;
+    j=PSX.track(PSX.run('restore',{img:PSX.img(orig),params:toParams(st),scale:1,skin},{onProgress:f=>busy(true,NAME+'…',f)}));const r=await j.promise;
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');return}
     let c=PSX.canvas(r.image);
     if(st.newLayer){if(d.sel){const t=mk(c.width,c.height),g=cx(t);g.drawImage(c,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);c=t}
       const i=d.layers.indexOf(L);d.active=i;insertLayer(newPixel(NAME,c),NAME)}
     else applyMasked(L,c,NAME)}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast(NAME+' impossible : '+(e.message||e),4000)}markComp()}
-  finally{busy(false)}}
+  finally{PSX.untrack(j);busy(false)}}
 PSX.restoreDialog=restoreDialog;PSX.restoreApply=apply;PSX.restoreDefaults=defaults;
 PSX.addToMenu('filter',null,()=>[MI(NAME+'…',{icon:'filter',dis:S.doc?false:NODOC,fn:restoreDialog})],/^Correction de l’objectif/);
