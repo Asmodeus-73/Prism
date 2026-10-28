@@ -11,3 +11,5 @@ l'éditeur de [ps.puter.com](https://ps.puter.com/), code source dans
 - Les modifications propres à Prism dans `src/` sont marquées d'un commentaire `Prism:`.
 
 Côté Prism, les fonctions se branchent dans `web-src/feat/ps*.js`.
+
+Les lecteurs et écrivains de GIF et PNG animés utilisent pako (MIT, `web/ps/LICENSE-pako.txt`), installé par `npm ci`.

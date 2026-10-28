@@ -308,6 +308,31 @@ await test('Photo Studio : zones nettes donne une sélection, export .cube valid
     try{await PSX.exportCube()}finally{saveFile=sf}
     if(saved){const lines=saved[1].trim().split('\n').filter(l=>/^[\d.]+ [\d.]+ [\d.]+$/.test(l));o.name=saved[0];o.size=/LUT_3D_SIZE 33/.test(saved[1]);o.rows=lines.length;o.first=lines[0]}else o.toast=document.getElementById('toast').textContent;return o});
   if(!r.sel||(r.name?(!r.size||r.rows!==33*33*33||!/\.cube$/.test(r.name)):!/réglage/.test(r.toast||'')))throw new Error(JSON.stringify(r))});
+// ---- photos animées et formats en plus (QOI, JPEG 2000, PPM, PNG animé, Motion Photo), ouverts par Fichier > Ouvrir ----
+const FIX=path.join(path.dirname(new URL(import.meta.url).pathname),'fixtures');
+async function openFix(...names){await ev(()=>{window.__d0=S.doc});await page.setInputFiles('#fileOpen',names.map(n=>path.join(FIX,n)));
+  await page.waitForFunction(()=>S.doc&&S.doc!==window.__d0,null,{timeout:30000});await page.waitForFunction(()=>{const b=document.querySelector('#busy');return !b||b.hidden},null,{timeout:30000});await page.waitForTimeout(400)}
+const layerPx=(x,y)=>ev(([x,y])=>{const L=S.doc.layers.find(l=>l.kind==='pixel');return Array.from(rx(L.canvas).getImageData(x,y,1,1).data)},[x,y]);
+await test('formats : QOI, JPEG 2000 et PPM s’ouvrent au bon pixel',async()=>{await fresh();const e=[],near=(a,b,t=4)=>a.every((v,i)=>Math.abs(v-b[i])<=t);
+  await openFix('photo.qoi');let r=await ev(()=>[S.doc.w,S.doc.h]);if(r.join()!=='64,48')e.push('QOI taille '+r);let px=await layerPx(2,3);if(px.join()!=='8,24,90,255')e.push('QOI pixel '+px);px=await layerPx(62,3);if(px[3]!==128)e.push('QOI alpha '+px);px=await layerPx(32,24);if(px.join()!=='240,200,40,255')e.push('QOI centre '+px);
+  await openFix('photo.jp2');r=await ev(()=>[S.doc.w,S.doc.h,S.doc.name]);if(r.join()!=='64,48,photo.jp2')e.push('JP2 '+r);px=await layerPx(3,44);if(!near(px,[40,90,160,255]))e.push('JP2 pixel '+px);px=await layerPx(32,24);if(!near(px,[240,200,40,255]))e.push('JP2 centre '+px);
+  await openFix('photo.ppm');px=await layerPx(32,24);if(px.join()!=='240,200,40,255')e.push('PPM '+px);
+  if(e.length)throw new Error(e.join('\n'))});
+await test('photo animée : Motion Photo lue, image choisie ouverte, PNG animé en calques',async()=>{await fresh();
+  await openFix('motion.jpg');const m=await ev(()=>S.doc.motion&&{from:S.doc.motion.from,ts:S.doc.motion.ts,size:S.doc.motion.blob.size,type:S.doc.motion.type});
+  if(!m||m.from!=='Motion Photo'||m.ts!==500000||!(m.size>500))throw new Error('Motion Photo non détectée '+JSON.stringify(m));
+  await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-v');await page.waitForFunction(()=>document.querySelector('#mo-v').readyState>=2,null,{timeout:15000});
+  const sl=await page.locator('#mo-t').boundingBox();await page.mouse.click(sl.x+sl.width*0.2,sl.y+sl.height/2);await page.waitForTimeout(300);
+  await page.locator('#scrim .foot .btn',{hasText:'Ouvrir cette image'}).click();await page.waitForTimeout(500);
+  const o=await ev(()=>[S.doc.name,S.doc.w,S.doc.h]);if(o.join()!=='motion-image.png,64,48')throw new Error('image choisie '+o);
+  await openFix('anim.png');const ak=await ev(()=>S.doc.anim&&S.doc.anim.kind);if(ak!=='apng')throw new Error('PNG animé non détecté : '+ak);
+  await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-all');await page.locator('#mo-all').click();await page.waitForTimeout(300);
+  const L=await ev(()=>{const A=S.doc.layers,g=A.filter(l=>l.grp&&/Animation/.test(l.grp.name));return{n:g.length,vis:g.filter(l=>l.visible!==false).length,top:A.slice(A.indexOf(g[g.length-1])+1).every(l=>l.kind==='adjust')}});
+  if(L.n!==4||L.vis!==1||!L.top)throw new Error('calques '+JSON.stringify(L));
+  const live=await ev(()=>{const enc=s=>new TextEncoder().encode(s),u32=n=>[n>>>24&255,n>>>16&255,n>>>8&255,n&255],box=(t,body)=>[...u32(8+body.length),...enc(t),...body];
+    const mp4=[...box('ftyp',[...enc('isom'),0,0,0,0]),...box('mdat',[1,2,3,4])],heic=new Uint8Array([...box('ftyp',[...enc('heic'),0,0,0,0]),...box('meta',[0,0,0,0]),...box('mpvd',mp4)]);
+    const r=PSX.findMotion(heic);return r&&[r.end-r.start,mp4.length]});
+  if(!live||live[0]!==live[1])throw new Error('HEIC mpvd '+live)});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
