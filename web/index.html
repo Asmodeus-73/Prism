@@ -11348,7 +11348,9 @@ PSX.sync=(op,args)=>{if(!window.PSI)throw new Error('le module de calcul se char
 
 /* travaux : un worker par calcul (2 gardés au repos) ; annuler = arrêter le worker, l'interface ne se fige jamais */
 const PSW={idle:[],url:null,ok:true};
-function psWorker(){const w=PSW.idle.pop();if(w)return w;return new Worker(asset('ps/worker.js'))}
+function psWorker(){const w=PSW.idle.pop();if(w)return w;const n=new Worker(asset('ps/worker.js'));
+  // an error of a worker kept at rest (its script failed to load) is not the page's: it leaves the pool quietly; a running job still gets it through onerror
+  n.addEventListener('error',e=>{e.preventDefault();const i=PSW.idle.indexOf(n);if(i>=0){PSW.idle.splice(i,1);try{n.terminate()}catch(x){}}});return n}
 function psTransfer(v,out=[]){if(!v||typeof v!=='object')return out;if(ArrayBuffer.isView(v)){if(!out.includes(v.buffer))out.push(v.buffer);return out}for(const k in v)psTransfer(v[k],out);return out}
 /* run(op, args, {onProgress, copy}) -> {promise, cancel}. Les tableaux passés sont transférés (inutilisables ensuite) sauf copy:true. */
 PSX.run=(op,args,o={})=>{let w=null,done=false,rej=null;const id=++PSX.jobs;
