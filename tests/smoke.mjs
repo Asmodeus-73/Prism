@@ -353,6 +353,28 @@ await test('photos d’identité : planche 10 × 15 cm à 300 ppp ouverte, gliss
   if(await ev(()=>document.querySelector('#id-prev').toDataURL())===before)throw new Error('l’aperçu ne bouge pas');
   await page.locator('#scrim .foot .btn',{hasText:'Créer la planche'}).click();await page.waitForFunction(()=>/photos-identite/.test(S.doc.name));
   const o=await ev(()=>[S.doc.w,S.doc.h]);if(o.join()!=='1772,1181')throw new Error('taille '+o)});
+// ---- profondeur et visages (IA) : modèles chargés depuis web/ai/depth1 et web/ai/face1 ----
+const viewPt=(x,y)=>ev(([x,y])=>{const r=view.getBoundingClientRect();return [r.left+S.panX+x*S.zoom,r.top+S.panY+y*S.zoom]},[x,y]);
+const lpx=(x,y)=>ev(([x,y])=>Array.from(rx(pixelTarget().canvas).getImageData(x,y,1,1).data).join(),[x,y]);
+await test('profondeur : brume, rééclairage placé à la souris, sélection selon la distance',async()=>{await fresh();await sample();
+  const [W,H]=await ev(()=>[S.doc.w,S.doc.h]);const before=await lpx(W*0.5|0,H*0.15|0);
+  await ev(()=>PrismDepth.fog());await page.waitForSelector('#dp-density',{timeout:180000});await page.waitForTimeout(400);
+  await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await page.waitForTimeout(200);
+  const fog=await ev(()=>S.history[S.hi].label);if(fog!=='Brume selon la distance')throw new Error('brume '+fog);
+  await ev(()=>undo());await ev(()=>PrismDepth.relight());await page.waitForSelector('#dp-power');
+  const a=await viewPt(W*0.2,H*0.7),b=await viewPt(W*0.3,H*0.6);await page.mouse.move(a[0],a[1]);await page.mouse.down();await page.mouse.move(b[0],b[1],{steps:4});await page.mouse.up();await page.waitForTimeout(600);
+  const pv=await ev(()=>!!pixelTarget().preview);await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await page.waitForTimeout(200);
+  const r=await ev(()=>({label:S.history[S.hi].label,prev:!pixelTarget().preview}));if(!pv||r.label!=='Rééclairage 3D'||!r.prev)throw new Error(JSON.stringify(r));
+  if(await lpx(W*0.5|0,H*0.15|0)===before)throw new Error('rééclairage sans effet');
+  await ev(()=>PrismDepth.depthSel());await page.waitForSelector('#ds-near');await page.waitForTimeout(300);await page.locator('#scrim .foot .btn',{hasText:'Sélectionner'}).click();
+  const s=await ev(()=>({sel:!!S.doc.sel&&!!maskBBox(S.doc.sel),label:S.history[S.hi].label}));if(!s.sel||s.label!=='Sélectionner selon la distance')throw new Error(JSON.stringify(s))});
+await test('visages : le modèle tourne, un clic masque une zone oubliée, le reste ne bouge pas',async()=>{await fresh();await sample();
+  const [W,H]=await ev(()=>[S.doc.w,S.doc.h]);const F=await ev(async()=>(await PrismDepth.detectFaces()));if(!Array.isArray(F))throw new Error('détection '+F);
+  await ev(()=>{S.doc.sel=null;PrismDepth.faces()});await page.waitForSelector('#fa-n');const cx0=W*0.15|0,cy0=H*0.8|0,far=[W*0.9|0,H*0.1|0];
+  const out0=await lpx(...far),in0=await lpx(cx0,cy0);const p=await viewPt(cx0,cy0);await page.mouse.click(p[0],p[1]);await page.waitForTimeout(200);
+  await page.selectOption('#fa-style','fill');await page.waitForTimeout(200);await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await page.waitForTimeout(200);
+  const r={label:await ev(()=>S.history[S.hi].label),in:await lpx(cx0,cy0),out:await lpx(...far)};
+  if(r.label!=='Anonymiser les visages'||r.in!=='32,32,32,255'||r.in===in0||(F.length===0&&r.out!==out0))throw new Error(JSON.stringify({...r,n:F.length}))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

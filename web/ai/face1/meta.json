@@ -1,0 +1,1 @@
+{"model": "YuNet 2023mar (OpenCV zoo, MIT)", "fmt": "onnx", "input": "float [1,3,640,640] BGR 0..255", "output": "cls/obj/bbox/kps aux pas 8, 16, 32", "chunks": [232589], "total": 232589, "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"}
