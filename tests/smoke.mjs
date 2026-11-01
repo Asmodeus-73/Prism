@@ -45,6 +45,12 @@ await test('pinceau : un trait change les pixels, annuler le retire',async()=>{a
   if(a===b)throw new Error('le trait n’a rien changé');if(a!==c)throw new Error('annuler n’a pas rétabli : '+a+' / '+c)});
 await test('réglages : la lumière s’applique et se rend',async()=>{const r=await ev(async()=>{const before=S.history.length;insertLayer(newAdjust('Test'),'Test',true);const L=AL();L.dev.exposure=0.8;S.docVer++;render();await new Promise(r=>setTimeout(r,300));
     const c=flatSync(),d=c.getContext('2d').getImageData(10,10,1,1).data;return {h:S.history.length-before,px:[...d]}});if(!r.px||r.px[3]!==255)throw new Error(JSON.stringify(r))});
+await test('réglages : finitions couleur (interrupteur, rendu 8 et 16 bits, annulation)',async()=>{await ev(()=>{const i=S.doc.layers.findIndex(l=>l.kind==='adjust'&&!l.mask);if(i>=0)S.doc.active=i;syncAll()});
+  const mean=bits=>ev(async b=>{const old=S.doc.bits;S.doc.bits=b;S.docVer++;try{let c=b===16?await renderDoc16(0.2):await renderDoc(0.2);c=c.canvas||c;const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let s=0;for(let i=0;i<d.length;i+=4)s+=d[i]-d[i+2];return s/(d.length/4)}finally{S.doc.bits=old}},bits);
+  const a=await mean(8);await ev(()=>{const d=document.querySelector('[data-fx=bw]');d.open=true;d.scrollIntoView()});await page.click('[data-fx=bw] [data-fxon]');await page.waitForTimeout(150);
+  const on=await ev(()=>!!(AL().dev.fx&&AL().dev.fx.bw&&AL().dev.fx.bw.on));const b8=await mean(8),b16=await mean(16);
+  if(!on||Math.abs(b8)>0.6||Math.abs(b16)>0.6||Math.abs(a)<1)throw new Error(JSON.stringify({on,a,b8,b16}));
+  await ev(()=>undo());const c=await mean(8);if(Math.abs(c-a)>0.01)throw new Error('annuler : '+a+' / '+c)});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
