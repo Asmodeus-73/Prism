@@ -100,6 +100,11 @@ const pane=$('#pane-develop');
 const RESET='<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a6 6 0 1 0 1.9-4.4"/><path d="M4 3.8v3.4h3.4"/></svg>';
 const PIP='<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.2 2.8a2.2 2.2 0 0 1 3.1 3.1l-1.7 1.7-3.1-3.1z"/><path d="m11.5 6.5-7.6 7.6c-.4.4-.6.9-.6 1.4v1.2h1.2c.5 0 1-.2 1.4-.6l7.6-7.6"/><path d="m10.4 7.6 3 3"/></svg>';
 const TAB={};
+const HIDE='<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 10h10"/></svg>';
+/* groupes affichés : ceux que l'on a ajoutés (mémorisés) et ceux qui servent sur le réglage choisi */
+const PIN=new Set((()=>{try{const a=PREF.get('fxPinned',[]);return Array.isArray(a)?a:[]}catch(e){return[]}})());
+const savePin=()=>{try{PREF.set('fxPinned',[...PIN])}catch(e){}};
+const shown=(fx,s)=>PIN.has(s)||!!(fx&&fx[s]);
 const css=document.createElement('style');css.textContent=`
 details.sec>summary .fxsw{margin-left:auto;flex:none;width:28px;height:16px;border-radius:8px;border:0;padding:0;background:var(--line-2);position:relative;cursor:pointer}
 details.sec>summary .fxsw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--bg);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
@@ -116,6 +121,11 @@ details.sec.fxsec:not(.fxlive) .secbody .row{opacity:.6}
 #pane-develop .row[data-fk] label{grid-area:l;font-size:12.5px}
 #pane-develop .row[data-fk] output{grid-area:o;font-size:12.5px;padding:1px 6px;border-radius:5px;min-width:44px}
 #pane-develop .row[data-fk] input[type=range]{grid-area:s;width:100%}
+.fxadd{padding:10px 14px 14px;border-top:1px solid var(--line)}
+.fxadd button{width:100%;justify-content:center}
+details.sec>summary .fxhide{width:24px;height:24px;display:grid;place-items:center;border:0;background:none;border-radius:var(--r-s);color:var(--fg-3);padding:0;opacity:0;transition:opacity .12s}
+details.sec>summary:hover .fxhide,details.sec>summary .fxhide:focus-visible{opacity:1}
+details.sec>summary .fxhide:hover{background:var(--raise);color:var(--fg)}
 .fxhist{width:100%;height:auto;display:block;margin:6px 0 2px;border-radius:var(--r-s);background:var(--hist-bg,transparent)}`;
 document.head.appendChild(css);
 const fmt=(q,v)=>q[4]<1?(+v).toFixed(2):(q[6]==='hue'?Math.round(v)+'°':(q[2]<0&&v>0?'+':'')+Math.round(v));
@@ -127,11 +137,16 @@ function secHTML(s){let b='';
     s.tabs.map((_,i)=>`<div data-fxpage="${i}" ${i===TAB[s.id]?'':'hidden'}>${s.rows(i).map(q=>rowHTML(s,q)).join('')}</div>`).join('')}
   else b+=s.rows(0).map(q=>rowHTML(s,q)).join('');
   if(s.colors)b=s.colors.map(([k,l])=>`<div class="fxcol"><label>${l}</label><input type="color" data-fc="${s.id}:${k}" aria-label="${l}"><button type="button" data-fxpick="${s.id}:${k}" title="Prélever la couleur dans la photo" aria-label="Prélever ${l.toLowerCase()} dans la photo">${PIP}</button></div>`).join('')+b;
-  return`<details class="sec fxsec" data-sec="fx-${s.id}" data-fx="${s.id}"><summary>${s.title}<span class="dot" aria-hidden="true"></span><button type="button" class="fxsw" role="switch" aria-checked="false" data-fxon="${s.id}" title="Activer ou désactiver" aria-label="Activer « ${s.title} »"></button><button type="button" class="rs" data-fxreset="${s.id}" title="Réinitialiser ce groupe" aria-label="Réinitialiser « ${s.title} »">${RESET}</button></summary><div class="secbody">${b}</div></details>`}
+  return`<details class="sec fxsec" data-sec="fx-${s.id}" data-fx="${s.id}"><summary>${s.title}<span class="dot" aria-hidden="true"></span><button type="button" class="fxsw" role="switch" aria-checked="false" data-fxon="${s.id}" title="Activer ou désactiver" aria-label="Activer « ${s.title} »"></button><button type="button" class="fxhide" data-fxhide="${s.id}" title="Retirer du panneau" aria-label="Retirer « ${s.title} » du panneau">${HIDE}</button><button type="button" class="rs" data-fxreset="${s.id}" title="Réinitialiser ce groupe" aria-label="Réinitialiser « ${s.title} »">${RESET}</button></summary><div class="secbody">${b}</div></details>`}
 function mount(){const body=$('#devBody');if(!body||body.querySelector('[data-fx]'))return;let open={};try{open=JSON.parse(PREF.get('w47Sec','{}'))||{}}catch(e){}
   for(const s of FX_SECS){const t=document.createElement('div');t.innerHTML=secHTML(s);const el=t.firstChild;if(open['fx-'+s.id])el.open=true;
     const ref=body.querySelector(`details[data-sec="${s.after}"]`);if(ref)ref.after(el);else body.appendChild(el)}
+  const add=document.createElement('div');add.className='fxadd';add.innerHTML='<button type="button" class="btn sm" data-fxadd aria-haspopup="menu">+ Ajouter un réglage</button>';body.appendChild(add);
   fxSync()}
+function showSec(id){PIN.add(id);savePin();fxSync();const d=pane.querySelector(`[data-fx="${id}"]`);if(d){d.hidden=false;d.open=true;d.scrollIntoView({block:'nearest',behavior:'smooth'})}}
+function addMenu(btn){const A=FXA(),fx=A&&A.dev.fx,hid=FX_SECS.filter(s=>!shown(fx,s.id));const r=btn.getBoundingClientRect();
+  const items=hid.length?hid.map(s=>({label:s.title,fn:()=>showSec(s.id)})):[{label:'Tous les réglages sont déjà affichés',dis:true}];
+  if(typeof openMenuAt==='function')openMenuAt(items,r.left,r.bottom+4,{ret:btn});}
 const FXA=()=>{try{return ADJ()}catch(e){return null}};
 function ensure(A,s){const d=A.dev;if(!d.fx)d.fx={};if(!d.fx[s])d.fx[s]={on:false};return d.fx[s]}
 function tidy(A){const fx=A.dev.fx;if(!fx)return;for(const s in fx){const o=fx[s];if(!o.on&&Object.keys(o).every(k=>k==='on'||o[k]===FXD[s][k]))delete fx[s]}if(!Object.keys(fx).length)delete A.dev.fx}
@@ -145,7 +160,7 @@ function fxSync(){const A=FXA();if(!A||!pane.querySelector('[data-fx]'))return;c
   pane.querySelectorAll('input[type=range][data-fk]').forEach(i=>{const[s,k]=i.dataset.fk.split(':');i.value=fxv(fx,s,k)});
   pane.querySelectorAll('.row[data-fk]').forEach(outFx);
   pane.querySelectorAll('input[data-fc]').forEach(i=>{const[s,k]=i.dataset.fc.split(':'),v=fxv(fx,s,k);i.value=v||'#808080';i.classList.toggle('none',!v);i.title=v?v:'Aucune couleur : choisissez-en une ou prélevez-la'});
-  for(const s of FX_SECS){const d=pane.querySelector(`[data-fx="${s.id}"]`);if(!d)continue;const on=fxOn(fx,s.id);d.querySelector('[data-fxon]').setAttribute('aria-checked',on);d.classList.toggle('fxlive',on);d.classList.toggle('mod',on)}
+  for(const s of FX_SECS){const d=pane.querySelector(`[data-fx="${s.id}"]`);if(!d)continue;const on=fxOn(fx,s.id);d.hidden=!shown(fx,s.id);d.querySelector('[data-fxon]').setAttribute('aria-checked',on);d.classList.toggle('fxlive',on);d.classList.toggle('mod',on)}
   drawHist()}
 function touch(s){const A=FXA();if(!A)return null;const o=ensure(A,s);if(!o.on){o.on=true;const d=pane.querySelector(`[data-fx="${s}"]`);if(d){d.querySelector('[data-fxon]').setAttribute('aria-checked','true');d.classList.add('fxlive','mod')}}return o}
 pane.addEventListener('input',e=>{const i=e.target;if(i.dataset.fk){const[s,k]=i.dataset.fk.split(':'),o=touch(s);if(!o)return;o[k]=+i.value;outFx(i.closest('.row'));if(s==='lv')drawHist();markContent()}
@@ -155,6 +170,9 @@ pane.addEventListener('dblclick',e=>{const r=e.target.closest('.row[data-fk]');i
   if(A.dev.fx&&A.dev.fx[s]){A.dev.fx[s][k]=FXD[s][k];tidy(A)}fxSync();markContent();pushHistory('Réinitialiser '+FXR[s][k][1].toLowerCase())},true);
 pane.addEventListener('click',e=>{const t=e.target;
   const sw=t.closest('[data-fxon]');if(sw){e.preventDefault();e.stopPropagation();const A=FXA();if(!A)return;const s=sw.dataset.fxon,o=ensure(A,s);o.on=!o.on;tidy(A);fxSync();markContent();pushHistory((o.on?'Activer ':'Désactiver ')+FXT[s].toLowerCase());return}
+  const hd=t.closest('[data-fxhide]');if(hd){e.preventDefault();e.stopPropagation();const s=hd.dataset.fxhide,A=FXA();PIN.delete(s);savePin();
+    if(A&&A.dev.fx&&A.dev.fx[s]){delete A.dev.fx[s];tidy(A);fxSync();markContent();pushHistory('Retirer '+FXT[s].toLowerCase())}else fxSync();return}
+  const ad=t.closest('[data-fxadd]');if(ad){e.preventDefault();addMenu(ad);return}
   const rs=t.closest('[data-fxreset]');if(rs){e.preventDefault();e.stopPropagation();const A=FXA();if(!A)return;const s=rs.dataset.fxreset;if(A.dev.fx){delete A.dev.fx[s];tidy(A)}fxSync();markContent();pushHistory('Réinitialiser '+FXT[s].toLowerCase());return}
   const tb=t.closest('[data-fxtab]');if(tb){const box=tb.closest('[data-fxtabs]'),s=box.dataset.fxtabs,n=+tb.dataset.fxtab;TAB[s]=n;box.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===tb));
     box.parentNode.querySelectorAll('[data-fxpage]').forEach(p=>p.hidden=+p.dataset.fxpage!==n);if(s==='lv')drawHist();return}
