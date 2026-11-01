@@ -375,6 +375,21 @@ await test('visages : le modèle tourne, un clic masque une zone oubliée, le re
   await page.selectOption('#fa-style','fill');await page.waitForTimeout(200);await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await page.waitForTimeout(200);
   const r={label:await ev(()=>S.history[S.hi].label),in:await lpx(cx0,cy0),out:await lpx(...far)};
   if(r.label!=='Anonymiser les visages'||r.in!=='32,32,32,255'||r.in===in0||(F.length===0&&r.out!==out0))throw new Error(JSON.stringify({...r,n:F.length}))});
+// ---- rendu film (simulation spectrale portée de vkdt) et contraste local ----
+await test('rendu film : pellicule couleur, diapositive, noir et blanc, négatif scanné ; contraste local',async()=>{await fresh();await sample();
+  const r=await ev(async()=>{const F=PrismFilm,D=await F.loadData(),L=pixelTarget(),c=mk(240,160);rx(c).drawImage(L.canvas,0,0,240,160);const im=rx(c).getImageData(0,0,240,160),o={};
+    const run=async(film,proc,paper,x)=>{const Z=F.tables(D,F.setup(D,{film,paper,proc,evFilm:0,gFilm:1,couplers:0.5,halation:1,grain:x?1:0,fullW:1800,fullH:1200}));return await F.render(D,Z,im,0.13)};
+    const px=(m,x,y)=>Array.from(m.data.slice((y*240+x)*4,(y*240+x)*4+3));
+    const a=await run(4,0,3),b=await run(19,1,3),g=await run(21,1,3,1),n=await run(4,2,3);
+    o.portra=px(a,120,40);o.velvia=px(b,120,40);o.trix=px(g,120,40);o.neg=px(n,120,40);
+    o.grey=px(g,30,30).every((v,i,s)=>Math.abs(v-s[0])<=1);o.alpha=a.data[3];
+    const lc=await F.localContrast(im,{clarity:0.6,shadows:1,highlights:1,sigma:0.12});let nd=0;for(let i=0;i<lc.data.length;i+=4)if(Math.abs(lc.data[i]-im.data[i])>2)nd++;o.lc=nd>500;return o});
+  const ok=v=>v.every(x=>x>=0&&x<=255)&&!(v[0]===v[1]&&v[1]===v[2]&&(v[0]===0||v[0]===255));
+  if(!ok(r.portra)||!ok(r.velvia)||!ok(r.neg)||!r.grey||r.alpha!==255||!r.lc||r.portra.join()===r.velvia.join())throw new Error(JSON.stringify(r));
+  await ev(()=>PrismFilm.film());await page.waitForSelector('#lm-film');await page.waitForFunction(()=>!!pixelTarget().preview,null,{timeout:60000});
+  await page.selectOption('#lm-film','20');await page.waitForTimeout(400);await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();
+  await page.waitForFunction(()=>S.history[S.hi].label==='Simulation de pellicule',null,{timeout:120000});
+  const bw=await ev(()=>{const d=rx(pixelTarget().canvas).getImageData(900,300,1,1).data;return Math.abs(d[0]-d[1])<=2&&Math.abs(d[1]-d[2])<=2});if(!bw)throw new Error('Double-X pas en noir et blanc')});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
