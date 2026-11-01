@@ -3231,10 +3231,10 @@ function formatsDialog(){dialog({title:'Formats pris en charge',body:`<table cla
 function aboutDialog(){dialog({title:'À propos de Prism',body:`<div class="about">${PRISM_LOGO}<div><b>Prism</b><p class="muted">Retouche photo dans le navigateur : RAW 16 bits, calques et masques, réglages non destructifs, outils IA sur l’appareil, photothèque et export dans tous les formats courants.</p></div></div>
   <details class="credits" style="margin-top:12px;font-size:12px"><summary style="cursor:pointer">Logiciels et modèles intégrés</summary><ul class="muted" style="margin:6px 0 0;padding-left:18px;line-height:1.55">
   <li>ONNX Runtime (MIT), TensorFlow.js (Apache 2.0)</li><li>LibRaw (LGPL 2.1 / CDDL 1.0), Little CMS (MIT), libheif (LGPL 3), pdf.js (Apache 2.0), ag-psd (MIT), encodeur AVIF libavif/aom (BSD)</li>
-  <li>Détourage : ISNet, DIS (Apache 2.0) · Scènes : DeepLabv3+ ADE20K, TensorFlow Models (Apache 2.0) · Personnes : MediaPipe Selfie Multiclass (Apache 2.0)</li>
+  <li>Détourage : ISNet, DIS (Apache 2.0) · Scènes : DeepLabv3+ ADE20K, TensorFlow Models (Apache 2.0) · Personnes : MediaPipe Selfie Multiclass (Apache 2.0) · Profondeur : Depth Anything V2 Small (Apache 2.0) · Visages : YuNet, OpenCV Zoo (MIT)</li>
   <li>Débruitage : SCUNet (Apache 2.0) · Suppression d’objet : LaMa (Apache 2.0) · Sélection d’objet : Segment Anything ViT-B, Meta AI (Apache 2.0) · Agrandissement : Real-ESRGAN (BSD 3 clauses)</li>
   <li>Profils d’objectif : base lensfun (CC BY-SA 3.0, lensfun.github.io)</li>
-  <li>Remplissage d’après le contenu, débruitage rapide, netteté des détails, restauration, ciel, mise à l’échelle selon le contenu, GIF et PNG animés : algorithmes de Photo Studio, Puter (MIT), pako (MIT)</li><li>JPEG XL : jxl-oxide (MIT / Apache 2.0)</li></ul></details>`,buttons:[{label:'Fermer',primary:true}]})}
+  <li>Remplissage d’après le contenu, débruitage rapide, netteté des détails, restauration, ciel, mise à l’échelle selon le contenu, GIF et PNG animés : algorithmes de Photo Studio, Puter (MIT), pako (MIT)</li><li>JPEG XL : jxl-oxide (MIT / Apache 2.0)</li><li>Rendu film : filmsim de vkdt, Johannes Hanika (BSD 2 clauses) · profils de pellicules et de papiers : spektrafilm, Andrea Volpato (CC BY-SA 4.0, github.com/andreavolpato/spektrafilm)</li></ul></details>`,buttons:[{label:'Fermer',primary:true}]})}
 document.addEventListener('keydown',e=>{const t=e.target;if(t.closest&&t.closest('input,textarea,select,[contenteditable]'))return;if(e.key==='?'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();shortcutsDialog()}
   if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&(e.key==='x'||e.key==='X')&&S.doc&&S.doc.sel){e.preventDefault();cutSel()}});
 /* dialogs keep focus inside, and their first field gets focus */
@@ -9838,6 +9838,175 @@ mount();
 
 }
 
+/* ===== feat: feat/fondvert.js ===== */
+{
+/* ===== Fond vert (incrustation), couleur vers transparence, remplacer une couleur, photos d'identité ===== */
+/* Image > Couleur et transparence ; Fichier > Photos d'identité. Écrits pour Prism d'après les méthodes publiées
+   (clé chromatique en YCbCr avec retrait du débordement, « Color to Alpha » de GIMP, écart de couleur en Lab). */
+const px=s=>rx(s).getImageData(0,0,s.width,s.height);
+const put=(w,h,im)=>{const c=mk(w,h);rx(c).putImageData(im,0,0);return c};
+const hex=c=>{const n=parseInt(c.slice(1),16);return[n>>16&255,n>>8&255,n&255]};
+const toHex=a=>'#'+a.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
+const sstep=(a,b,x)=>{if(b<=a)return x<a?0:1;const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t)};
+const mixSel=(o,r,sel)=>{const out=cloneC(o),g=cx(out);g.globalCompositeOperation='destination-out';g.drawImage(sel,0,0);const t=cloneC(r),tg=cx(t);tg.globalCompositeOperation='destination-in';tg.drawImage(sel,0,0);g.globalCompositeOperation='lighter';g.drawImage(t,0,0);return out};
+
+/* ---------- Lab (D65), pour mesurer l'écart entre deux couleurs comme l'œil ---------- */
+const LIN=new Float32Array(256);for(let i=0;i<256;i++){const v=i/255;LIN[i]=v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4)}
+const gam=v=>255*(v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055);
+const fl=t=>t>0.008856?Math.cbrt(t):7.787*t+16/116,fi=t=>{const c=t*t*t;return c>0.008856?c:(t-16/116)/7.787};
+function lab(r,g,b,o){const R=LIN[r&255],G=LIN[g&255],B=LIN[b&255],x=fl((R*.4124+G*.3576+B*.1805)/.95047),y=fl(R*.2126+G*.7152+B*.0722),z=fl((R*.0193+G*.1192+B*.9505)/1.08883);o[0]=116*y-16;o[1]=500*(x-y);o[2]=200*(y-z);return o}
+function rgbOf(L,a,b,o){const y=(L+16)/116,x=fi(a/500+y)*.95047,Y=fi(y),z=fi(y-b/200)*1.08883;
+  o[0]=gam(x*3.2406-Y*1.5372-z*.4986);o[1]=gam(-x*.9689+Y*1.8758+z*.0415);o[2]=gam(x*.0557-Y*.2040+z*1.0570);return o}
+
+/* ---------- fond vert : clé chromatique ---------- */
+/* couleur du fond devinée sur les bords de la photo : la teinte saturée la plus fréquente */
+function guessKey(c){const w=c.width,h=c.height,a=px(c).data,b=Math.max(2,Math.round(Math.min(w,h)*.04)),bins=new Map(),st=Math.max(1,Math.round((w+h)/1500));
+  const add=(x,y)=>{const i=(y*w+x)*4,r=a[i],g=a[i+1],bl=a[i+2],mx=Math.max(r,g,bl),mn=Math.min(r,g,bl);if(a[i+3]<200||mx<40||(mx-mn)<mx*.25)return;
+    const k=(g>=r&&g>=bl?1:bl>=r?2:0)+'',e=bins.get(k)||{n:0,r:0,g:0,b:0};e.n++;e.r+=r;e.g+=g;e.b+=bl;bins.set(k,e)};
+  for(let y=0;y<h;y+=st)for(let x=0;x<w;x+=st)if(x<b||y<b||x>=w-b||y>=h-b)add(x,y);
+  let best=null;for(const e of bins.values())if(!best||e.n>best.n)best=e;
+  return best&&best.n>20?[best.r/best.n,best.g/best.n,best.b/best.n]:[0,177,64]}
+function alphaOnly(w,h,A){const c=mk(w,h),im=new ImageData(w,h),d=im.data;for(let i=0,j=0;i<A.length;i++,j+=4){d[j]=d[j+1]=d[j+2]=255;d[j+3]=A[i]}rx(c).putImageData(im,0,0);return c}
+/* rétrécit le bord (minimum sur r px), puis l'adoucit (flou du seul canal alpha) */
+function shrinkA(A,w,h,r){if(r<1)return A;const t=new Uint8Array(A.length),o=new Uint8Array(A.length);
+  for(let y=0;y<h;y++){const b=y*w;for(let x=0;x<w;x++){let m=255;for(let k=Math.max(0,x-r),e=Math.min(w-1,x+r);k<=e;k++)if(A[b+k]<m)m=A[b+k];t[b+x]=m}}
+  for(let x=0;x<w;x++)for(let y=0;y<h;y++){let m=255;for(let k=Math.max(0,y-r),e=Math.min(h-1,y+r);k<=e;k++)if(t[k*w+x]<m)m=t[k*w+x];o[y*w+x]=m}
+  return o}
+function chromaKey(s,p){const w=s.width,h=s.height,im=px(s),a=im.data,K=p.key||guessKey(s),ch=K[1]>=K[0]&&K[1]>=K[2]?1:K[2]>=K[0]?2:0,o1=(ch+1)%3,o2=(ch+2)%3;
+  const kcb=-.1687*K[0]-.3313*K[1]+.5*K[2],kcr=.5*K[0]-.4187*K[1]-.0813*K[2],km=Math.max(20,Math.hypot(kcb,kcr)),t0=km*p.tol/100,t1=t0+km*Math.max(.01,p.soft/100),sp=p.spill/100;
+  const A=new Uint8Array(w*h);
+  for(let i=0,j=0;i<a.length;i+=4,j++){const r=a[i],g=a[i+1],b=a[i+2],cb=-.1687*r-.3313*g+.5*b,cr=.5*r-.4187*g-.0813*b;
+    let al=sstep(t0,t1,Math.hypot(cb-kcb,cr-kcr));
+    /* une couleur bien plus sombre ou plus claire que le fond reste opaque, même de teinte voisine */
+    const dy=Math.abs((.299*r+.587*g+.114*b)-(.299*K[0]+.587*K[1]+.114*K[2]));if(dy>110)al=Math.max(al,sstep(110,170,dy));
+    A[j]=Math.round(al*a[i+3]);
+    if(sp>0){const v=a[i+ch],lim=(a[i+o1]+a[i+o2])/2;if(v>lim)a[i+ch]=v-(v-lim)*sp}}
+  let M=shrinkA(A,w,h,Math.round(p.shrink));
+  if(p.feather>0){const f=px(blurCanvas(alphaOnly(w,h,M),p.feather)).data;M=new Uint8Array(w*h);for(let j=0;j<M.length;j++)M[j]=f[j*4+3]}
+  for(let j=0;j<M.length;j++)a[j*4+3]=M[j];
+  return put(w,h,im)}
+
+/* ---------- couleur vers transparence (méthode de GIMP) ---------- */
+function colorToAlpha(s,p){const im=px(s),a=im.data,C=p.color.map(v=>v/255),th=p.th/100;
+  for(let i=0;i<a.length;i+=4){let al=0;const v=[a[i]/255,a[i+1]/255,a[i+2]/255];
+    for(let k=0;k<3;k++){const c=C[k],x=v[k];let t=0;if(x>c)t=c<1?(x-c)/(1-c):0;else if(x<c)t=c>0?(c-x)/c:0;if(t>al)al=t}
+    if(th>0)al=al<=th?0:(al-th)/(1-th);
+    if(al<=0){a[i+3]=0;continue}
+    for(let k=0;k<3;k++)a[i+k]=Math.max(0,Math.min(255,((v[k]-C[k])/al+C[k])*255));
+    a[i+3]=Math.round(a[i+3]*al)}
+  return put(s.width,s.height,im)}
+
+/* ---------- remplacer une couleur : décalage en Lab, pondéré par l'écart à la couleur choisie ---------- */
+function replaceColor(s,p){const im=px(s),a=im.data,S0=lab(...p.from,[0,0,0]),T=lab(...p.to,[0,0,0]),dL=(T[0]-S0[0])*p.light/100,da=T[1]-S0[1],db=T[2]-S0[2],q=[0,0,0],o=[0,0,0],t0=p.tol,t1=p.tol+Math.max(1,p.soft);
+  for(let i=0;i<a.length;i+=4){if(!a[i+3])continue;lab(a[i],a[i+1],a[i+2],q);const w=1-sstep(t0,t1,Math.hypot(q[0]-S0[0],(q[1]-S0[1]),(q[2]-S0[2])));if(!(w>0))continue;
+    rgbOf(q[0]+dL*w,q[1]+da*w,q[2]+db*w,o);a[i]=Math.max(0,Math.min(255,o[0]));a[i+1]=Math.max(0,Math.min(255,o[1]));a[i+2]=Math.max(0,Math.min(255,o[2]))}
+  return put(s.width,s.height,im)}
+
+/* ---------- pipette : un clic sur la photo prend la couleur du calque (sans l'aperçu en cours) ---------- */
+function pickOnce(L,cb){toast('Cliquez sur la photo pour prendre la couleur',3000);document.body.classList.add('fv-pick');
+  const h=e=>{if(e.target!==view)return;e.preventDefault();e.stopImmediatePropagation();removeEventListener('pointerdown',h,true);document.body.classList.remove('fv-pick');
+    const d=S.doc;if(!d)return;const c=L.canvas,p=evPos(e),x=Math.max(0,Math.min(c.width-1,Math.floor(p.x-(L.x|0)))),y=Math.max(0,Math.min(c.height-1,Math.floor(p.y-(L.y|0)))),r=Math.max(1,Math.round(Math.max(d.w,d.h)/800));
+    const q=rx(c).getImageData(Math.max(0,x-r),Math.max(0,y-r),2*r+1,2*r+1).data;let R=0,G=0,B=0,n=0;for(let i=0;i<q.length;i+=4)if(q[i+3]){R+=q[i];G+=q[i+1];B+=q[i+2];n++}
+    if(n)cb([R/n,G/n,B/n])};
+  addEventListener('pointerdown',h,true)}
+
+/* ---------- boîte commune : réglages, couleurs, aperçu en direct, appliquer au calque ---------- */
+function fxDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}
+  if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
+  const p={...o.init(L)};let tmr=null;const alive=()=>S.doc===d&&d.layers.includes(L);
+  const clear=()=>{clearTimeout(tmr);delete L.preview};
+  const run=()=>{let r=o.run(L.canvas,p);if(d.sel)r=mixSel(L.canvas,r,d.sel);return r};
+  const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!alive())return;try{L.preview=run();markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},140)};
+  const colRow=c=>`<div class="row"><label for="fv-${c[0]}">${c[1]}</label><input type="color" id="fv-${c[0]}" value="${toHex(p[c[0]]||[0,0,0])}" style="width:44px;height:26px;padding:0;border:0;background:none"><button class="btn sm" data-pick="${c[0]}" title="Prendre la couleur sur la photo">Pipette</button></div>`;
+  dialog({title:o.title,light:true,
+    body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+(o.colors||[]).map(colRow).join('')+o.params.map(q=>rangeRow('fv-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join('')+(o.extra||'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+    onOpen:el=>{o.params.forEach(q=>{const i=$('#fv-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#fv-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});
+      (o.colors||[]).forEach(c=>{const i=$('#fv-'+c[0],el);i.oninput=()=>{p[c[0]]=hex(i.value);prev()};
+        $(`[data-pick="${c[0]}"]`,el).onclick=()=>pickOnce(L,v=>{p[c[0]]=v;i.value=toHex(v);prev()})});
+      o.onOpen&&o.onOpen(el,p,prev);prev()},
+    buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
+      {label:'Appliquer',primary:true,onClick:el=>{clear();if(!alive()){toast('Le calque n’existe plus');return}
+        try{applyMasked(L,run(),o.title);syncAll();o.after&&o.after(el,p,L)}catch(e){console.error(e);markComp();toast(o.title+' impossible : '+(e.message||e),4000);return false}}}]})}
+
+/* calque placé juste sous le calque détouré */
+function layerBelow(L,canvas,name){const d=S.doc,i=d.layers.indexOf(L);if(i<0)return;const N=newPixel(name,canvas);d.layers.splice(i,0,N);d.active=d.layers.indexOf(L);markComp();pushHistory(name);syncAll()}
+function pickImage(){return new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='image/*,.heic,.heif,.avif';i.onchange=()=>res(i.files[0]||null);i.click()})}
+async function coverWith(file,w,h){const im=await loadImageFile(file),iw=im.naturalWidth||im.width,ih=im.naturalHeight||im.height,k=Math.max(w/iw,h/ih),c=mk(w,h),g=cx(c);
+  g.imageSmoothingQuality='high';g.drawImage(im,(w-iw*k)/2,(h-ih*k)/2,iw*k,ih*k);return c}
+
+function greenDialog(){fxDialog({title:'Fond vert (incrustation)',
+  note:'Rend transparent le fond uni (vert ou bleu) et retire le reflet coloré sur les bords. La couleur du fond est devinée sur les bords de la photo.',
+  colors:[['key','Couleur du fond']],
+  params:[['tol','Tolérance',0,90,1,0,' %'],['soft','Douceur du bord',1,100,1,0,' %'],['spill','Retrait du reflet',0,100,1,0,' %'],['shrink','Rétrécir le bord',0,8,1,0,' px'],['feather','Adoucir le bord',0,6,0.5,0,' px']],
+  extra:`<div class="row"><label for="fv-bg">Nouveau fond</label><select id="fv-bg"><option value="none">Transparent</option><option value="color">Couleur unie</option><option value="image">Une image…</option></select><input type="color" id="fv-bgc" value="#ffffff" style="width:44px;height:26px;padding:0;border:0;background:none"></div>`,
+  init:L=>({key:guessKey(L.canvas),tol:22,soft:18,spill:80,shrink:0,feather:1}),
+  run:chromaKey,
+  after:async(el,p,L)=>{const m=$('#fv-bg',el).value,d=S.doc;if(m==='color'){const c=mk(d.w,d.h),g=cx(c);g.fillStyle=$('#fv-bgc',el).value;g.fillRect(0,0,d.w,d.h);layerBelow(L,c,'Fond')}
+    else if(m==='image'){const f=await pickImage();if(!f||S.doc!==d)return;try{busy(true,'Pose du nouveau fond…',null);layerBelow(L,await coverWith(f,d.w,d.h),'Fond')}catch(e){console.error(e);toast('Image illisible',4000)}finally{busy(false)}}}})}
+function c2aDialog(){fxDialog({title:'Couleur vers transparence',
+  note:'Retire une couleur en gardant les nuances : un fond blanc derrière un logo ou une signature devient transparent, les bords restent doux.',
+  colors:[['color','Couleur à retirer']],params:[['th','Seuil',0,90,1,0,' %']],
+  init:()=>({color:[255,255,255],th:0}),run:colorToAlpha})}
+function replaceDialog(){fxDialog({title:'Remplacer une couleur',
+  note:'Change une couleur de la photo en une autre, en gardant les ombres et les reliefs. Prenez la couleur d’origine à la pipette.',
+  colors:[['from','Couleur d’origine'],['to','Nouvelle couleur']],
+  params:[['tol','Tolérance',1,80,1,0,''],['soft','Douceur',1,60,1,0,''],['light','Suivre la luminosité',0,100,1,0,' %']],
+  init:()=>({from:[200,40,40],to:[40,90,200],tol:18,soft:14,light:60}),run:replaceColor})}
+
+/* ---------- photos d'identité : recadrage au format officiel, planche à imprimer à 300 ppp ---------- */
+/* [id, nom, largeur mm, hauteur mm, hauteur du visage min/max (menton → haut du crâne), mm] */
+const IDF=[['fr','France, Union européenne, Royaume-Uni, Suisse (35 × 45 mm)',35,45,32,36],['us','États-Unis, Inde (51 × 51 mm, 2 × 2 pouces)',51,51,25,35],
+  ['ca','Canada (50 × 70 mm)',50,70,31,36],['cn','Chine (33 × 48 mm)',33,48,28,33],['jp','Japon, Australie (35 × 45 mm)',35,45,32,36]];
+const SHEETS=[['10x15','10 × 15 cm',150,100],['13x18','13 × 18 cm',180,130],['a4','A4',297,210]];
+const DPI=300,MM=DPI/25.4;
+/* place autant de photos que possible, 2 mm d'écart, traits de coupe gris clair */
+function sheetOf(photo,F,S0){const W=Math.round(S0[2]*MM),H=Math.round(S0[3]*MM),c=mk(W,H),g=cx(c),pw=Math.round(F[2]*MM),ph=Math.round(F[3]*MM),gap=Math.round(2*MM),mg=Math.round(4*MM);
+  g.fillStyle='#fff';g.fillRect(0,0,W,H);const nx=Math.max(1,Math.floor((W-2*mg+gap)/(pw+gap))),ny=Math.max(1,Math.floor((H-2*mg+gap)/(ph+gap))),ox=Math.round((W-nx*pw-(nx-1)*gap)/2),oy=Math.round((H-ny*ph-(ny-1)*gap)/2);
+  g.imageSmoothingQuality='high';g.strokeStyle='#c8c8c8';g.lineWidth=1;
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const x=ox+i*(pw+gap),y=oy+j*(ph+gap);g.drawImage(photo,x,y,pw,ph);g.strokeRect(x-.5,y-.5,pw+1,ph+1)}
+  return{c,n:nx*ny}}
+async function idDialog(){const d=S.doc;if(!d)return;const base=await renderDoc(1);if(S.doc!==d)return;
+  let src=base,F=IDF.find(f=>f[0]===PREF.get('idFmt','fr'))||IDF[0];const st={z:1,x:.5,y:.42};
+  const PW=180;let cv=null,drag=null;
+  const crop=()=>{const ar=F[2]/F[3];let h=src.height/st.z,w=h*ar;if(w>src.width/st.z){w=src.width/st.z;h=w/ar}return{w,h,x:st.x*src.width-w/2,y:st.y*src.height-h/2}};
+  const draw=()=>{if(!cv)return;const ph=Math.round(PW*F[3]/F[2]);cv.width=PW;cv.height=ph;const g=cx(cv),r=crop();g.fillStyle='#fff';g.fillRect(0,0,PW,ph);g.imageSmoothingQuality='high';
+    g.drawImage(src,r.x,r.y,r.w,r.h,0,0,PW,ph);const k=ph/F[3],top=(F[3]-F[5])/2*k*.75,lo=top+F[4]*k,hi=top+F[5]*k;
+    g.strokeStyle='rgba(255,80,80,.9)';g.setLineDash([4,3]);g.lineWidth=1;[top,lo,hi].forEach(y=>{g.beginPath();g.moveTo(0,y);g.lineTo(PW,y);g.stroke()});g.setLineDash([]);
+    g.fillStyle='rgba(255,80,80,.9)';g.font='10px sans-serif';g.fillText('haut du crâne',4,top-3);g.fillText('menton entre ces deux lignes',4,hi+11)};
+  const make=async el=>{const r=crop(),pw=Math.round(F[2]*MM),ph=Math.round(F[3]*MM),one=mk(pw,ph),g=cx(one);g.fillStyle='#fff';g.fillRect(0,0,pw,ph);g.imageSmoothingQuality='high';g.drawImage(src,r.x,r.y,r.w,r.h,0,0,pw,ph);
+    const SH=SHEETS.find(s=>s[0]===$('#id-sheet',el).value)||SHEETS[0];PREF.set('idFmt',F[0]);PREF.set('idSheet',SH[0]);
+    const {c,n}=sheetOf(one,F,SH);setDoc(c,'photos-identite-'+F[0]+'.jpg',{});toast(`${n} photos ${F[2]} × ${F[3]} mm prêtes à imprimer en ${SH[1]} à 300 ppp. Vérifiez les règles officielles du pays.`,7000)};
+  dialog({title:'Photos d’identité',
+    body:`<label class="field">Format<select id="id-fmt">${IDF.map(f=>`<option value="${f[0]}"${f===F?' selected':''}>${f[1]}</option>`).join('')}</select></label>
+      <div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px"><canvas id="id-prev" style="border:1px solid var(--line,#444);cursor:grab;touch-action:none;flex:none"></canvas>
+      <div style="flex:1;min-width:0">${rangeRow('id-z','Zoom',1,6,0.01,1,' ×')}<p class="muted" style="font-size:12px;margin:6px 0">Glissez l’aperçu pour placer le visage : le haut du crâne sur la première ligne, le menton entre les deux autres. La molette zoome.</p>
+      <label class="field" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="id-white"> Fond blanc uni (IA)</label>
+      <label class="field">Planche<select id="id-sheet">${SHEETS.map(s=>`<option value="${s[0]}"${s[0]===PREF.get('idSheet','10x15')?' selected':''}>${s[1]}</option>`).join('')}</select></label></div></div>`,
+    onOpen:el=>{cv=$('#id-prev',el);const z=$('#id-z',el);
+      z.oninput=()=>{st.z=+z.value;$('#id-z-o',el).textContent=fmtN(st.z,.01)+' ×';draw()};
+      $('#id-fmt',el).onchange=e=>{F=IDF.find(f=>f[0]===e.target.value)||IDF[0];draw()};
+      $('#id-white',el).onchange=async e=>{if(!e.target.checked){src=base;draw();return}
+        const m=AI.subjectMask&&await AI.subjectMask();if(!m||S.doc!==d){e.target.checked=false;return}
+        const w=mk(base.width,base.height),g=cx(w),t=cloneC(base),tg=cx(t);tg.globalCompositeOperation='destination-in';tg.drawImage(m,0,0);g.fillStyle='#fff';g.fillRect(0,0,w.width,w.height);g.drawImage(t,0,0);src=w;draw()};
+      cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);drag={x:e.clientX,y:e.clientY,sx:st.x,sy:st.y};cv.style.cursor='grabbing'};
+      cv.onpointermove=e=>{if(!drag)return;const r=crop(),k=r.w/PW;st.x=drag.sx-(e.clientX-drag.x)*k/src.width;st.y=drag.sy-(e.clientY-drag.y)*k/src.height;draw()};
+      cv.onpointerup=cv.onpointercancel=()=>{drag=null;cv.style.cursor='grab'};
+      cv.onwheel=e=>{e.preventDefault();st.z=Math.max(1,Math.min(6,st.z*(e.deltaY<0?1.08:1/1.08)));z.value=st.z;$('#id-z-o',el).textContent=fmtN(st.z,.01)+' ×';draw()};
+      draw()},
+    buttons:[{label:'Annuler'},{label:'Créer la planche',primary:true,onClick:el=>{make(el).catch(e=>{console.error(e);toast('Planche impossible : '+(e.message||e),5000)})}}]})}
+
+/* ---------- menus ---------- */
+{const st=document.createElement('style');st.textContent='body.fv-pick #view{cursor:crosshair!important}';document.head.appendChild(st)}
+const _ii=MENU2.image.items;
+MENU2.image.items=function(){const a=_ii.apply(this,arguments),dis=S.doc?false:NODOC;
+  a.push(SEP,MI('Couleur et transparence',{icon:'mask',dis,sub:()=>[MI('Fond vert (incrustation)…',{fn:greenDialog,dis}),MI('Couleur vers transparence…',{fn:c2aDialog,dis}),MI('Remplacer une couleur…',{fn:replaceDialog,dis})]}));return a};
+const _fi=MENU2.file.items;
+MENU2.file.items=function(){const a=_fi.apply(this,arguments),it=MI('Photos d’identité…',{icon:'crop',fn:idDialog,dis:S.doc?false:NODOC});
+  const k=a.findIndex(x=>x&&x.label==='Exporter…');a.splice(k<0?a.length:k+1,0,it);return a};
+window.PrismFV={chromaKey,colorToAlpha,replaceColor,guessKey,sheetOf,IDF,SHEETS,green:greenDialog,c2a:c2aDialog,replace:replaceDialog,id:idDialog};
+
+}
+
 /* ===== feat: feat/genfill.js ===== */
 {
 /* ================= Remplissage génératif (application de bureau seulement) ================= */
@@ -11381,7 +11550,9 @@ PSX.sync=(op,args)=>{if(!window.PSI)throw new Error('le module de calcul se char
 
 /* travaux : un worker par calcul (2 gardés au repos) ; annuler = arrêter le worker, l'interface ne se fige jamais */
 const PSW={idle:[],url:null,ok:true};
-function psWorker(){const w=PSW.idle.pop();if(w)return w;return new Worker(asset('ps/worker.js'))}
+function psWorker(){const w=PSW.idle.pop();if(w)return w;const n=new Worker(asset('ps/worker.js'));
+  // an error of a worker kept at rest (its script failed to load) is not the page's: it leaves the pool quietly; a running job still gets it through onerror
+  n.addEventListener('error',e=>{e.preventDefault();const i=PSW.idle.indexOf(n);if(i>=0){PSW.idle.splice(i,1);try{n.terminate()}catch(x){}}});return n}
 function psTransfer(v,out=[]){if(!v||typeof v!=='object')return out;if(ArrayBuffer.isView(v)){if(!out.includes(v.buffer))out.push(v.buffer);return out}for(const k in v)psTransfer(v[k],out);return out}
 /* run(op, args, {onProgress, copy}) -> {promise, cancel}. Les tableaux passés sont transférés (inutilisables ensuite) sauf copy:true. */
 PSX.run=(op,args,o={})=>{let w=null,done=false,rej=null;const id=++PSX.jobs;
@@ -11542,7 +11713,8 @@ PSX.filter('replcolor',{name:'Remplacement de couleur',
   job:(img,p)=>['replaceColor',{img,p:{color:hex2(p.col||'#c03030'),fuzziness:p.fuzz,hue:p.hue,saturation:p.sat,lightness:p.light}}]});
 
 const items=()=>{const o=(id,l)=>MI(l,{dis:S.doc?false:NODOC,fn:()=>filterDialog(id)});
-  return[o('levels','Niveaux…'),o('shhl','Ombres et hautes lumières…'),o('chmix','Mélangeur de couches…'),o('selcolor','Correction sélective…'),o('photofilter','Filtre photo…'),o('gradmap','Carte de dégradé…'),o('replcolor','Remplacement de couleur…')]};
+  return[o('levels','Niveaux…'),o('shhl','Ombres et hautes lumières…'),o('chmix','Mélangeur de couches…'),o('selcolor','Correction sélective…'),o('photofilter','Filtre photo…'),o('gradmap','Carte de dégradé…')]};
+// « Remplacement de couleur » stays registered (layers that already use it) but leaves the menu: Image > Couleur et transparence > Remplacer une couleur does it with a pipette and a target colour
 PSX.addToMenu('image','Réglages avancés',items,/^Taille de l’image/);
 
 }
@@ -12737,6 +12909,197 @@ endStroke=function(){const st=S.stroke;
 
 }
 
+/* ===== feat: feat/zz_depth.js ===== */
+{
+/* ===== Profondeur et visages (IA) : rééclairage 3D, brume selon la distance, sélection selon la distance, anonymiser les visages ===== */
+/* Profondeur : Depth Anything V2 Small (Apache 2.0). Visages : YuNet, OpenCV zoo (MIT). Les deux tournent sur l'appareil.
+   La carte de profondeur est calculée une fois par état de la photo, recalée sur les bords de la photo (filtre guidé),
+   puis gardée à une définition de travail (1536 px au plus) ; les effets la suivent à pleine définition. */
+const DP={sess:{},P:{},cache:null,faces:null};
+async function ortReady(){if(!window.ort)await loadScript(await ORTX.bundle());const ort=window.ort;ort.env.wasm.wasmPaths=asset('ai/');{const bin=await ORTX.binary();if(bin)ort.env.wasm.wasmBinary=bin}
+  ort.env.wasm.numThreads=ORTX.threads();ort.env.wasm.proxy=false;return ort}
+function session(dir,label,mb){if(DP.sess[dir])return Promise.resolve(DP.sess[dir]);if(DP.P[dir])return DP.P[dir];
+  return DP.P[dir]=(async()=>{let off=false;try{const ort=await ortReady();
+      const {buf}=await AI.fetchModel(dir,label,p=>off||busy(true,`Téléchargement du modèle ${label} (${mb}, une seule fois)…`,p*0.95));
+      busy(true,'Préparation du modèle…',0.97);const s=await ORTX.create(ort,buf.buffer,{graphOptimizationLevel:'all'});DP.sess[dir]=s;return s}
+    catch(e){console.error(e);toast(`Le modèle ${label} n’a pas pu se charger : `+(e.message||e),5000);return null}
+    finally{off=true;DP.P[dir]=null;busy(false)}})()}
+const docKey=d=>d.layers.filter(L=>L.kind==='pixel'&&L.visible!==false).map(L=>[L.canvas,L.x|0,L.y|0,L.opacity]).flat();
+const sameKey=(a,b)=>a.length===b.length&&a.every((v,i)=>(v instanceof WeakRef?v.deref():v)===b[i]);
+const weakKey=k=>k.map(v=>v&&typeof v==='object'?new WeakRef(v):v);
+const sstep=(a,b,x)=>{if(b<=a)return x<a?0:1;const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
+const hex=c=>{const n=parseInt(c.slice(1),16);return[n>>16&255,n>>8&255,n&255]};
+const toHex=a=>'#'+a.map(v=>Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join('');
+const COL='style="width:44px;height:26px;padding:0;border:0;background:none"';
+
+/* ---------- carte de profondeur : 0 = loin, 1 = proche ---------- */
+async function depthMap(){const d=S.doc;if(!d)return null;const key=docKey(d),C=DP.cache;if(C&&C.d.deref()===d&&sameKey(C.key,key))return C;
+  const sess=await session('ai/depth1/','de profondeur','50 Mo');if(!sess||S.doc!==d)return null;
+  busy(true,'Calcul de la profondeur…',null);await tick();
+  try{const R=518,src=flatSync(),t=mk(R,R),g=rx(t);g.imageSmoothingQuality='high';g.fillStyle='#000';g.fillRect(0,0,R,R);g.drawImage(src,0,0,R,R);
+    const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N),M=[0.485,0.456,0.406],SD=[0.229,0.224,0.225];
+    for(let i=0;i<N;i++)for(let c=0;c<3;c++)f[c*N+i]=(a[i*4+c]/255-M[c])/SD[c];
+    const ort=window.ort,out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',f,[1,3,R,R])}),o=out[sess.outputNames[0]].data;
+    if(S.doc!==d)return null;
+    // relative depth: stretched between the 1st and 99th percentiles (a few extreme pixels do not flatten the rest)
+    const s=Float32Array.from(o).sort(),lo=s[Math.floor(N*0.01)],hi=s[Math.floor(N*0.99)],k=hi>lo?1/(hi-lo):1;
+    const sc=Math.min(1,1536/Math.max(d.w,d.h)),W=Math.max(1,Math.round(d.w*sc)),H=Math.max(1,Math.round(d.h*sc));
+    const small=new Float32Array(N);for(let i=0;i<N;i++)small[i]=clamp((o[i]-lo)*k,0,1);
+    // bilinear 518 × 518 -> W × H, then snapped to the photo's edges
+    const D=new Float32Array(W*H);for(let y=0;y<H;y++){const fy=clamp((y+0.5)*R/H-0.5,0,R-1),y0=fy|0,y1=Math.min(R-1,y0+1),ty=fy-y0;
+      for(let x=0;x<W;x++){const fx=clamp((x+0.5)*R/W-0.5,0,R-1),x0=fx|0,x1=Math.min(R-1,x0+1),tx=fx-x0;
+        D[y*W+x]=(small[y0*R+x0]*(1-tx)+small[y0*R+x1]*tx)*(1-ty)+(small[y1*R+x0]*(1-tx)+small[y1*R+x1]*tx)*ty}}
+    busy(true,'Affinage des contours…',null);await tick();
+    const gc=mk(W,H),gg=rx(gc);gg.imageSmoothingQuality='high';gg.drawImage(src,0,0,W,H);const G=gg.getImageData(0,0,W,H).data,n=W*H,Ir=new Float32Array(n),Ig=new Float32Array(n),Ib=new Float32Array(n);
+    for(let i=0;i<n;i++){Ir[i]=G[i*4]/255;Ig[i]=G[i*4+1]/255;Ib[i]=G[i*4+2]/255}
+    const q=guidedFilter(Ir,Ig,Ib,D,W,H,Math.max(2,Math.round(Math.max(W,H)/220)),0.0008);for(let i=0;i<n;i++)q[i]=clamp(q[i],0,1);
+    if(S.doc!==d)return null;return DP.cache={d:new WeakRef(d),key:weakKey(key),D:q,W,H}}
+  catch(e){console.error(e);toast('Calcul de la profondeur impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
+/* a working-resolution map (Float32 0..1) at the layer's full size, read back through a canvas (bilinear) */
+function mapTo(M,W,H,L,enc){const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){const v=enc(M,i);a[i*4]=v[0];a[i*4+1]=v[1];a[i*4+2]=v[2];a[i*4+3]=255}g.putImageData(im,0,0);
+  const d=S.doc,o=mk(L.canvas.width,L.canvas.height),og=rx(o);og.imageSmoothingQuality='high';og.drawImage(c,-(L.x|0),-(L.y|0),d.w,d.h);return og.getImageData(0,0,o.width,o.height).data}
+const layerPx=L=>rx(L.canvas).getImageData(0,0,L.canvas.width,L.canvas.height);
+
+/* ---------- brume selon la distance ---------- */
+function farColor(dm,L){const {D,W,H}=dm,s=Float32Array.from(D).sort(),cut=s[Math.floor(s.length*0.06)],d=S.doc,c=mk(W,H),g=rx(c);g.drawImage(flatSync(),0,0,W,H);const a=g.getImageData(0,0,W,H).data;
+  let r=0,gg=0,b=0,n=0;for(let i=0;i<W*H;i++)if(D[i]<=cut){r+=a[i*4];gg+=a[i*4+1];b+=a[i*4+2];n++}if(!n)return[200,205,212];
+  // the far tones, lifted toward a pale grey: haze is lighter than what it covers
+  return[r/n*0.5+110,gg/n*0.5+112,b/n*0.5+116]}
+function fogRun(L,dm,p){const im=layerPx(L),a=im.data,{D,W,H}=dm,k=3,norm=1-Math.exp(-k),st=p.start/100,den=p.density/100,c=p.color;
+  const F=new Float32Array(W*H);for(let i=0;i<W*H;i++){const far=1-D[i],t=clamp((far-st)/Math.max(0.02,1-st),0,1);F[i]=den*(1-Math.exp(-k*t))/norm}
+  const m=mapTo(F,W,H,L,(M,i)=>{const v=Math.round(M[i]*255);return[v,v,v]});
+  for(let i=0;i<a.length;i+=4){const f=m[i]/255;if(!f)continue;a[i]+=(c[0]-a[i])*f;a[i+1]+=(c[1]-a[i+1])*f;a[i+2]+=(c[2]-a[i+2])*f}
+  const o=mk(im.width,im.height);rx(o).putImageData(im,0,0);return o}
+
+/* ---------- rééclairage 3D : normales tirées de la profondeur, lumière ponctuelle placée sur la photo ---------- */
+function normals(dm,relief){const {D,W,H}=dm,b=new Float32Array(W*H),b2=new Float32Array(W*H),T=new Float32Array(W*H),r=Math.max(2,Math.round(Math.max(W,H)/90));
+  // smoothed well first (two box passes): the normals follow the shapes, not the texture, and a cut-out edge does not draw a line
+  boxMean(D,W,H,r,b,T);boxMean(b,W,H,r,b2,T);const N=new Float32Array(W*H*3),s=relief*Math.max(W,H)/6,lim=v=>v/(1+Math.abs(v)/1.2);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,dx=(b2[y*W+Math.min(W-1,x+1)]-b2[y*W+Math.max(0,x-1)])*0.5,dy=(b2[Math.min(H-1,y+1)*W+x]-b2[Math.max(0,y-1)*W+x])*0.5;
+    const nx=-lim(dx*s),ny=-lim(dy*s),l=Math.hypot(nx,ny,1);N[i*3]=nx/l;N[i*3+1]=ny/l;N[i*3+2]=1/l}return N}
+function relightRun(L,dm,p){const {D,W,H}=dm,d=S.doc;if(!p.N||p.N.relief!==p.relief){p.N=normals(dm,p.relief/100);p.N.relief=p.relief}const N=p.N;
+  const sx=W/d.w,lx=p.lx*sx,ly=p.ly*sx,big=Math.max(W,H),hz=p.height/100*big,reach=p.reach/100*big*1.5,amb=1-p.darken/100,int=p.power/100*1.6,c=p.color.map(v=>v/255);
+  const Sh=new Float32Array(W*H*3);for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,z=(D[i]-0.5)*big*0.25*p.relief/100,vx=lx-x,vy=ly-y,vz=hz-z,l=Math.hypot(vx,vy,vz)||1;
+    const lam=Math.max(0,(N[i*3]*vx+N[i*3+1]*vy+N[i*3+2]*vz)/l),dist=Math.hypot(vx,vy),att=1/(1+(dist/reach)*(dist/reach)),e=int*lam*att;
+    Sh[i*3]=amb+e*c[0];Sh[i*3+1]=amb+e*c[1];Sh[i*3+2]=amb+e*c[2]}
+  // multipliers 0..2 carried in 8 bits (×127.5)
+  const m=mapTo(Sh,W,H,L,(M,i)=>[Math.min(255,Math.round(M[i*3]*127.5)),Math.min(255,Math.round(M[i*3+1]*127.5)),Math.min(255,Math.round(M[i*3+2]*127.5))]);
+  const im=layerPx(L),a=im.data;for(let i=0;i<a.length;i+=4){a[i]=a[i]*m[i]/127.5;a[i+1]=a[i+1]*m[i+1]/127.5;a[i+2]=a[i+2]*m[i+2]/127.5}
+  const o=mk(im.width,im.height);rx(o).putImageData(im,0,0);return o}
+
+/* ---------- boîte commune : aperçu en direct sur le calque, la photo reste cliquable ---------- */
+const mixSel=(o,r,sel)=>{const out=cloneC(o),g=cx(out);g.globalCompositeOperation='destination-out';g.drawImage(sel,0,0);const t=cloneC(r),tg=cx(t);tg.globalCompositeOperation='destination-in';tg.drawImage(sel,0,0);g.globalCompositeOperation='lighter';g.drawImage(t,0,0);return out};
+function onPhoto(fn){/* pointer on the photo while a light dialog is open: fn('down'|'move'|'up', doc point) */let on=false;
+  const dn=e=>{if(e.target!==view||e.button>0)return;e.preventDefault();e.stopImmediatePropagation();on=true;fn('down',evPos(e))},
+    mv=e=>{if(!on)return;e.preventDefault();e.stopImmediatePropagation();fn('move',evPos(e))},up=e=>{if(!on)return;on=false;e.stopImmediatePropagation();fn('up',evPos(e))};
+  addEventListener('pointerdown',dn,true);addEventListener('pointermove',mv,true);addEventListener('pointerup',up,true);document.body.classList.add('dp-on');
+  return()=>{removeEventListener('pointerdown',dn,true);removeEventListener('pointermove',mv,true);removeEventListener('pointerup',up,true);document.body.classList.remove('dp-on')}}
+async function fxDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}
+  if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
+  const dm=o.depth?await depthMap():null;if(o.depth&&!dm)return;if(S.doc!==d||!d.layers.includes(L))return;
+  const p={...o.init(L,dm)};let tmr=null,off=null;const alive=()=>S.doc===d&&d.layers.includes(L);
+  const clear=()=>{clearTimeout(tmr);delete L.preview;off&&off();off=null};
+  const run=()=>{let r=o.run(L,dm,p);if(d.sel)r=mixSel(L.canvas,r,d.sel);return r};
+  const prev=(ms=120)=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!alive())return;try{L.preview=run();o.mark&&o.mark(L.preview,p,L);markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},ms)};
+  dialog({title:o.title,light:true,
+    body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+(o.colors||[]).map(c=>`<div class="row"><label for="dp-${c[0]}">${c[1]}</label><input type="color" id="dp-${c[0]}" value="${toHex(p[c[0]])}" ${COL}></div>`).join('')
+      +o.params.map(q=>rangeRow('dp-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join('')+(o.extra||'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+    onOpen:el=>{o.params.forEach(q=>{const i=$('#dp-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#dp-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});
+      (o.colors||[]).forEach(c=>{const i=$('#dp-'+c[0],el);i.oninput=()=>{p[c[0]]=hex(i.value);prev()}});
+      if(o.onPhoto)off=onPhoto((k,pt)=>{o.onPhoto(k,pt,p,el);prev(k==='move'?60:0)});o.onOpen&&o.onOpen(el,p,prev);prev(0)},
+    buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
+      {label:'Appliquer',primary:true,onClick:()=>{clear();if(!alive()){toast('Le calque n’existe plus');return}
+        try{applyMasked(L,run(),o.title);syncAll()}catch(e){console.error(e);markComp();toast(o.title+' impossible : '+(e.message||e),4000);return false}}}]})}
+
+function fogDialog(){fxDialog({title:'Brume selon la distance',depth:true,
+  note:'Ajoute de la brume qui s’épaissit avec l’éloignement, d’après la profondeur estimée par l’IA. La couleur vient du lointain de la photo.',
+  colors:[['color','Couleur de la brume']],
+  params:[['density','Densité',0,100,1,0,' %'],['start','Début',0,95,1,0,' %']],
+  init:(L,dm)=>({density:60,start:20,color:farColor(dm,L)}),run:fogRun})}
+function relightDialog(){const d=S.doc;if(!d)return;fxDialog({title:'Rééclairage 3D',depth:true,
+  note:'Cliquez ou glissez sur la photo pour placer la lumière. Le relief vient de la profondeur estimée par l’IA.',
+  colors:[['color','Couleur de la lumière']],
+  params:[['power','Intensité',0,100,1,0,' %'],['darken','Assombrir le reste',0,90,1,0,' %'],['reach','Portée',5,100,1,0,' %'],['height','Hauteur de la lumière',2,100,1,0,' %'],['relief','Relief',0,100,1,0,' %']],
+  init:()=>({power:80,darken:55,reach:40,height:25,relief:60,color:[255,236,210],lx:d.w*0.3,ly:d.h*0.3}),
+  onPhoto:(k,pt,p)=>{p.lx=pt.x;p.ly=pt.y},run:relightRun,
+  // where the light is: a ring on the preview only, never in the result
+  mark:(c,p,L)=>{const g=cx(c),r=Math.max(8,Math.max(d.w,d.h)/90),x=p.lx-(L.x|0),y=p.ly-(L.y|0);g.save();g.lineWidth=r/4;g.strokeStyle='rgba(0,0,0,.55)';g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.lineWidth=r/8;g.strokeStyle='#fff';g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.restore()}})}
+
+/* ---------- sélection selon la distance ---------- */
+async function depthSelDialog(){const d=S.doc;if(!d)return;const dm=await depthMap();if(!dm||S.doc!==d)return;const old=d.sel,p={near:100,far:55,soft:8};let tmr=null;
+  const build=()=>{const {D,W,H}=dm,lo=p.far/100,hi=p.near/100,s=p.soft/100,F=new Float32Array(W*H);for(let i=0;i<W*H;i++){const v=D[i];F[i]=sstep(lo-s,lo+s,v)*(hi>=1?1:1-sstep(hi-s,hi+s,v))}
+    const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=Math.round(F[i]*255)}g.putImageData(im,0,0);
+    const m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(c,0,0,d.w,d.h);return m};
+  const show=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(S.doc!==d)return;d.sel=build();selChanged()},100)};
+  dialog({title:'Sélectionner selon la distance',light:true,
+    body:'<p class="muted" style="margin:0 0 8px">Sélectionne ce qui se trouve entre deux distances, d’après la profondeur estimée par l’IA (100 % = le plus proche).</p>'+rangeRow('ds-near','Jusqu’à (proche)',0,100,1,p.near,' %')+rangeRow('ds-far','À partir de (loin)',0,100,1,p.far,' %')+rangeRow('ds-soft','Douceur',0,30,1,p.soft,' %'),
+    onOpen:el=>{[['near','ds-near'],['far','ds-far'],['soft','ds-soft']].forEach(([k,id])=>{const i=$('#'+id,el);i.oninput=()=>{p[k]=+i.value;$('#'+id+'-o',el).textContent=i.value+' %';show()}});show()},
+    buttons:[{label:'Annuler',onClick:()=>{clearTimeout(tmr);if(S.doc===d){d.sel=old;selChanged()}}},
+      {label:'Sélectionner',primary:true,onClick:()=>{clearTimeout(tmr);if(S.doc!==d)return;const m=build();d.sel=old;combineSel(m,'new','Sélectionner selon la distance')}}]})}
+
+/* ---------- visages : YuNet (640 × 640, BGR 0..255), sorties par pas 8, 16, 32 ---------- */
+function decodeYu(out,k,ox,oy,th){const F=[];for(const s of [8,16,32]){const cls=out['cls_'+s].data,obj=out['obj_'+s].data,bb=out['bbox_'+s].data,cols=640/s;
+    for(let i=0;i<cls.length;i++){const sc=Math.sqrt(clamp(cls[i],0,1)*clamp(obj[i],0,1));if(sc<th)continue;const c=i%cols,r=(i/cols)|0;
+      const cxp=(c+bb[i*4])*s,cyp=(r+bb[i*4+1])*s,w=Math.exp(bb[i*4+2])*s,h=Math.exp(bb[i*4+3])*s;F.push({x:ox+(cxp-w/2)/k,y:oy+(cyp-h/2)/k,w:w/k,h:h/k,s:sc})}}return F}
+const iou=(a,b)=>{const x0=Math.max(a.x,b.x),y0=Math.max(a.y,b.y),x1=Math.min(a.x+a.w,b.x+b.w),y1=Math.min(a.y+a.h,b.y+b.h),i=Math.max(0,x1-x0)*Math.max(0,y1-y0);return i/(a.w*a.h+b.w*b.h-i||1)};
+function nms(F){F.sort((a,b)=>b.s-a.s);const k=[];for(const f of F)if(!k.some(g=>iou(f,g)>0.3||(f.x>=g.x&&f.y>=g.y&&f.x+f.w<=g.x+g.w&&f.y+f.h<=g.y+g.h)))k.push(f);return k}
+async function detectFaces(){const d=S.doc;if(!d)return null;const key=docKey(d),C=DP.faces;if(C&&C.d.deref()===d&&sameKey(C.key,key))return C.F;
+  const sess=await session('ai/face1/','des visages','0,2 Mo');if(!sess||S.doc!==d)return null;busy(true,'Recherche des visages…',null);await tick();
+  try{const src=flatSync(),ort=window.ort,R=640,F=[];
+    const pass=async(x0,y0,w,h)=>{const k=R/Math.max(w,h),t=mk(R,R),g=rx(t);g.fillStyle='#000';g.fillRect(0,0,R,R);g.imageSmoothingQuality='high';g.drawImage(src,x0,y0,w,h,0,0,w*k,h*k);
+      const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);for(let i=0;i<N;i++){f[i]=a[i*4+2];f[N+i]=a[i*4+1];f[2*N+i]=a[i*4]}
+      const out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',f,[1,3,R,R])});F.push(...decodeYu(out,k,x0,y0,0.6))};
+    await pass(0,0,d.w,d.h);
+    // large photos: also in overlapping tiles, so that small faces in a group are found
+    const long=Math.max(d.w,d.h);if(long>1000){const T=Math.round(long/2),step=Math.round(T*0.75);
+      for(let y=0;y<d.h;y+=step){for(let x=0;x<d.w;x+=step){await pass(x,y,Math.min(T,d.w-x),Math.min(T,d.h-y));if(x+T>=d.w)break}if(y+T>=d.h)break}}
+    const K=nms(F).filter(f=>f.w>6&&f.h>6);if(S.doc!==d)return null;DP.faces={d:new WeakRef(d),key:weakKey(key),F:K};return K}
+  catch(e){console.error(e);toast('Recherche des visages impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
+function hideFaces(L,faces,p){const d=S.doc,out=cloneC(L.canvas),g=cx(out),src=L.canvas,ox=L.x|0,oy=L.y|0,m=p.margin/100;
+  for(const f of faces){if(f.off)continue;const w=f.w*(1+m),h=f.h*(1+m)*1.15,x=f.x+f.w/2-w/2-ox,y=f.y+f.h/2-h/2-oy-f.h*0.05,pad=Math.ceil(Math.max(w,h)*0.3);
+    const X=Math.max(0,Math.floor(x-pad)),Y=Math.max(0,Math.floor(y-pad)),X1=Math.min(src.width,Math.ceil(x+w+pad)),Y1=Math.min(src.height,Math.ceil(y+h+pad)),cw=X1-X,ch=Y1-Y;if(cw<2||ch<2)continue;
+    const piece=mk(cw,ch),pg=cx(piece);pg.drawImage(src,X,Y,cw,ch,0,0,cw,ch);let fx;
+    if(p.style==='pixel'){const n=Math.max(2,Math.round(12-p.strength/10)),bs=Math.max(2,Math.round(Math.max(w,h)/n)),sw=Math.max(1,Math.round(cw/bs)),sh=Math.max(1,Math.round(ch/bs)),t=mk(sw,sh),tg=cx(t);tg.imageSmoothingQuality='high';tg.drawImage(piece,0,0,sw,sh);
+      fx=mk(cw,ch);const fg=cx(fx);fg.imageSmoothingEnabled=false;fg.drawImage(t,0,0,cw,ch)}
+    else if(p.style==='fill'){fx=mk(cw,ch);const fg=cx(fx);fg.fillStyle=p.fill;fg.fillRect(0,0,cw,ch)}
+    else{let b=piece;const r=Math.max(2,Math.max(w,h)*p.strength/100*0.25);b=blurCanvas(b,r);b=blurCanvas(b,r*0.6);fx=b}
+    // soft ellipse: the edge fades over a tenth of the face
+    const mask=mk(cw,ch),mg=cx(mask),fe=p.style==='fill'?1:Math.max(1,Math.max(w,h)*0.08);mg.filter=`blur(${fe}px)`;mg.fillStyle='#fff';mg.beginPath();mg.ellipse(x-X+w/2,y-Y+h/2,w/2,h/2,0,0,Math.PI*2);mg.fill();mg.filter='none';
+    const fg=cx(fx);fg.globalCompositeOperation='destination-in';fg.drawImage(mask,0,0);g.drawImage(fx,X,Y)}
+  return out}
+async function facesDialog(){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
+  const F0=await detectFaces();if(!F0||S.doc!==d||!d.layers.includes(L))return;const faces=F0.map(f=>({...f,off:false})),p={style:'blur',strength:60,margin:20,fill:'#202020'};let tmr=null,off=null;
+  const med=()=>{const s=faces.map(f=>f.w).sort((a,b)=>a-b);return s.length?s[s.length>>1]:Math.max(d.w,d.h)/10};
+  const count=el=>{const n=faces.filter(f=>!f.off).length;$('#fa-n',el).textContent=n?`${n} visage${n>1?'s':''} masqué${n>1?'s':''}`+(faces.length>n?` (${faces.length-n} laissé${faces.length-n>1?'s':''} visible${faces.length-n>1?'s':''})`:''):'Aucun visage masqué : cliquez sur un visage pour l’ajouter'};
+  const run=()=>{let r=hideFaces(L,faces,p);if(d.sel)r=mixSel(L.canvas,r,d.sel);return r};
+  const prev=(ms=100)=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(S.doc!==d)return;L.preview=run();markComp()},ms)};
+  const clear=()=>{clearTimeout(tmr);delete L.preview;off&&off();off=null};
+  dialog({title:'Anonymiser les visages',light:true,
+    body:`<p class="muted" style="margin:0 0 8px">Les visages trouvés par l’IA sont masqués. Cliquez sur un visage pour le laisser visible ou le masquer de nouveau, ou ailleurs pour masquer une zone oubliée.</p>
+      <p id="fa-n" style="margin:0 0 8px;font-weight:600"></p>
+      <div class="row"><label for="fa-style">Style</label><select id="fa-style"><option value="blur">Flou</option><option value="pixel">Pixellisation</option><option value="fill">Couleur unie</option></select><input type="color" id="fa-fill" value="${p.fill}" ${COL}></div>`
+      +rangeRow('fa-strength','Force',10,100,1,p.strength,' %')+rangeRow('fa-margin','Marge autour',0,80,1,p.margin,' %'),
+    onOpen:el=>{count(el);const st=$('#fa-style',el),fl=$('#fa-fill',el);fl.hidden=true;st.onchange=()=>{p.style=st.value;fl.hidden=p.style!=='fill';prev(0)};fl.oninput=()=>{p.fill=fl.value;prev()};
+      [['strength','fa-strength'],['margin','fa-margin']].forEach(([k,id])=>{const i=$('#'+id,el);i.oninput=()=>{p[k]=+i.value;$('#'+id+'-o',el).textContent=i.value+' %';prev()}});
+      off=onPhoto((k,pt)=>{if(k!=='down')return;const hit=faces.find(f=>pt.x>=f.x&&pt.x<=f.x+f.w&&pt.y>=f.y-f.h*0.1&&pt.y<=f.y+f.h*1.1);
+        if(hit)hit.off=!hit.off;else{const w=med();faces.push({x:pt.x-w/2,y:pt.y-w*0.6,w,h:w*1.2,s:1,off:false,manual:true})}count(el);prev(0)});
+      if(!faces.length)toast('Aucun visage trouvé : cliquez sur la photo pour masquer une zone',4500);prev(0)},
+    buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
+      {label:'Appliquer',primary:true,onClick:()=>{clear();if(S.doc!==d||!d.layers.includes(L)){toast('Le calque n’existe plus');return}if(!faces.some(f=>!f.off)){toast('Aucun visage à masquer');markComp();return}
+        applyMasked(L,run(),'Anonymiser les visages');syncAll()}}]})}
+
+/* ---------- menus ---------- */
+{const st=document.createElement('style');st.textContent='body.dp-on #view{cursor:crosshair!important}';document.head.appendChild(st)}
+const _fi=MENU2.filter.items;
+MENU2.filter.items=function(){const a=_fi.apply(this,arguments),dis=S.doc?false:NODOC,it=MI('Profondeur et visages (IA)',{icon:'filter',dis,sub:()=>[MI('Rééclairage 3D…',{fn:relightDialog,dis}),MI('Brume selon la distance…',{fn:fogDialog,dis}),MI('Anonymiser les visages…',{fn:facesDialog,dis})]});
+  const k=a.findIndex(x=>x&&x.label==='Portrait et restauration…');a.splice(k<0?a.length:k+1,0,it);return a};
+const _si=MENU2.select.items;
+MENU2.select.items=function(){const a=_si.apply(this,arguments),it=MI('Sélectionner selon la distance (IA)…',{fn:depthSelDialog,dis:S.doc?false:NODOC});
+  const k=a.findIndex(x=>x&&x.label==='Sélectionner par catégorie (IA)');a.splice(k<0?a.length:k+1,0,it);return a};
+window.PrismDepth={depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
+
+}
+
 /* ===== feat: feat/zz_dexp.js ===== */
 {
 /* ===== Double exposition: a second photo laid over the first and worked directly on the canvas, like the free transform.
@@ -12889,6 +13252,260 @@ const CARD=`<div class="card dx-card"><h4><svg viewBox="0 0 20 20"><circle cx="7
 function injectCard(){const p=document.getElementById('pane-ai');if(!p||p.querySelector('.dx-card'))return;const ref=p.querySelector('.aim-card');const t=document.createElement('div');t.innerHTML=CARD;const c=t.firstChild;
   if(ref&&ref.nextSibling)ref.parentNode.insertBefore(c,ref.nextSibling);else p.appendChild(c)}
 {const p=document.getElementById('pane-ai');if(p){p.addEventListener('click',e=>{if(e.target.closest('[data-dx-go]')){e.stopPropagation();begin()}},true);new MutationObserver(()=>injectCard()).observe(p,{childList:true});injectCard()}}
+
+}
+
+/* ===== feat: feat/zz_film.js ===== */
+{
+/* ===== Rendu film : simulation de pellicule, tirage d'un négatif scanné, contraste local ===== */
+/* Simulation spectrale portée du module « filmsim » de vkdt (copyright 2019 johannes hanika, licence BSD 2 clauses,
+   texte dans web/film/LICENSE.txt), lui-même tiré de spektrafilm d'Andrea Volpato. Les profils de pellicules et de papiers
+   (web/film/filmsim.bin) viennent de spektrafilm, sous licence CC BY-SA 4.0 (crédit et avis dans web/film/LICENSE.txt).
+   Ici, tout ce qui ne dépend que de la couleur d'un pixel est précalculé dans deux tables 3D (couleur -> exposition du négatif,
+   densités -> couleur du tirage) ; les effets spatiaux (coupleurs, halo, grain) sont calculés entre les deux. */
+const FM={data:null,P:null};
+const LOG2_10=3.32192809489,LOG10_2=0.30102999566398114,LUMA=[0.2627,0.6780,0.0593];
+const FILMS=['Kodak Gold 200','Kodak UltraMax 400','Kodak Ektar 100','Kodak Portra 160','Kodak Portra 400','Kodak Portra 800','Kodak Portra 800 poussée +1','Kodak Portra 800 poussée +2','Fujifilm C200','Fujifilm Superia X-TRA 400','Fujifilm Pro 400H','Kodak Vision3 50D (cinéma)','Kodak Vision3 250D (cinéma)','Kodak Vision3 200T (cinéma)','Kodak Vision3 500T (cinéma)','Kodak Verita 200D','Kodak Kodachrome 64 (diapositive)','Kodak Ektachrome 100 (diapositive)','Fujifilm Provia 100F (diapositive)','Fujifilm Velvia 100 (diapositive)','Kodak Double-X (noir et blanc)','Kodak Tri-X (noir et blanc, inversible)'];
+const PAPERS=['Kodak Endura Premier','Kodak Supra Endura','Kodak Ultra Endura','Kodak Portra Endura','Kodak Ektacolor Edge','Fujifilm Crystal Archive Type II','Kodak 2383 (copie cinéma)','Kodak 2393 (copie cinéma)','Kodak 2302 (noir et blanc)'];
+const PAPER0=22,NX=81;
+const KG3=[0.8627,0.8588,0.8451,0.8300,0.8207,0.8192,0.8239,0.8263,0.8251,0.8270,0.8335,0.8399,0.8446,0.8435,0.8381,0.8358,0.8367,0.8447,0.8480,0.8440,0.8362,0.8246,0.8087,0.7892,0.7663,0.7387,0.7095,0.6744,0.6402,0.5988,0.5576,0.5161,0.4710,0.4268,0.3821,0.3404,0.2895,0.2547,0.2214,0.1871,0.1584];
+const S0=[63.4,65.8,94.8,104.8,105.9,96.8,113.9,125.6,125.5,121.3,121.3,113.5,113.1,110.8,106.5,108.8,105.3,104.4,100.0,96.0,95.1,89.1,90.5,90.3,88.4,84.0,85.1,81.9,82.6,84.9,81.3,71.9,74.3,76.4,63.3,71.7,77.0,65.2,47.7,68.6,65.0];
+const S1=[38.5,35.0,43.4,46.3,43.9,37.1,36.7,35.9,32.6,27.9,24.3,20.1,16.2,13.2,8.6,6.1,4.2,1.9,0.0,-1.6,-3.5,-3.5,-5.8,-7.2,-8.6,-9.5,-10.9,-10.7,-12.0,-14.0,-13.6,-12.0,-13.3,-12.9,-10.6,-11.6,-12.2,-10.2,-7.8,-11.2,-10.4];
+const S2=[3.0,1.2,-1.1,-0.5,-0.7,-1.2,-2.6,-2.9,-2.8,-2.6,-2.6,-1.8,-1.5,-1.3,-1.2,-1.0,-0.5,-0.3,0.0,0.2,0.5,2.1,3.2,4.1,4.7,5.1,6.7,7.3,8.6,9.8,10.2,8.3,9.6,8.5,7.0,7.6,8.0,6.7,5.2,7.4,6.8];
+const M709_2020=[0.6274040,0.3292820,0.0433136,0.0690970,0.9195400,0.0113612,0.0163916,0.0880132,0.8955950];
+const M2020_709=[1.6604910,-0.5876411,-0.0728499,-0.1245505,1.1328999,-0.0083494,-0.0181508,-0.1005789,1.1187297];
+const M2020_XYZ=[0.636958048301291,0.144616903586208,0.168880975164172,0.262700212011267,0.677998071518871,0.0593017164698619,0,0.0280726930490874,1.06098505771079];
+const MXYZ_2020=[1.71665119,-0.35567078,-0.25336628,-0.66668435,1.61648124,0.01576855,0.01763986,-0.04277061,0.94210312];
+const CAT=[0.401288,0.650173,-0.051461,-0.250268,1.204414,0.045854,-0.002079,0.048952,0.953127],CATI=[1.86206786,-1.01125463,0.14918677,0.38752654,0.62144744,-0.00897398,-0.01584150,-0.03412294,1.04996444];
+const D65=[0.950430,1.0,1.088801];
+const mv=(m,v)=>[m[0]*v[0]+m[1]*v[1]+m[2]*v[2],m[3]*v[0]+m[4]*v[1]+m[5]*v[2],m[6]*v[0]+m[7]*v[1]+m[8]*v[2]];
+const mm=(a,b)=>{const o=new Array(9);for(let i=0;i<3;i++)for(let j=0;j<3;j++)o[i*3+j]=a[i*3]*b[j]+a[i*3+1]*b[3+j]+a[i*3+2]*b[6+j];return o};
+const xF=w=>{const t1=(w-442.0)*(w<442.0?0.0624:0.0374),t2=(w-599.8)*(w<599.8?0.0264:0.0323),t3=(w-501.1)*(w<501.1?0.0490:0.0382);return 0.362*Math.exp(-0.5*t1*t1)+1.056*Math.exp(-0.5*t2*t2)-0.065*Math.exp(-0.5*t3*t3)};
+const yF=w=>{const t1=(w-568.8)*(w<568.8?0.0213:0.0247),t2=(w-530.9)*(w<530.9?0.0613:0.0322);return 0.821*Math.exp(-0.5*t1*t1)+0.286*Math.exp(-0.5*t2*t2)};
+const zF=w=>{const t1=(w-437.0)*(w<437.0?0.0845:0.0278),t2=(w-459.0)*(w<459.0?0.0385:0.0725);return 1.217*Math.exp(-0.5*t1*t1)+0.681*Math.exp(-0.5*t2*t2)};
+function blackbody(l,T){const h2=6.62606957e+11,h=6.62606957e-34,c=299792458.0,k=1.3807e-23,lm=l*1e-9,l5=l*l*l*l*l;return 1e-14*(2*h2*c*c/l5)/(Math.exp(h*c/(lm*T*k))-1)}
+function dayW(T){T=clamp(T,4000,25000);const i=1/T,i2=i*i,i3=i2*i,x=T<=7000?-4.6070e9*i3+2.9678e6*i2+99.11*i+0.244063:-2.0064e9*i3+1.9018e6*i2+247.48*i+0.237040,y=-3*x*x+2.870*x-0.275;
+  const d=0.2562*x-0.7341*y+0.0241,id=1/(Math.abs(d)<1e-9?1e-9:d);return[(-1.7703*x+5.9114*y-1.3515)*id,(-31.4424*x+30.0717*y+0.0300)*id]}
+function illum(cct,l,b){if(cct<1)return 1;if(cct<4000)return blackbody(l,cct);const m=dayW(cct);return S0[b]+m[0]*S1[b]+m[1]*S2[b]}
+const ncdf=z=>1/(1+Math.pow(2,-z*(0.10294312*z*z+2.30220556)));
+function dichroic(w,n){const low=w<=550,e=low?[607,500,516]:[607,610,516],iw=[0.176776695,0.176776695,0.11785113],c=[0,1,2].map(i=>ncdf((w-e[i])*iw[i]));
+  const f=[1-c[0],low?1-c[1]:c[1],c[2]];return(1+(f[0]-1)*n[0])*(1+(f[1]-1)*n[1])*(1+(f[2]-1)*n[2])}
+const sstep=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
+const srgbDec=v=>v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4),srgbEnc=v=>v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055;
+
+async function loadData(){if(FM.data)return FM.data;if(FM.P)return FM.P;
+  return FM.P=(async()=>{const get=async(f,t)=>{const r=await fetch(asset('film/'+f));if(!r.ok)throw new Error('données film '+r.status);return t==='json'?r.json():r.arrayBuffer()};
+    const [lut,spec,wb]=await Promise.all([get('filmsim.bin'),get('spectra.bin'),get('wb.json','json')]);FM.data={lut:new Float32Array(lut),spec:new Float32Array(spec),wb};return FM.data})().finally(()=>{FM.P=null})}
+
+/* ---------- préparation : tout ce qui dépend des réglages, pas de l'image ---------- */
+function setup(D,o){const T=D.lut,at=(stock,row,x)=>{const i=((stock*3+row)*NX+x)*4;return[T[i],T[i+1],T[i+2],T[i+3]]};
+  const sens=(s,b)=>at(s,0,b*2).slice(0,3).map(v=>isNaN(v)?0:Math.pow(10,v)),dye=(s,b)=>{const v=at(s,1,b*2),miss=isNaN(v[0])||isNaN(v[1])||isNaN(v[2]);return{d:v.map((x,i)=>isNaN(x)?0:i<3?x*LOG2_10:x),miss}};
+  const model=(stock,gam)=>{const pos=at(stock,2,12)[3]>0.5,sg=pos?-1:1,sc=[],bi=[],am=[];
+    for(let l=0;l<3;l++){const c=at(stock,2,l*4),a=at(stock,2,l*4+1),is=at(stock,2,l*4+2),g=Math.max(gam[l],1e-3);sc.push([0,1,2].map(k=>sg*g*is[k]));bi.push([0,1,2].map(k=>-sg*c[k]*is[k]));am.push(a.slice(0,3))}
+    return{pos,sc,bi,am,dmax:at(stock,2,12).slice(0,3)}};
+  const evalD=(M,y,k)=>{let d=0;for(let l=0;l<3;l++){const z=clamp(y*M.sc[l][k]+M.bi[l][k],-10,10);d+=M.am[l][k]*ncdf(z)}return isNaN(d)?0:d};
+  const S={o,film:o.film,proc:o.proc};const film=o.film,paper=PAPER0+o.paper;
+  // white balance fitted for this pair (vkdt's tables): print exposure and enlarger filters, or for a slide the scan filters
+  const posStock=at(film,2,12)[3]>0.5;let ev_paper=o.evPaper||0,flt=[0,0,0];
+  if(o.proc===1){const w=D.wb.pos[film];S.evFilm=(o.evFilm||0)+w[0];flt=[w[1],w[2],w[3]]}else{const w=D.wb.wb[film][o.paper];ev_paper+=w[0];flt=[w[1],w[2],w[3]];S.evFilm=o.evFilm||0}
+  const neutral=[clamp(flt[0],0,1),clamp(clamp(flt[1],0,1)+0.1*(o.tuneM||0),0,1),clamp(clamp(flt[2],0,1)+0.1*(o.tuneY||0),0,1)];
+  S.gFilm=o.gFilm||1;
+  // film: spectral exposure factors (36 bands, under the stock's own reference light)
+  const fM=model(film,[1,1,1]);S.fM=fM;const ref=at(film,2,22),refCct=ref[3],norm=ref.slice(0,3).map(v=>Math.max(v,1e-6));
+  S.ef=[];let ae=0;for(let b=0;b<36;b++){const l=380+b*10,env=1000*sstep(380,400,l)*(1-sstep(700,730,l)),s=sens(film,b),il=illum(refCct,l,b),f=s.map((v,k)=>v*env*il/norm[k]);S.ef.push(f);ae+=f[0]*LUMA[0]+f[1]*LUMA[1]+f[2]*LUMA[2]}
+  S.eNorm=Math.max(1e-6,0.18*ae);
+  // per-channel development curves tabulated on the log-exposure axis [-4, 4]
+  const G=512,lx=i=>(i+0.5)*0.015625-4;S.fD=[0,1,2].map(k=>{const t=new Float32Array(G);for(let i=0;i<G;i++)t[i]=evalD(fM,lx(i),k);return t});
+  S.fDmax=S.fD.map(t=>t[G-1]);
+  // DIR couplers: inhibition matrix and the inverse warp that keeps a grey ramp on its curve
+  S.cp=o.couplers>0&&o.proc!==2;if(S.cp){const c0=at(film,2,13),c1=at(film,2,14),c2=at(film,2,15),Mr=[c0[0],c1[0],c2[0],c0[1],c1[1],c2[1],c0[2],c1[2],c2[2]],dm=fM.dmax;
+    const cref=mv(Mr,dm.map(v=>0.5*v)),lk=[1,1,1];S.M=Mr.map(v=>v*o.couplers);S.cref=cref;S.Kr=cref.map((v,k)=>lk[k]*2*v);S.kd=dm.map((v,k)=>lk[k]*v);S.nd=dm.map((v,k)=>(lk[k]+0.5)*v);S.pos=fM.pos;S.dmax=dm;
+    const W=[[],[],[]];for(let i=0;i<G;i++){const x=lx(i),d=[0,1,2].map(k=>S.fD[k][i]),c=post(S,pre(S,d));for(let k=0;k<3;k++)W[k].push(x-c[k])}
+    // fold-flattened (running maximum), then inverted by search
+    S.cw=W.map(w=>{let m=-1e9;const f=w.map(v=>m=Math.max(m,v)),t=new Float32Array(G);let lo=0;for(let i=0;i<G;i++){const x=lx(i);while(lo<G-2&&f[lo+1]<=x)lo++;const a=f[lo],b=f[lo+1],u=b>a?clamp((x-a)/(b-a),0,1):0;t[i]=lx(lo+u)}return t})}
+  // halation strength of this stock (mostly red: light reflected back by the film base)
+  S.hal=o.halation>0&&o.proc!==2?at(film,2,20).slice(0,3).map(v=>(isNaN(v)?0:v)*o.halation):null;
+  // grain (vkdt's three sub-layers per dye layer, finer in the slow layers)
+  if(o.grain>0&&o.proc!==2){const dmx=fM.dmax.map(v=>Math.max(v,0.1)),dmin=at(film,2,21).slice(0,3),a0=fM.am[0],a1=fM.am[1],a2=dmx.map((v,k)=>Math.max(v-a0[k]-a1[k],0));
+    const dabs=dmx.map((v,k)=>v+dmin[k]),ab=(a,k)=>a[k]+dmin[k]*a[k]/dmx[k],ir=dabs.map(v=>1/v),lf0=[0,1,2].map(k=>ab(a0,k)*ir[k]),lf01=[0,1,2].map(k=>lf0[k]+ab(a1,k)*ir[k]);
+    const lum=35000/Math.max(o.fullW,o.fullH),ipa=1/Math.max(lum*lum,1e-6),fr=x=>at(film,2,x).slice(0,3).map(v=>Math.min((isNaN(v)?0:v)*ipa,1));
+    const ff=fr(16),fmid=fr(17),fs=fr(18),un=at(film,2,19).slice(0,3);
+    S.gr={dmin,ir,lf0,lf01,ilf0:lf0.map(v=>1/Math.max(v,1e-3)),ilf1:lf0.map((v,k)=>1/Math.max(lf01[k]-v,1e-3)),ilf2:lf01.map(v=>1/Math.max(1-v,1e-3)),
+      wf:[0,1,2].map(k=>3*dabs[k]*ff[k]*ab(a0,k)),wm:[0,1,2].map(k=>3*dabs[k]*fmid[k]*ab(a1,k)),ws:[0,1,2].map(k=>3*dabs[k]*fs[k]*ab(a2,k)),un:un.map(v=>clamp((isNaN(v)?0.97:v),0,1))};
+    // the dye clouds are about 2 µm across: the noise is blurred to that size (at least a little), then scaled by o.grain
+    const sq=4/(lum*lum)+0.89*0.89;S.gr.sigma=Math.sqrt(Math.max(sq,0.16))*o.grain;S.gr.amt=1}
+  // enlarger (negative onto paper) or scanner, both spectral
+  const gp=o.gPaper||1,pM=model(paper,[gp,gp,gp]);S.pM=pM;
+  S.pD=[0,1,2].map(k=>{const t=new Float32Array(G);for(let i=0;i<G;i++)t[i]=evalD(pM,lx(i),k);return t});
+  if(o.proc!==1){S.en=[];S.enD=[];let ae2=0;const fs2=o.proc===2?-1:film;
+    for(let b=0;b<41;b++){const l=380+b*10,s=sens(paper,b);let dd=[0,0,0,0],miss=false,base=1;if(fs2>=0){const r=dye(fs2,b);dd=r.d.map(v=>clamp(v,0,1e5));miss=r.miss;base=Math.pow(2,-dd[3]*(o.fBase??1)*LOG2_10)}
+      const il=blackbody(l,3400)*KG3[b],com=il*base*Math.pow(2,ev_paper),lm=dichroic(l,neutral)*com,f=miss?[0,0,0]:s.map(v=>v*lm);
+      S.en.push(f);S.enD.push(dd.slice(0,3));ae2+=(f[0]*LUMA[0]+f[1]*LUMA[1]+f[2]*LUMA[2])*Math.pow(2,-ev_paper)}
+    S.enNorm=Math.max(1e-6,0.18*ae2)}
+  {const dyeStock=o.proc===1?film:paper,m=dayW(5000);S.sc=[];S.scD=[];let ae3=0;const wp=[0,0,0],isPos=o.proc===1&&posStock;
+    for(let b=0;b<41;b++){const l=380+b*10,r=dye(dyeStock,b),dd=r.d.map((v,i)=>i<3?Math.min(v,300):v),si=S0[b]+m[0]*S1[b]+m[1]*S2[b],cmf=[xF(l),yF(l),zF(l)];
+      const fl=dichroic(l,isPos?neutral:[0,0,0]),bs=o.proc===1?(o.fBase??1):1,base=Math.pow(2,-dd[3]*bs*LOG2_10),f=r.miss?[0,0,0]:cmf.map(v=>si*fl*v*base);
+      S.sc.push(f);S.scD.push(dd.slice(0,3));ae3+=o.proc===1?f[1]:si*cmf[1];if(!r.miss)for(let k=0;k<3;k++)wp[k]+=si*cmf[k]}
+    S.scNorm=Math.max(ae3,1e-5);const w=wp.map(v=>v/Math.max(wp[1],1e-6)),a=mv(CAT,w),d=mv(CAT,D65),sc=d.map((v,k)=>v/Math.max(a[k],1e-6));
+    S.adapt=mm(MXYZ_2020,mm(mm(CATI,[sc[0],0,0,0,sc[1],0,0,0,sc[2]]),CAT))}
+  return S}
+function pre(S,d){let L;if(S.pos)L=[0,1,2].map(k=>Math.max(S.dmax[k]-d[k],0));else L=[0,1,2].map(k=>d[k]*S.nd[k]/Math.max(S.kd[k]+d[k],1e-6));return mv(S.M,L)}
+function post(S,c){if(!S.pos)return c;return c.map((v,k)=>v*(S.Kr[k]+S.cref[k])/Math.max(S.Kr[k]+v,1e-6))}
+const tab=(t,y)=>{const f=clamp((y+4)*64-0.5,0,511),i=f|0,j=Math.min(511,i+1),u=f-i;return t[i]*(1-u)+t[j]*u};
+
+/* spectral upsampling (Jakob & Hanika 2019, emission table made with vkdt's mkspectra at 256 × 256) */
+function coeff(D,xyz){const b=xyz[0]+xyz[1]+xyz[2];let x=xyz[0]/b,y=xyz[1]/b;y=y/(1-x);x=(1-x)*(1-x);const N=256,i=clamp(Math.floor(x*N+0.5),0,N-1),j=clamp(Math.floor(y*N+0.5),0,N-1),o=(j*N+i)*4,s=D.spec;
+  return[s[o],s[o+1],s[o+2],b/s[o+3]]}
+const sig=(c,l)=>{const x=(c[0]*l+c[1])*l+c[2];return(0.5*x/Math.sqrt(x*x+1)+0.5)*c[3]};
+/* scene colour (linear rec2020) -> log exposure of the film */
+function expose(D,S,rgb){const c=coeff(D,mv(M2020_XYZ,rgb.map(v=>Math.max(5e-4,v))));let r=0,g=0,b=0;for(let i=0;i<36;i++){const v=sig(c,380+i*10),f=S.ef[i];r+=v*f[0];g+=v*f[1];b+=v*f[2]}
+  return[r,g,b].map(v=>clamp(S.gFilm*(S.evFilm+Math.log2(v/S.eNorm+1e-10))*LOG10_2,-4,4))}
+function dyeLight(dens,dd,fac){let r=0,g=0,b=0;for(let i=0;i<41;i++){const d=dd[i],l=Math.pow(2,-(dens[0]*d[0]+dens[1]*d[1]+dens[2]*d[2])),f=fac[i];r+=l*f[0];g+=l*f[1];b+=l*f[2]}return[r,g,b]}
+/* film (or paper) density -> displayed colour, through the enlarger and the paper for a print */
+function finish(S,dens){let d=dens;if(S.o.proc===0){const raw=dyeLight(d,S.enD,S.en);const y=raw.map(v=>Math.log2(v/S.enNorm+1e-10)*LOG10_2);d=[0,1,2].map(k=>tab(S.pD[k],y[k]))}
+  const xyz=dyeLight(d,S.scD,S.sc).map(v=>Math.max(0,v/S.scNorm));return mv(M2020_709,mv(S.adapt,xyz))}
+/* scanned negative (linear rec2020) printed on paper */
+function printScan(D,S,rgb){const c=coeff(D,mv(M2020_XYZ,rgb.map(v=>Math.max(5e-4,v))));let r=0,g=0,b=0;for(let i=0;i<41;i++){const v=sig(c,380+i*10),f=S.en[i];r+=v*f[0];g+=v*f[1];b+=v*f[2]}
+  const y=[r,g,b].map(v=>Math.log2(v/S.enNorm+1e-10)*LOG10_2),d=[0,1,2].map(k=>tab(S.pD[k],y[k]));const xyz=dyeLight(d,S.scD,S.sc).map(v=>Math.max(0,v/S.scNorm));return mv(M2020_709,mv(S.adapt,xyz))}
+
+/* 3D tables, trilinear */
+function lut3(N,f){const t=new Float32Array(N*N*N*3);let o=0;for(let b=0;b<N;b++)for(let g=0;g<N;g++)for(let r=0;r<N;r++){const v=f(r/(N-1),g/(N-1),b/(N-1));t[o++]=v[0];t[o++]=v[1];t[o++]=v[2]}return t}
+function look(t,N,x,y,z,out){x=clamp(x,0,1)*(N-1);y=clamp(y,0,1)*(N-1);z=clamp(z,0,1)*(N-1);const x0=Math.min(N-2,x|0),y0=Math.min(N-2,y|0),z0=Math.min(N-2,z|0),u=x-x0,v=y-y0,w=z-z0;
+  const i=((z0*N+y0)*N+x0)*3,dx=3,dy=N*3,dz=N*N*3;
+  for(let k=0;k<3;k++){const a=t[i+k]+(t[i+dx+k]-t[i+k])*u,b=t[i+dy+k]+(t[i+dy+dx+k]-t[i+dy+k])*u,c=t[i+dz+k]+(t[i+dz+dx+k]-t[i+dz+k])*u,e=t[i+dz+dy+k]+(t[i+dz+dy+dx+k]-t[i+dz+dy+k])*u;
+    const p=a+(b-a)*v,q=c+(e-c)*v;out[k]=p+(q-p)*w}return out}
+function tables(D,S){const N=33;
+  if(S.o.proc===2){S.A=lut3(N,(r,g,b)=>printScan(D,S,mv(M709_2020,[srgbDec(r),srgbDec(g),srgbDec(b)])).map(v=>srgbEnc(clamp(v,0,1))));return S}
+  S.A=lut3(N,(r,g,b)=>expose(D,S,mv(M709_2020,[srgbDec(r),srgbDec(g),srgbDec(b)])));
+  // densities: from a little below zero (grain) to a little above the film's maximum
+  S.dlo=-0.15;S.dhi=Math.max(...S.fD.map(t=>Math.max(t[0],t[511])))+0.25;const NC=40,sp=S.dhi-S.dlo;S.NC=NC;
+  S.C=lut3(NC,(a,b,c)=>finish(S,[S.dlo+a*sp,S.dlo+b*sp,S.dlo+c*sp]).map(v=>srgbEnc(clamp(v,0,1))));return S}
+
+/* small helpers on Float32 planes */
+function blurPlane(src,w,h,sig){if(sig<0.35)return src;const r=Math.max(1,Math.ceil(sig*2.5)),k=new Float32Array(2*r+1);let s=0;for(let i=-r;i<=r;i++){k[i+r]=Math.exp(-i*i/(2*sig*sig));s+=k[i+r]}for(let i=0;i<k.length;i++)k[i]/=s;
+  const tmp=new Float32Array(w*h),out=new Float32Array(w*h);
+  for(let y=0;y<h;y++){const o=y*w;for(let x=0;x<w;x++){let a=0;for(let i=-r;i<=r;i++)a+=src[o+clamp(x+i,0,w-1)]*k[i+r];tmp[o+x]=a}}
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let a=0;for(let i=-r;i<=r;i++)a+=tmp[clamp(y+i,0,h-1)*w+x]*k[i+r];out[y*w+x]=a}return out}
+const hash=(x,y,c)=>{let h=(x*374761393+y*668265263+c*2147483647)|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296};
+/* approximately normal, from three uniforms */
+const gnoise=(x,y,c)=>{let h=(x*374761393+y*668265263+c*2147483647)|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return((h&1023)+((h>>>10)&1023)+((h>>>20)&1023)-1534.5)*0.0039100684};
+function grainStd(G,d,k){const np=clamp((d+G.dmin[k])*G.ir[k],0,1),p0=clamp(np*G.ilf0[k],0,1),p1=clamp((np-G.lf0[k])*G.ilf1[k],0,1),p2=clamp((np-G.lf01[k])*G.ilf2[k],0,1),u=G.un[k];
+  const v=G.wf[k]*p0*Math.max(1-p0*u,0)+G.wm[k]*p1*Math.max(1-p1*u,0)+G.ws[k]*p2*Math.max(1-p2*u,0);return Math.sqrt(Math.max(v,0))}
+
+/* the whole film, on an image: im (ImageData) -> new ImageData. sc = this image's scale against the full photo (preview) */
+async function render(D,S,im,sc,onP){const w=im.width,h=im.height,a=im.data,n=w*h,out=new ImageData(w,h),o=out.data,t=[0,0,0];
+  if(S.o.proc===2){for(let i=0;i<n;i++){const j=i*4;look(S.A,33,a[j]/255,a[j+1]/255,a[j+2]/255,t);o[j]=t[0]*255+0.5;o[j+1]=t[1]*255+0.5;o[j+2]=t[2]*255+0.5;o[j+3]=a[j+3];if(onP&&i%(w*64)===0){onP(i/n);await tick()}}return out}
+  // 1. exposure of the negative
+  const E=new Float32Array(n*3);for(let i=0;i<n;i++){const j=i*4;look(S.A,33,a[j]/255,a[j+1]/255,a[j+2]/255,t);E[i*3]=t[0];E[i*3+1]=t[1];E[i*3+2]=t[2]}
+  onP&&onP(0.2);await tick();
+  // spatial passes on a smaller copy (at most 900 px), read back bilinearly
+  const k=Math.min(1,900/Math.max(w,h)),sw=Math.max(1,Math.round(w*k)),sh=Math.max(1,Math.round(h*k)),pxUm=Math.max(w,h)*k/35000;
+  const small=(f)=>{const P=[new Float32Array(sw*sh),new Float32Array(sw*sh),new Float32Array(sw*sh)];for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){const sx=Math.min(w-1,Math.floor((x+0.5)/k)),sy=Math.min(h-1,Math.floor((y+0.5)/k)),v=f(sy*w+sx);for(let c=0;c<3;c++)P[c][y*sw+x]=v[c]}return P};
+  const samp=(P,x,y,c)=>{const fx=clamp((x+0.5)*k-0.5,0,sw-1),fy=clamp((y+0.5)*k-0.5,0,sh-1),x0=fx|0,y0=fy|0,x1=Math.min(sw-1,x0+1),y1=Math.min(sh-1,y0+1),u=fx-x0,v=fy-y0,p=P[c];
+    return(p[y0*sw+x0]*(1-u)+p[y0*sw+x1]*u)*(1-v)+(p[y1*sw+x0]*(1-u)+p[y1*sw+x1]*u)*v};
+  // 2. halation: light scattered back by the film base, blurred around bright areas
+  if(S.hal){const P=small(i=>[0,1,2].map(c=>Math.pow(10,E[i*3+c]))),sg=Math.max(0.35,65*pxUm),B=P.map(p=>blurPlane(p,sw,sh,sg)),hs=S.hal;
+    const LN10=2.302585092994046,ih=hs.map(v=>1/(1+v)),B0=B[0],B1=B[1],B2=B[2];
+    for(let y=0;y<h;y++){const fy=clamp((y+0.5)*k-0.5,0,sh-1),y0=fy|0,y1=Math.min(sh-1,y0+1),v=fy-y0;
+      for(let x=0;x<w;x++){const fx=clamp((x+0.5)*k-0.5,0,sw-1),x0=fx|0,x1=Math.min(sw-1,x0+1),u=fx-x0,a00=y0*sw+x0,a01=y0*sw+x1,a10=y1*sw+x0,a11=y1*sw+x1,w00=(1-u)*(1-v),w01=u*(1-v),w10=(1-u)*v,w11=u*v,i=(y*w+x)*3;
+        const hl0=B0[a00]*w00+B0[a01]*w01+B0[a10]*w10+B0[a11]*w11,hl1=B1[a00]*w00+B1[a01]*w01+B1[a10]*w10+B1[a11]*w11,hl2=B2[a00]*w00+B2[a01]*w01+B2[a10]*w10+B2[a11]*w11;
+        E[i]=Math.log(Math.max((Math.exp(E[i]*LN10)+hs[0]*Math.max(0,hl0))*ih[0],1e-10))/LN10;E[i+1]=Math.log(Math.max((Math.exp(E[i+1]*LN10)+hs[1]*Math.max(0,hl1))*ih[1],1e-10))/LN10;E[i+2]=Math.log(Math.max((Math.exp(E[i+2]*LN10)+hs[2]*Math.max(0,hl2))*ih[2],1e-10))/LN10}}}
+  onP&&onP(0.35);await tick();
+  // 3. DIR couplers: what develops in one place holds back development nearby (more colour, more local contrast)
+  let C=null;if(S.cp){const P=small(i=>pre(S,[0,1,2].map(c=>tab(S.fD[c],E[i*3+c])))),sg=20*pxUm;C=P.map(p=>blurPlane(p,sw,sh,Math.max(sg,0.35)))}
+  onP&&onP(0.45);await tick();
+  // 4. development, grain, print: in bands so that the grain noise can be blurred
+  const G=S.gr,gs=G?G.sigma*sc:0,gr=G?Math.max(1,Math.ceil(gs*2.5)):0,kk=G?(()=>{const kv=[];let s=0,s2=0;for(let i=-gr;i<=gr;i++){const v=Math.exp(-i*i/(2*Math.max(gs,0.3)**2));kv.push(v);s+=v}const nk=kv.map(v=>v/s);for(const v of nk)s2+=v*v;return{nk,norm:1/s2}})():null;
+  // averaging several pixels of a reduced preview lowers the grain like the eye would see it at that size
+  const gAmp=G?Math.min(1,sc)*G.amt:0,band=64,cv=[0,0,0],d=[0,0,0],sp=S.dhi-S.dlo,gsK=255/sp;
+  // grain strength by density, tabulated
+  const GS=G?[0,1,2].map(c=>{const t=new Float32Array(256);for(let q=0;q<256;q++)t[q]=grainStd(G,S.dlo+(q+0.5)/gsK,c);return t}):null;
+  for(let y0=0;y0<h;y0+=band){const y1=Math.min(h,y0+band);let N=null;
+    if(G){const py0=y0-gr,ph=y1-y0+2*gr,W2=w+2*gr;N=[0,1,2].map(c=>{const raw=new Float32Array(W2*ph);for(let yy=0;yy<ph;yy++)for(let xx=0;xx<W2;xx++)raw[yy*W2+xx]=gnoise(Math.round((xx-gr)/sc),Math.round((py0+yy)/sc),c*31+1);
+        const tmp=new Float32Array(W2*ph),o2=new Float32Array(w*(y1-y0));for(let yy=0;yy<ph;yy++)for(let xx=gr;xx<w+gr;xx++){let s=0;for(let i=-gr;i<=gr;i++)s+=raw[yy*W2+xx+i]*kk.nk[i+gr];tmp[yy*W2+xx]=s}
+        for(let yy=gr;yy<ph-gr;yy++)for(let xx=gr;xx<w+gr;xx++){let s=0;for(let i=-gr;i<=gr;i++)s+=tmp[(yy+i)*W2+xx]*kk.nk[i+gr];o2[(yy-gr)*w+xx-gr]=s*kk.norm}return o2})}
+    for(let y=y0;y<y1;y++)for(let x=0;x<w;x++){const i=y*w+x,j=i*4;
+      if(C){cv[0]=samp(C,x,y,0);cv[1]=samp(C,x,y,1);cv[2]=samp(C,x,y,2);if(S.pos)for(let c=0;c<3;c++)cv[c]=cv[c]*(S.Kr[c]+S.cref[c])/Math.max(S.Kr[c]+cv[c],1e-6)}
+      for(let c=0;c<3;c++){let lr=E[i*3+c];if(C)lr=tab(S.cw[c],clamp(lr-cv[c],-4,4));
+        let dd=tab(S.fD[c],lr);if(G){const q=clamp((dd-S.dlo)*gsK,0,255)|0;dd=Math.max(dd+N[c][(y-y0)*w+x]*GS[c][q]*gAmp,-G.dmin[c])}d[c]=dd}
+      look(S.C,S.NC,(d[0]-S.dlo)/sp,(d[1]-S.dlo)/sp,(d[2]-S.dlo)/sp,t);o[j]=t[0]*255+0.5;o[j+1]=t[1]*255+0.5;o[j+2]=t[2]*255+0.5;o[j+3]=a[j+3]}
+    if(onP){onP(0.45+0.55*y1/h);await tick()}}
+  return out}
+
+/* ---------- contraste local : pyramides laplaciennes locales (Paris, Hasinoff et Kautz 2011, version rapide d'Aubry et al. 2014) ---------- */
+/* réécrit d'après la publication et le module « llap » de vkdt (même courbe de remappage) ; sur la luminance, couleurs reconstituées en proportion */
+function llCurve(x,g,s,sh,hi,cl){const c=x-g,ss=c>0?s:-s,k=c>0?sh:hi;let v;if(Math.abs(c)>2*s)v=g+ss+k*(c-ss);else{const t=clamp(c/(2*ss),0,1);v=g+ss*2*(1-t)*t+t*t*(ss+ss*k)}return v+cl*c*Math.exp(-c*c/(2*s*s/3))}
+function down(a,w,h){const W=Math.max(1,(w+1)>>1),H=Math.max(1,(h+1)>>1),t=new Float32Array(W*h),o=new Float32Array(W*H),K=[1,4,6,4,1];
+  for(let y=0;y<h;y++)for(let x=0;x<W;x++){let s=0;for(let i=-2;i<=2;i++)s+=a[y*w+clamp(2*x+i,0,w-1)]*K[i+2];t[y*W+x]=s/16}
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){let s=0;for(let i=-2;i<=2;i++)s+=t[clamp(2*y+i,0,h-1)*W+x]*K[i+2];o[y*W+x]=s/16}return{a:o,w:W,h:H}}
+function up(a,W,H,w,h){const o=new Float32Array(w*h);for(let y=0;y<h;y++){const fy=clamp((y+0.5)/2-0.5,0,H-1),y0=fy|0,y1=Math.min(H-1,y0+1),v=fy-y0;
+    for(let x=0;x<w;x++){const fx=clamp((x+0.5)/2-0.5,0,W-1),x0=fx|0,x1=Math.min(W-1,x0+1),u=fx-x0;o[y*w+x]=(a[y0*W+x0]*(1-u)+a[y0*W+x1]*u)*(1-v)+(a[y1*W+x0]*(1-u)+a[y1*W+x1]*u)*v}}return o}
+function gpyr(a,w,h,n){const P=[{a,w,h}];for(let l=1;l<n;l++)P.push(down(P[l-1].a,P[l-1].w,P[l-1].h));return P}
+async function localContrast(im,p,onP){const w=im.width,h=im.height,n=w*h,d=im.data,Y=new Float32Array(n);
+  for(let i=0;i<n;i++){const j=i*4;Y[i]=(0.2126*d[j]+0.7152*d[j+1]+0.0722*d[j+2])/255}
+  const NL=Math.max(2,Math.min(9,Math.floor(Math.log2(Math.min(w,h)/6)))),G=gpyr(Y,w,h,NL),K=8,gam=i=>i/(K-1);
+  const out=G.map((g,l)=>l<NL-1?new Float32Array(g.w*g.h):Float32Array.from(G[NL-1].a));
+  for(let i=0;i<K;i++){const gi=gam(i),R=new Float32Array(n);for(let q=0;q<n;q++)R[q]=llCurve(Y[q],gi,p.sigma,p.shadows,p.highlights,p.clarity);
+    const P=gpyr(R,w,h,NL);
+    for(let l=0;l<NL-1;l++){const A=P[l],B=P[l+1],U=up(B.a,B.w,B.h,A.w,A.h),g=G[l].a,o=out[l];
+      // this gamma's share at each pixel: hat function around gi in the photo's own (smoothed) tone
+      for(let q=0;q<A.a.length;q++){const t=Math.abs(g[q]-gi)*(K-1);if(t<1)o[q]+=(A.a[q]-U[q])*(1-t)}}
+    onP&&onP((i+1)/(K+1));await tick()}
+  let r=out[NL-1];for(let l=NL-2;l>=0;l--){const g=G[l],U=up(r,G[l+1].w,G[l+1].h,g.w,g.h),o=out[l];for(let q=0;q<o.length;q++)o[q]+=U[q];r=o}
+  const res=new ImageData(w,h),o=res.data;for(let i=0;i<n;i++){const j=i*4,y=Y[i],k=y>1e-4?clamp(r[i],0,1.5)/y:1;
+    if(y>1e-4){o[j]=d[j]*k;o[j+1]=d[j+1]*k;o[j+2]=d[j+2]*k}else{const v=clamp(r[i],0,1)*255;o[j]=o[j+1]=o[j+2]=v}o[j+3]=d[j+3]}return res}
+
+/* ---------- boîtes de dialogue ---------- */
+const mixSel=(o,r,sel)=>{const out=cloneC(o),g=cx(out);g.globalCompositeOperation='destination-out';g.drawImage(sel,0,0);const t=cloneC(r),tg=cx(t);tg.globalCompositeOperation='destination-in';tg.drawImage(sel,0,0);g.globalCompositeOperation='lighter';g.drawImage(t,0,0);return out};
+const imOf=c=>rx(c).getImageData(0,0,c.width,c.height);
+const proxy=(c,max)=>{const k=Math.min(1,max/Math.max(c.width,c.height));if(k>=1)return{c,k:1};const t=mk(Math.max(1,Math.round(c.width*k)),Math.max(1,Math.round(c.height*k))),g=rx(t);g.imageSmoothingQuality='high';g.drawImage(c,0,0,t.width,t.height);return{c:t,k}};
+const toCanvas=im=>{const c=mk(im.width,im.height);rx(c).putImageData(im,0,0);return c};
+/* blend toward the original (Intensité) and back to the layer's size */
+function finalC(L,res,amt){const c=mk(L.canvas.width,L.canvas.height),g=cx(c);g.drawImage(L.canvas,0,0);g.globalAlpha=amt;g.imageSmoothingQuality='high';g.drawImage(res,0,0,c.width,c.height);g.globalAlpha=1;
+  // keep the layer's own transparency
+  g.globalCompositeOperation='destination-in';g.drawImage(L.canvas,0,0);return c}
+/* a dialog with a live preview on a reduced copy and the full computation on Appliquer */
+function liveDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
+  const p={...o.init};let tmr=null,job=0;const alive=()=>S.doc===d&&d.layers.includes(L),src=proxy(L.canvas,1100);
+  const clear=()=>{clearTimeout(tmr);job++;delete L.preview};
+  const prev=()=>{clearTimeout(tmr);tmr=setTimeout(async()=>{const my=++job;try{const r=await o.run(src.c,src.k,p,null,L);if(my!==job||!alive())return;let c=finalC(L,toCanvas(r),p.amount/100);if(d.sel)c=mixSel(L.canvas,c,d.sel);L.preview=c;markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},180)};
+  const row=q=>q[1]==='select'?`<div class="row"><label for="lm-${q[0]}">${q[2]}</label><select id="lm-${q[0]}">${q[3].map((t,i)=>`<option value="${i}"${i===p[q[0]]?' selected':''}>${t}</option>`).join('')}</select></div>`:rangeRow('lm-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6]);
+  dialog({title:o.title,light:true,body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+o.params.map(row).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+    onOpen:el=>{o.params.forEach(q=>{const i=$('#lm-'+q[0],el);if(q[1]==='select')i.onchange=()=>{p[q[0]]=+i.value;o.sync&&o.sync(el,p);prev()};else i.oninput=()=>{p[q[0]]=+i.value;$('#lm-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});o.sync&&o.sync(el,p);prev()},
+    buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
+      {label:'Appliquer',primary:true,onClick:()=>{clear();markComp();if(!alive()){toast('Le calque n’existe plus');return}
+        (async()=>{busy(true,o.title+'…',0);try{const r=await o.run(L.canvas,1,p,v=>busy(true,o.title+'…',v),L);if(!alive())return;let c=finalC(L,toCanvas(r),p.amount/100);applyMasked(L,c,o.title);syncAll()}
+          catch(e){console.error(e);toast(o.title+' impossible : '+(e.message||e),5000)}finally{busy(false)}})()}}]})}
+/* film settings -> engine state, cached while only the grain or the strength change */
+let stC=null;
+async function filmState(p,proc,fullW,fullH){const D=await loadData(),o={film:p.film,paper:p.paper,proc,evFilm:p.ev,gFilm:p.contrast/100,couplers:p.couplers/100,halation:p.halation/100,grain:p.grain/100,tuneY:p.warm/100,tuneM:p.tint/100,evPaper:p.evPaper||0,fullW,fullH};
+  const key=JSON.stringify(o);if(stC&&stC.key===key)return stC.S;const S=tables(D,setup(D,o));stC={key,S};return S}
+const POS=new Set([16,17,18,19,21]);
+function filmDialog(){const d=S.doc;if(!d)return;
+  liveDialog({title:'Simulation de pellicule',note:'Rendu de vraies pellicules et papiers de tirage, simulés à partir de leurs courbes spectrales : couleurs, grain et halo. Les diapositives sont rendues comme scannées, sans tirage.',
+    init:{film:4,paper:3,ev:0,contrast:100,couplers:50,halation:100,grain:100,warm:0,tint:0,amount:100},
+    params:[['film','select','Pellicule',FILMS],['paper','select','Papier de tirage',PAPERS],['ev','Exposition',-2,2,0.1,0,' IL'],['contrast','Contraste',60,140,1,0,' %'],['couplers','Couleurs',0,100,1,0,' %'],
+      ['halation','Halo',0,300,1,0,' %'],['grain','Grain',0,250,1,0,' %'],['warm','Chaleur',-100,100,1,0,''],['tint','Teinte',-100,100,1,0,''],['amount','Intensité',0,100,1,0,' %']],
+    sync:(el,p)=>{$('#lm-paper',el).closest('.row').hidden=POS.has(p.film)},
+    run:async(c,k,p,onP)=>{const S=await filmState(p,POS.has(p.film)?1:0,d.w,d.h);return render(FM.data,S,imOf(c),k,onP)}})}
+function negDialog(){const d=S.doc;if(!d)return;
+  liveDialog({title:'Tirer un négatif scanné',note:'Pour la photo ou le scan d’un négatif couleur : il est tiré sur un papier photo virtuel, ce qui retire le masque orange et donne des couleurs de vrai tirage. Choisissez la pellicule du négatif si vous la connaissez.',
+    init:{film:4,paper:3,evPaper:0,warm:0,tint:0,amount:100},
+    params:[['film','select','Pellicule du négatif',FILMS.slice(0,16)],['paper','select','Papier de tirage',PAPERS],['evPaper','Exposition du tirage',-3,3,0.1,0,' IL'],['warm','Chaleur',-100,100,1,0,''],['tint','Teinte',-100,100,1,0,''],['amount','Intensité',0,100,1,0,' %']],
+    run:async(c,k,p,onP)=>{const D=await loadData(),o={film:p.film,paper:p.paper,proc:2,evPaper:-p.evPaper,tuneY:p.warm/100,tuneM:p.tint/100,fullW:d.w,fullH:d.h};
+      const key='neg'+JSON.stringify(o);let S;if(stC&&stC.key===key)S=stC.S;else{S=tables(D,setup(D,o));stC={key,S}}return render(D,S,imOf(c),k,onP)}})}
+function llapDialog(){liveDialog({title:'Contraste local',note:'Renforce ou adoucit le relief des détails sans halo, et règle ombres et hautes lumières localement.',
+  init:{clarity:30,shadows:100,highlights:100,sigma:12,amount:100},
+  params:[['clarity','Clarté',-100,200,1,0,' %'],['shadows','Ombres',30,170,1,0,' %'],['highlights','Hautes lumières',30,170,1,0,' %'],['sigma','Étendue des tons moyens',4,30,1,0,' %'],['amount','Intensité',0,100,1,0,' %']],
+  run:(c,k,p,onP)=>localContrast(imOf(c),{clarity:p.clarity/100,shadows:p.shadows/100,highlights:p.highlights/100,sigma:p.sigma/100},onP)})}
+
+/* ---------- menus ---------- */
+const _fiF=MENU2.filter.items;
+MENU2.filter.items=function(){const a=_fiF.apply(this,arguments),dis=S.doc?false:NODOC,it=MI('Rendu film',{icon:'filter',dis,sub:()=>[MI('Simulation de pellicule…',{fn:filmDialog,dis}),MI('Tirer un négatif scanné…',{fn:negDialog,dis})]});
+  const k=a.findIndex(x=>x&&x.label==='Portrait et restauration…');a.splice(k<0?a.length:k+1,0,it);
+  // local contrast sits with the other detail filters
+  const ns=a.find(x=>x&&x.label==='Netteté et bruit'&&x.sub);if(ns){const sub=ns.sub;ns.sub=()=>{const s=typeof sub==='function'?sub():sub.slice();s.push(MI('Contraste local…',{fn:llapDialog,dis}));return s}}else a.push(MI('Contraste local…',{fn:llapDialog,dis}));return a};
+window.PrismFilm={loadData,setup,tables,render,localContrast,film:filmDialog,neg:negDialog,llap:llapDialog,FILMS,PAPERS};
 
 }
 

@@ -1,0 +1,52 @@
+Rendu film de Prism (web-src/feat/zz_film.js)
+
+1. Code : porté du module filmsim de vkdt (https://github.com/hanatos/vkdt), licence BSD 2 clauses :
+
+copyright 2019 johannes hanika
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+spectra.bin a été produit avec l'outil mkspectra de vkdt (même licence), à 512 x 512 puis réduit à 256 x 256.
+
+2. Données filmsim.bin : profils spektrafilm, tels que convertis par vkdt (filmsim.lut).
+
+license:
+spektrafilm profile by Andrea Volpato, licensed under CC BY-SA 4.0.
+Redistribution and derivatives must credit the author, link the project
+(https://github.com/andreavolpato/spektrafilm), preserve this license,
+and remain CC BY-SA 4.0. Modifications must be noted. Full text of the
+license and attribution requirements:
+https://github.com/andreavolpato/spektrafilm/blob/main/SPEKTRAFILM_LICENSE.txt.
+
+citation:
+If you use this profile in your work, please cite the spektrafilm
+project: https://github.com/andreavolpato/spektrafilm, see CITATION.cff
+for details.
+
+datasource:
+This profile was created by processing raw measurement data from
+data-sheets and/or scientific papers. Original data are property of the respective holders.
+Film/photo-paper: Kodak and Fujifilm data-sheets, scientific publications, and technical material.
+Reflectance: Otsu (https://github.com/enneract/otsu2018),
+Munsell (https://zenodo.org/records/3269912),
+human skin (https://www.nist.gov/programs-projects/reflectance-measurements-human-skin),
+forest colors (https://zenodo.org/records/3269920),
+Japan colors (https://zenodo.org/records/5217752).
+All data publicly available.
+
+modifications:
+this datafile has been generated from the spektrafilm profile/*json
+using a half assed python script found here:
+https://codeberg.org/hanatos/vkdt/src/branch/master/src/pipe/modules/filmsim/mklut-profiles.py
+
+Modification par Prism : seules les colonnes 0 à 80 de chaque ligne sont gardées, en float32 sans en-tête.
+Licence complète CC BY-SA 4.0 : https://creativecommons.org/licenses/by-sa/4.0/
+
+3. wb.json : tables d'équilibre des filtres de vkdt (wb.h, pos_wb.h), licence BSD 2 clauses ci-dessus.

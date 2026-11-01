@@ -100,7 +100,7 @@ fn decode(bytes: Arc<Vec<u8>>, auto_wb: bool) -> Result<Vec<u8>, String> {
 
     // black/white levels, demosaic, crop to the active area; white balance and colour are done below
     let steps = [ProcessingStep::Rescale, ProcessingStep::Demosaic, ProcessingStep::FujiRotate, ProcessingStep::CropActiveArea];
-    let flips = raw.orientation.to_flips();
+    let flips = upright(raw.orientation, md.as_ref().and_then(|m| m.exif.orientation)).to_flips();
     Ok(match RawDevelop::new_with(&steps).develop_intermediate(&raw).map_err(|e| e.to_string())? {
         Intermediate::Monochrome(p) => {
             let px: Vec<[f32; 1]> = p.data.into_iter().map(|v| [v]).collect();
@@ -116,6 +116,17 @@ fn decode(bytes: Arc<Vec<u8>>, auto_wb: bool) -> Result<Vec<u8>, String> {
             write(&p.data, p.width, p.height, flips, &meta, f)
         }
     })
+}
+
+/// Which way the photo stands. rawler 0.8 reads the orientation only from DNG files: every other
+/// decoder (ARW, CR2, CR3, NEF, RAF…) leaves `Normal`, so portraits came out lying on their side.
+/// The orientation written in the file's EXIF fills that gap.
+fn upright(from_decoder: rawler::Orientation, exif: Option<u16>) -> rawler::Orientation {
+    use rawler::Orientation as O;
+    match (from_decoder, exif.map(O::from_u16)) {
+        (O::Normal | O::Unknown, Some(o)) if o != O::Unknown => o,
+        (o, _) => o,
+    }
 }
 
 /// Packs the photo: each pixel through `f` (camera values to linear ProPhoto), turned upright by
@@ -330,6 +341,17 @@ mod tests {
         assert_eq!(turn(rawler::Orientation::Rotate270), (2, 3, vec![2, 5, 1, 4, 0, 3])); // anticlockwise
         assert_eq!(turn(rawler::Orientation::Rotate180), (3, 2, vec![5, 4, 3, 2, 1, 0]));
         assert_eq!(turn(rawler::Orientation::HorizontalFlip), (3, 2, vec![2, 1, 0, 5, 4, 3]));
+    }
+
+    #[test]
+    fn exif_orientation_when_the_decoder_has_none() {
+        use rawler::Orientation as O;
+        assert_eq!(upright(O::Normal, Some(6)), O::Rotate90); // Sony ARW shot upright
+        assert_eq!(upright(O::Normal, Some(8)), O::Rotate270);
+        assert_eq!(upright(O::Unknown, Some(3)), O::Rotate180);
+        assert_eq!(upright(O::Normal, None), O::Normal);
+        assert_eq!(upright(O::Normal, Some(0)), O::Normal);
+        assert_eq!(upright(O::Rotate90, Some(1)), O::Rotate90); // a DNG keeps what its decoder read
     }
 
     #[test]
