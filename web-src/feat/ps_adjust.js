@@ -64,5 +64,6 @@ PSX.filter('replcolor',{name:'Remplacement de couleur',
   job:(img,p)=>['replaceColor',{img,p:{color:hex2(p.col||'#c03030'),fuzziness:p.fuzz,hue:p.hue,saturation:p.sat,lightness:p.light}}]});
 
 const items=()=>{const o=(id,l)=>MI(l,{dis:S.doc?false:NODOC,fn:()=>filterDialog(id)});
-  return[o('levels','Niveaux…'),o('shhl','Ombres et hautes lumières…'),o('chmix','Mélangeur de couches…'),o('selcolor','Correction sélective…'),o('photofilter','Filtre photo…'),o('gradmap','Carte de dégradé…'),o('replcolor','Remplacement de couleur…')]};
+  return[o('levels','Niveaux…'),o('shhl','Ombres et hautes lumières…'),o('chmix','Mélangeur de couches…'),o('selcolor','Correction sélective…'),o('photofilter','Filtre photo…'),o('gradmap','Carte de dégradé…')]};
+// « Remplacement de couleur » stays registered (layers that already use it) but leaves the menu: Image > Couleur et transparence > Remplacer une couleur does it with a pipette and a target colour
 PSX.addToMenu('image','Réglages avancés',items,/^Taille de l’image/);

@@ -333,6 +333,26 @@ await test('photo animée : Motion Photo lue, image choisie ouverte, PNG animé 
     const mp4=[...box('ftyp',[...enc('isom'),0,0,0,0]),...box('mdat',[1,2,3,4])],heic=new Uint8Array([...box('ftyp',[...enc('heic'),0,0,0,0]),...box('meta',[0,0,0,0]),...box('mpvd',mp4)]);
     const r=PSX.findMotion(heic);return r&&[r.end-r.start,mp4.length]});
   if(!live||live[0]!==live[1])throw new Error('HEIC mpvd '+live)});
+
+// ---- couleur et transparence (fond vert, couleur vers transparence, remplacer une couleur) et photos d'identité ----
+await test('fond vert : fond transparent, sujet intact, reflet vert retiré ; couleur vers transparence ; couleur remplacée',async()=>{await fresh();
+  const r=await ev(()=>{const W=400,H=300,c=mk(W,H),g=cx(c);g.fillStyle='rgb(20,175,70)';g.fillRect(0,0,W,H);g.fillStyle='rgb(220,140,100)';g.beginPath();g.arc(200,150,90,0,7);g.fill();g.fillStyle='rgb(160,190,120)';g.fillRect(195,55,10,8);
+    const F=window.PrismFV,k=F.guessKey(c),o=rx(F.chromaKey(c,{key:null,tol:22,soft:18,spill:80,shrink:0,feather:0})).getImageData(0,0,W,H).data,at=(x,y)=>[...o.slice((y*W+x)*4,(y*W+x)*4+4)];
+    const w=mk(4,1),wg=cx(w);wg.fillStyle='#fff';wg.fillRect(0,0,2,1);wg.fillStyle='#000';wg.fillRect(2,0,2,1);const t=rx(F.colorToAlpha(w,{color:[255,255,255],th:0})).getImageData(0,0,4,1).data;
+    const q=mk(2,1),qg=cx(q);qg.fillStyle='rgb(200,30,30)';qg.fillRect(0,0,1,1);qg.fillStyle='rgb(200,200,200)';qg.fillRect(1,0,1,1);const u=rx(F.replaceColor(q,{from:[200,30,30],to:[30,60,200],tol:15,soft:10,light:60})).getImageData(0,0,2,1).data;
+    return{k:k.map(Math.round),bg:at(5,5),sub:at(200,150),spill:at(199,58),c2a:[t[3],t[11]],rep:[...u]}});
+  if(!(r.k[1]>150&&r.k[0]<60))throw new Error('fond deviné '+r.k);
+  if(r.bg[3]!==0||r.sub[3]!==255||r.sub[0]!==220)throw new Error('incrustation '+JSON.stringify(r));
+  if(!(r.spill[1]<=(r.spill[0]+r.spill[2])/2+12))throw new Error('reflet vert '+r.spill);
+  if(r.c2a[0]!==0||r.c2a[1]!==255)throw new Error('couleur vers transparence '+r.c2a);
+  if(!(r.rep[2]>r.rep[0]+60)||r.rep.slice(4,7).join()!=='200,200,200')throw new Error('remplacement '+r.rep)});
+await test('photos d’identité : planche 10 × 15 cm à 300 ppp ouverte, glisser l’aperçu recadre',async()=>{await fresh();await sample();
+  await ev(()=>PrismFV.id());await page.waitForSelector('#id-prev');const b=await page.locator('#id-prev').boundingBox();
+  const before=await ev(()=>document.querySelector('#id-prev').toDataURL());
+  await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width/2-30,b.y+b.height/2,{steps:5});await page.mouse.up();
+  if(await ev(()=>document.querySelector('#id-prev').toDataURL())===before)throw new Error('l’aperçu ne bouge pas');
+  await page.locator('#scrim .foot .btn',{hasText:'Créer la planche'}).click();await page.waitForFunction(()=>/photos-identite/.test(S.doc.name));
+  const o=await ev(()=>[S.doc.w,S.doc.h]);if(o.join()!=='1772,1181')throw new Error('taille '+o)});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
