@@ -13,7 +13,9 @@ body:not(.compact) #stage>.optbar{position:absolute;z-index:6;top:12px;left:0;ri
 body:not(.compact) #stage>.optbar #pill{flex:0 1 auto}
 body:not(.compact) #stage>.optbar:empty,body:not(.compact) #stage>.optbar.cap-none{display:none}
 body.cap-dim:not(.compact) #stage>.optbar{opacity:.22;pointer-events:none}
-.cap-fam{display:flex;gap:2px;padding:2px;border-radius:9px;background:var(--chrome-2);flex:none}
+.cap-fam{display:flex;}
+body.compact .cap-fam{display:none}
+.cap-fam{gap:2px;padding:2px;border-radius:9px;background:var(--chrome-2);flex:none}
 .cap-fam button{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:7px;background:none;color:var(--fg-2);font:500 12.5px var(--ui);cursor:pointer;white-space:nowrap}
 .cap-fam button:hover{color:var(--fg);background:var(--hover)}
 .cap-fam button[aria-pressed="true"]{background:var(--raise,#fff);color:var(--fg);box-shadow:var(--shadow-s,0 1px 3px rgba(0,0,0,.12))}
@@ -45,7 +47,7 @@ const UI10={};
 (()=>{const app=$('#app'),stage=$('#stage'),ob=$('#optbar'),sb=$('.statusbar'),work=$('.work');
   const zp=document.createElement('div');zp.className='cap-zoom';
   const place=()=>{const z=sb.querySelector('.zoom')||zp.querySelector('.zoom'),d=$('#stDoc');
-    if(COMPACT.matches){if(ob.parentNode!==app)work.before(ob);if(sb.parentNode!==app)app.appendChild(sb);if(z&&z.parentNode!==sb){sb.appendChild(d);sb.appendChild(z)}zp.remove()}
+    if(COMPACT.matches){if(ob.parentNode!==app&&!document.body.classList.contains('phone'))work.before(ob);if(sb.parentNode!==app)app.appendChild(sb);if(z&&z.parentNode!==sb){sb.appendChild(d);sb.appendChild(z)}zp.remove()}
     else{if(ob.parentNode!==stage)stage.appendChild(ob);if(sb.parentNode!==stage)stage.appendChild(sb);if(z&&z.parentNode!==zp){zp.appendChild(z);zp.appendChild(d)}if(zp.parentNode!==sb)sb.appendChild(zp)}
     requestAnimationFrame(()=>{try{resizeView();markContent()}catch(e){}})};
   COMPACT.addEventListener('change',place);const _al=applyLayout;applyLayout=function(){_al.apply(this,arguments);place()};place();

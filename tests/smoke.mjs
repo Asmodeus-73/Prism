@@ -60,9 +60,21 @@ await test('interface 1.0 : calques à droite, capsule d’options, pastille de 
   if(!r.lay||!r.cap||!r.zoom||r.rows!==2||!/remove\*/.test(r.fam))throw new Error(JSON.stringify(r));
   await page.click('#optbar .cap-fam [data-ft=clone]');if(await ev(()=>S.tool)!=='clone')throw new Error('famille : '+await ev(()=>S.tool));
   await ev(()=>document.activeElement&&document.activeElement.blur());await page.keyboard.press('Tab');await page.waitForTimeout(300);
-  const f=await ev(()=>[document.body.classList.contains('focus'),Math.round(document.querySelector('.side').getBoundingClientRect().width)]);
+  const f=await ev(()=>[document.body.classList.contains('focus'),getComputedStyle(document.querySelector('.side')).visibility]);
   await page.keyboard.press('Tab');await page.waitForTimeout(300);const g=await ev(()=>document.body.classList.contains('focus'));
-  if(!f[0]||f[1]>2||g)throw new Error('focus '+JSON.stringify([f,g]))});
+  if(!f[0]||f[1]!=='hidden'||g)throw new Error('focus '+JSON.stringify([f,g]))});
+await test('téléphone : barre de modes, grand curseur, comparer au doigt',async()=>{await page.setViewportSize({width:390,height:844});await page.waitForTimeout(400);
+  try{const on=await ev(()=>document.body.classList.contains('phone'));if(!on)throw new Error('mode téléphone absent');
+    await page.click('.p-modes [data-pm=reg]');await page.click('#pRegChips [data-k=exposure]');const before=await ev(()=>ADJ()&&ADJ().dev.exposure);
+    const r=await page.locator('#pRange').boundingBox();await page.mouse.click(r.x+r.width*0.85,r.y+r.height/2);await page.waitForTimeout(200);
+    const after=await ev(()=>ADJ()&&ADJ().dev.exposure);if(!(after>before))throw new Error('exposition '+before+' → '+after);
+    const c=await page.locator('.p-cmp').boundingBox();await page.mouse.move(c.x+c.width/2,c.y+c.height/2);await page.mouse.down();const held=await ev(()=>S.holdBefore);await page.mouse.up();const rel=await ev(()=>S.holdBefore);
+    if(!held||rel)throw new Error('comparer '+held+' '+rel);
+    for(const m of ['ret','cal','ia','plus','reg'])await page.click(`.p-modes [data-pm=${m}]`);
+    await page.click('.p-modes [data-pm=ret]');await page.click('#pTools [data-tool=clone]');if(await ev(()=>S.tool)!=='clone')throw new Error('outil');
+    await ev(()=>undo())}
+  finally{await page.setViewportSize({width:1440,height:900});await page.waitForTimeout(400)}
+  if(await ev(()=>document.body.classList.contains('phone')||!document.querySelector('#stage>#optbar')))throw new Error('retour au bureau')});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
