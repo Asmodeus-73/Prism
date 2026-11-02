@@ -1,5 +1,6 @@
 // Prism smoke tests: open the built page (web/index.html) in Chromium and exercise the editor.
 // Run: node tests/smoke.mjs        (needs the "playwright" package and its Chromium)
+//      PRISM_BROWSER=webkit node tests/smoke.mjs   (WebKit, the engine of the Mac app)
 // Every test fails on any uncaught error or console error in the page.
 import http from 'node:http';import fs from 'node:fs';import path from 'node:path';import {createRequire} from 'node:module';
 const root=path.join(path.dirname(new URL(import.meta.url).pathname),'..','web');
@@ -12,7 +13,9 @@ const server=http.createServer((q,r)=>{const u=decodeURIComponent(new URL(q.url,
   r.writeHead(200,{'content-type':TYPES[path.extname(f)]||'application/octet-stream'});fs.createReadStream(f).pipe(r)});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const URL0=`http://127.0.0.1:${server.address().port}/index.html`;
 
-const browser=await pw.chromium.launch({args:['--enable-unsafe-swiftshader','--use-gl=swiftshader']});
+const ENGINE=process.env.PRISM_BROWSER||'chromium';
+const browser=ENGINE==='chromium'?await pw.chromium.launch({args:['--enable-unsafe-swiftshader','--use-gl=swiftshader']}):await pw[ENGINE].launch();
+console.log('Navigateur : '+ENGINE+' '+browser.version());
 const results=[];let page,errs;
 // fonts and the update check go to the internet; the tests do not depend on them
 const IGNORE=/fonts\.(googleapis|gstatic)|api\.github\.com|net::ERR_|Failed to load resource|GroupMarkerNotSet|swiftshader/i;
