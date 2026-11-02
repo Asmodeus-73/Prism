@@ -201,7 +201,7 @@ document.addEventListener('keydown',e=>{if(e.key!=='Tab')return;const s=$('#scri
   const a=f[0],z=f[f.length-1];if(!s.contains(document.activeElement)){e.preventDefault();a.focus();return}if(e.shiftKey&&document.activeElement===a){e.preventDefault();z.focus()}else if(!e.shiftKey&&document.activeElement===z){e.preventDefault();a.focus()}},true);
 new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes)if(n.id==='scrim'&&!n.classList.contains('light'))setTimeout(()=>{if(n.contains(document.activeElement))return;const f=n.querySelector('.body input:not([type=range]):not([type=checkbox]),.body select,.foot .btn.primary,.foot .btn');f&&f.focus({preventScroll:true})},40)}).observe(document.body,{childList:true});
 /* ---- layout: docked layers panel on large screens, tabs on phones ---- */
-const COMPACT=matchMedia('(max-width:900px) and (orientation:portrait),(max-height:560px) and (orientation:landscape)');
+const COMPACT=matchMedia('(max-width:640px) and (orientation:portrait),(max-height:500px) and (orientation:landscape)');
 function applyLayout(){const c=COMPACT.matches;document.body.classList.toggle('compact',c);const lp=$('#pane-layers');
   if(c){lp.hidden=!$('.tabs [data-tab="layers"]').classList.contains('on')}else{lp.hidden=false;if($('.tabs [data-tab="layers"]').classList.contains('on'))switchTab('develop');syncLayers()}
   $('#layersPanel').style.height=c?'':UI2.layersH+'px'}

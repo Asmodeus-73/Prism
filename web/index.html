@@ -3242,7 +3242,7 @@ document.addEventListener('keydown',e=>{if(e.key!=='Tab')return;const s=$('#scri
   const a=f[0],z=f[f.length-1];if(!s.contains(document.activeElement)){e.preventDefault();a.focus();return}if(e.shiftKey&&document.activeElement===a){e.preventDefault();z.focus()}else if(!e.shiftKey&&document.activeElement===z){e.preventDefault();a.focus()}},true);
 new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes)if(n.id==='scrim'&&!n.classList.contains('light'))setTimeout(()=>{if(n.contains(document.activeElement))return;const f=n.querySelector('.body input:not([type=range]):not([type=checkbox]),.body select,.foot .btn.primary,.foot .btn');f&&f.focus({preventScroll:true})},40)}).observe(document.body,{childList:true});
 /* ---- layout: docked layers panel on large screens, tabs on phones ---- */
-const COMPACT=matchMedia('(max-width:900px) and (orientation:portrait),(max-height:560px) and (orientation:landscape)');
+const COMPACT=matchMedia('(max-width:640px) and (orientation:portrait),(max-height:500px) and (orientation:landscape)');
 function applyLayout(){const c=COMPACT.matches;document.body.classList.toggle('compact',c);const lp=$('#pane-layers');
   if(c){lp.hidden=!$('.tabs [data-tab="layers"]').classList.contains('on')}else{lp.hidden=false;if($('.tabs [data-tab="layers"]').classList.contains('on'))switchTab('develop');syncLayers()}
   $('#layersPanel').style.height=c?'':UI2.layersH+'px'}
@@ -9147,7 +9147,7 @@ const UI10={};
    - Plus : recadrer, pivoter, filtres, historique, texte, formes, exporter, menu.
    Sur la photo : le zoom en bas à gauche, « Maintenir pour comparer » en bas à droite.
    Le grand curseur pilote le curseur du panneau Réglages : historique, masques et 16 bits restent les mêmes. */
-const PHONE=matchMedia('(max-width:900px) and (orientation:portrait)');
+const PHONE=matchMedia('(max-width:640px) and (orientation:portrait)');
 (()=>{const st=document.createElement('style');st.textContent=`
 body.phone #app{grid-template-rows:48px minmax(0,1fr)!important}
 body.phone .work{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto!important}
@@ -9263,8 +9263,113 @@ body.phone .composer{display:none}
   const _sa=syncAll;syncAll=function(){const r=_sa.apply(this,arguments);if(document.body.classList.contains('phone')&&mode==='reg')try{paintReg()}catch(e){}return r};
   const _st=setTool;setTool=function(t){const r=_st.apply(this,arguments);if(document.body.classList.contains('phone')&&mode==='ret')try{paintTools()}catch(e){}return r};
   window.PrismPhone={setMode,paintReg}})();
+/* ================= 1.0: tablette =================
+   Même organisation que le bureau (le mode téléphone ne s'applique plus qu'aux écrans de moins de 640 px en portrait).
+   - écran étroit (≤ 1100 px) : le panneau de droite ne prend plus de place, il se glisse par-dessus la photo
+     avec le bouton « Panneaux » de la barre du haut (ou F8) ;
+   - écran tactile : cibles de 44 px (rail, outils, capsule, barre du haut). */
+(()=>{const st=document.createElement('style');st.textContent=`
+.only-over{display:none!important}
+body.side-over:not(.compact) .only-over{display:inline-grid!important}
+body.side-over:not(.compact) .work{grid-template-columns:var(--toolw) minmax(0,1fr) 0!important;position:relative}
+body.side-over:not(.compact) .work>.side{position:absolute;z-index:8;top:0;right:0;bottom:0;width:var(--side);transform:translateX(100%);visibility:hidden;
+  transition:transform .22s cubic-bezier(.2,.7,.2,1),visibility 0s .22s;box-shadow:-10px 0 28px rgba(20,20,40,.16)}
+body.side-over.side-open:not(.compact):not(.focus) .work>.side{transform:none;visibility:visible;transition:transform .22s cubic-bezier(.2,.7,.2,1)}
+body.side-over.side-open:not(.compact) #stage>.optbar,body.side-over.side-open:not(.compact) #stage>.statusbar{right:var(--side)}
+body.side-over.side-open:not(.compact) #stage>.optbar{max-width:calc(100% - var(--side) - 24px)}
+#bSide[aria-pressed="true"]{background:var(--accent-soft,var(--hover));color:var(--accent-fg,var(--fg))}
+@media (pointer:coarse){
+  body:not(.compact){--w47rail:56px;--w47tool:44px}
+  body:not(.compact) .bar-r .ib,body:not(.compact) .bar-r .tb{min-width:44px;height:40px}
+  body:not(.compact) #stage>.optbar{height:52px}
+  body:not(.compact) .cap-fam button{height:40px;padding:0 12px}
+  body:not(.compact) .cap-zoom{height:44px}
+  body:not(.compact) .cap-zoom .ib,body:not(.compact) .cap-zoom .z{min-width:40px;height:40px}
+  body:not(.compact) .tabs button{min-height:44px}
+}
+@media (prefers-reduced-motion:reduce){body.side-over .work>.side{transition:none!important}}
+`;document.head.appendChild(st)})();
+(()=>{const NARROW=matchMedia('(max-width:1100px)'),b=document.body;
+  const btn=document.createElement('button');btn.className='ib only-over';btn.id='bSide';btn.setAttribute('aria-label','Panneaux');btn.title='Panneaux : réglages, calques, IA (F8)';
+  btn.innerHTML='<svg viewBox="0 0 20 20"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M12 3.5v13"/></svg>';
+  const ex=$('#bExport');ex.parentNode.insertBefore(btn,ex);
+  let open=PREF.get('sideOpen',false);
+  const paint=()=>{const over=NARROW.matches&&!COMPACT.matches;b.classList.toggle('side-over',over);b.classList.toggle('side-open',over&&open);btn.setAttribute('aria-pressed',over&&open);
+    requestAnimationFrame(()=>{try{resizeView();markContent()}catch(e){}})};
+  const toggle=v=>{open=typeof v==='boolean'?v:!open;PREF.set('sideOpen',open);if(open&&b.classList.contains('focus'))UI10.focus();paint()};
+  btn.addEventListener('click',()=>toggle());
+  window.addEventListener('keydown',e=>{if(e.key==='F8'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&b.classList.contains('side-over')){e.preventDefault();toggle()}});
+  /* un onglet demandé (Calques, IA…) ouvre le panneau */
+  const _sw=switchTab;switchTab=function(){const r=_sw.apply(this,arguments);if(b.classList.contains('side-over')&&!open)toggle(true);return r};
+  NARROW.addEventListener('change',paint);COMPACT.addEventListener('change',paint);paint();
+  const mi=MENU2.view.items;MENU2.view.items=()=>{const a=mi();if(b.classList.contains('side-over'))a.push(MI('Panneaux',{kbd:'F8',check:open,fn:()=>toggle()}));return a};
+  window.PrismTablet={toggle,isOpen:()=>open}})();
+/* ================= 1.0: écran d'accueil =================
+   Comme la maquette : titre à gauche avec le petit logo, les quatre accès rapides, « Reprendre » sur une seule rangée
+   (six photos au plus, avec « il y a 5 min », « hier »…), puis une grande zone de dépôt qui ouvre aussi le sélecteur au clic. */
+(()=>{const st=document.createElement('style');st.textContent=`
+body.no-doc .empty{padding:max(40px,10vh) 32px 40px}
+body.no-doc .welcome{max-width:1040px;justify-items:stretch;text-align:left}
+.w-head{display:grid;grid-template-columns:auto 1fr;column-gap:12px;align-items:center}
+.w-head .w-logo{grid-row:span 2;align-self:center}
+body.no-doc .w-head .w-logo .logo{width:40px;height:40px}
+.w-head h2{margin:0;font-size:26px;letter-spacing:-.01em}
+.w-head p{margin:2px 0 0;color:var(--fg-2)}
+body.no-doc .w-tiles{margin-top:26px}
+body.no-doc .w-recent{margin-top:30px}
+.w-rh{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.w-rh h3{margin:0}
+.w-all{border:0;background:none;padding:0;color:var(--fg-2);font:12.5px var(--ui);cursor:pointer}
+.w-all:hover{color:var(--accent-fg,var(--fg));text-decoration:underline}
+body.no-doc .w-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));grid-template-rows:auto;grid-auto-rows:0;row-gap:0;overflow:hidden;gap:0 14px}
+body.no-doc .w-card{border:0;background:none;border-radius:0;gap:2px;cursor:pointer;color:inherit}
+body.no-doc .w-card img{border-radius:10px;box-shadow:0 2px 8px rgba(20,20,40,.12);transition:transform .15s}
+body.no-doc .w-card:hover img{transform:translateY(-2px)}
+body.no-doc .w-card span{padding:6px 0 0;font-size:13px}
+body.no-doc .w-card small{position:static;padding:0;background:none;color:var(--fg-3,var(--fg-2));font-size:11.5px}
+body.no-doc .w-card:first-child::after{display:none}
+body.no-doc .w-card:nth-child(n+7){display:none}
+.w-drop{display:grid;justify-items:center;gap:6px;margin-top:30px;padding:46px 20px;border:1.5px dashed var(--line-2,var(--line));border-radius:14px;background:none;color:var(--fg-2);font:inherit;cursor:pointer;width:100%;transition:border-color .15s,background .15s}
+.w-drop:hover,.w-drop.over{border-color:var(--accent);background:var(--accent-soft,rgba(80,90,230,.06))}
+.w-drop svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.w-drop b{color:var(--fg);font:600 14px var(--ui)}
+.w-drop .w-fmt{margin:0!important;font:11.5px var(--mono,monospace)}
+body.no-doc #wTips,body.no-doc #w47hint,body.no-doc .p-zoom,body.no-doc .p-cmp{display:none!important}
+body.no-doc #w49{order:0;margin-top:22px}
+body.no-doc .welcome>*:not(.w-head):not(.w-tiles):not(.w-recent):not(.w-drop){justify-self:center;text-align:center}
+@media (max-width:640px){
+  body.no-doc .empty{padding:28px 16px}
+  body.no-doc .w-tiles{grid-template-columns:1fr 1fr;gap:8px}
+  body.no-doc .w-tile{grid-template-columns:1fr;padding:12px}
+  body.no-doc .w-tile svg{grid-row:auto;margin-bottom:6px}
+  body.no-doc .w-grid{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:42%;grid-auto-rows:auto;overflow-x:auto;scrollbar-width:none}
+  body.no-doc .w-card:nth-child(n+7){display:grid}
+  .w-drop{padding:28px 16px}
+}
+`;document.head.appendChild(st)})();
+(()=>{const wl=$('#empty .welcome');if(!wl)return;
+  /* titre */
+  const head=document.createElement('div');head.className='w-head';['.w-logo','h2','p:not(.w-fmt)'].forEach(s=>{const n=wl.querySelector(':scope>'+s);if(n)head.appendChild(n)});wl.prepend(head);
+  /* « Reprendre » + « Tout voir » */
+  const rec=$('#wRecent'),h3=rec&&rec.querySelector('h3');
+  if(h3){const rh=document.createElement('div');rh.className='w-rh';h3.before(rh);rh.appendChild(h3);const all=document.createElement('button');all.className='w-all';all.textContent='Tout voir';all.onclick=()=>openLibrary();rh.appendChild(all)}
+  /* zone de dépôt */
+  const dz=document.createElement('button');dz.type='button';dz.className='w-drop';
+  dz.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg><b>Déposez des photos ici</b>';
+  const fmt=wl.querySelector('.w-fmt');if(fmt)dz.appendChild(fmt);dz.onclick=()=>openFile();
+  (rec||$('#wTiles')).after(dz);
+  const w49=()=>{const n=$('#w49');if(n&&n.previousElementSibling!==dz)dz.after(n)};w49();setTimeout(w49,0);
+  ['dragenter','dragover'].forEach(t=>dz.addEventListener(t,()=>dz.classList.add('over')));['dragleave','drop'].forEach(t=>dz.addEventListener(t,()=>dz.classList.remove('over')));
+  /* dates relatives */
+  const rel=t=>{const d=Date.now()-t,m=Math.round(d/60000);if(m<1)return'à l’instant';if(m<60)return`il y a ${m} min`;const h=Math.round(m/60);
+    const a=new Date(t),n=new Date();if(a.toDateString()===n.toDateString())return`il y a ${h} h`;const y=new Date(n);y.setDate(n.getDate()-1);if(a.toDateString()===y.toDateString())return'hier';
+    return a.toLocaleDateString('fr-FR',{day:'numeric',month:'short',...(a.getFullYear()!==n.getFullYear()?{year:'numeric'}:{})})};
+  const g=$('#wGrid');const fix=()=>{if(typeof LIB==='undefined')return;g.querySelectorAll('.w-card').forEach(c=>{const it=LIB.items.find(i=>i.id===c.dataset.id);if(!it||!it.updatedAt)return;
+    let s=c.querySelector('small');if(!s){s=document.createElement('small');c.appendChild(s)}const v=rel(it.updatedAt);if(s.textContent!==v)s.textContent=v})};
+  if(g)new MutationObserver(fix).observe(g,{childList:true});
+  window.PrismHome={rel}})();
 
-window.PRISM_VERSION="1.0.0-beta.2";
+window.PRISM_VERSION="1.0.0-beta.3";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {

@@ -75,6 +75,19 @@ await test('téléphone : barre de modes, grand curseur, comparer au doigt',asyn
     await ev(()=>undo())}
   finally{await page.setViewportSize({width:1440,height:900});await page.waitForTimeout(400)}
   if(await ev(()=>document.body.classList.contains('phone')||!document.querySelector('#stage>#optbar')))throw new Error('retour au bureau')});
+await test('tablette : organisation bureau, panneau qui glisse par-dessus la photo',async()=>{await page.setViewportSize({width:834,height:1194});await page.waitForTimeout(400);
+  try{const a=await ev(()=>[document.body.classList.contains('compact'),document.body.classList.contains('phone'),document.body.classList.contains('side-over'),!!document.querySelector('#stage>#optbar')]);
+    if(a[0]||a[1]||!a[2]||!a[3])throw new Error('mise en page '+JSON.stringify(a));
+    const w0=await ev(()=>document.querySelector('#stage').getBoundingClientRect().width);
+    await ev(()=>PrismTablet.toggle(false));await page.click('#bSide');await page.waitForTimeout(350);
+    const o=await ev(()=>[PrismTablet.isOpen(),getComputedStyle(document.querySelector('.side')).visibility,document.querySelector('#stage').getBoundingClientRect().width]);
+    if(!o[0]||o[1]!=='visible'||Math.abs(o[2]-w0)>1)throw new Error('panneau '+JSON.stringify([o,w0]));
+    await page.keyboard.press('F8');await page.waitForTimeout(350);if(await ev(()=>PrismTablet.isOpen()))throw new Error('F8')}
+  finally{await page.setViewportSize({width:1440,height:900});await page.waitForTimeout(400)}
+  if(await ev(()=>document.body.classList.contains('side-over')))throw new Error('retour au bureau')});
+await test('accueil : titre, accès rapides, Reprendre sur une rangée, zone de dépôt',async()=>{const r=await ev(()=>{const w=document.querySelector('#empty .welcome');
+    return [!!w.querySelector('.w-head h2'),w.querySelectorAll('.w-tile').length,!!w.querySelector('.w-drop .w-fmt'),!!w.querySelector('.w-rh .w-all'),PrismHome.rel(Date.now()-5*60000),PrismHome.rel(Date.now()-864e5*1.02)]});
+  if(!r[0]||r[1]!==4||!r[2]||!r[3]||r[4]!=='il y a 5 min')throw new Error(JSON.stringify(r))});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};

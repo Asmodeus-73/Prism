@@ -6,7 +6,7 @@
    - Plus : recadrer, pivoter, filtres, historique, texte, formes, exporter, menu.
    Sur la photo : le zoom en bas à gauche, « Maintenir pour comparer » en bas à droite.
    Le grand curseur pilote le curseur du panneau Réglages : historique, masques et 16 bits restent les mêmes. */
-const PHONE=matchMedia('(max-width:900px) and (orientation:portrait)');
+const PHONE=matchMedia('(max-width:640px) and (orientation:portrait)');
 (()=>{const st=document.createElement('style');st.textContent=`
 body.phone #app{grid-template-rows:48px minmax(0,1fr)!important}
 body.phone .work{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto!important}
