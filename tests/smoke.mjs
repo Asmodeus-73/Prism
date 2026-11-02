@@ -367,7 +367,7 @@ await test('photo animée : Motion Photo lue, image choisie ouverte, PNG animé 
   await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-v');await page.waitForFunction(()=>document.querySelector('#mo-v').readyState>=2,null,{timeout:15000});
   const sl=await page.locator('#mo-t').boundingBox();await page.mouse.click(sl.x+sl.width*0.2,sl.y+sl.height/2);await page.waitForTimeout(300);
   await page.locator('#scrim .foot .btn',{hasText:'Ouvrir cette image'}).click();await page.waitForTimeout(500);
-  const o=await ev(()=>[S.doc.name,S.doc.w,S.doc.h]);if(o.join()!=='motion-image.png,64,48')throw new Error('image choisie '+o);
+  const o=await ev(()=>[S.doc.name,S.doc.w,S.doc.h]);if(o.join()!==(ENGINE==='webkit'?'motion-h264-image.png':'motion-image.png')+',64,48')throw new Error('image choisie '+o);
   await openFix('anim.png');const ak=await ev(()=>S.doc.anim&&S.doc.anim.kind);if(ak!=='apng')throw new Error('PNG animé non détecté : '+ak);
   await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-all');await page.locator('#mo-all').click();await page.waitForTimeout(300);
   const L=await ev(()=>{const A=S.doc.layers,g=A.filter(l=>l.grp&&/Animation/.test(l.grp.name));return{n:g.length,vis:g.filter(l=>l.visible!==false).length,top:A.slice(A.indexOf(g[g.length-1])+1).every(l=>l.kind==='adjust')}});

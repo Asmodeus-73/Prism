@@ -81,7 +81,7 @@ function hiXform(L,eff,ow,oh,nw,nh,M){if(!eff){L.hi=null;L.hiP=null;L.hiC=null;r
 function floatFromCanvas(c,W,H,out){const a=rx(c).getImageData(0,0,W,H).data;out=out||new Float32Array(W*H*4);const k=1/255;for(let y=0;y<H;y++){const r=(H-1-y)*W*4,q=y*W*4;for(let i=0;i<W*4;i++)out[r+i]=a[q+i]*k}return out}
 let ditherSeed=1;
 function floatToCtx(F,tc,W,H){const id=tc.createImageData(W,H),o=id.data;let s=ditherSeed;for(let y=0;y<H;y++){const r=(H-1-y)*W*4,q=y*W*4;for(let i=0;i<W*4;i++){s=(s*1103515245+12345)&0x7fffffff;const v=F[r+i]*255+((s>>>8)&255)/256;o[q+i]=v<=0?0:v>=255?255:v|0}}
-  ditherSeed=s;tc.setTransform(1,0,0,1,0,0);tc.globalAlpha=1;tc.globalCompositeOperation='source-over';tc.putImageData(id,0,0)}
+  /* la graine ne bouge pas d’un rendu à l’autre : un aperçu dessiné entre-temps ne change plus le résultat */tc.setTransform(1,0,0,1,0,0);tc.globalAlpha=1;tc.globalCompositeOperation='source-over';tc.putImageData(id,0,0)}
 function overF(F,src,W,H,op){/* straight-alpha source-over of an 8-bit top-down RGBA onto F */const k=1/255;for(let y=0;y<H;y++){const r=(H-1-y)*W*4,q=y*W*4;for(let x=0;x<W*4;x+=4){const sa=src[q+x+3]*k*op;if(sa<=0)continue;const j=r+x,da=F[j+3],oa=sa+da*(1-sa),t=da*(1-sa);
       F[j]=(src[q+x]*k*sa+F[j]*t)/oa;F[j+1]=(src[q+x+1]*k*sa+F[j+1]*t)/oa;F[j+2]=(src[q+x+2]*k*sa+F[j+2]*t)/oa;F[j+3]=oa}}}
 function overFF(F,S2,W,H,op){for(let j=0;j<F.length;j+=4){const sa=S2[j+3]*op;if(sa<=0)continue;const da=F[j+3],oa=sa+da*(1-sa),t=da*(1-sa);F[j]=(S2[j]*sa+F[j]*t)/oa;F[j+1]=(S2[j+1]*sa+F[j+1]*t)/oa;F[j+2]=(S2[j+2]*sa+F[j+2]*t)/oa;F[j+3]=oa}}
