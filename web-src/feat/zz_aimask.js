@@ -8,7 +8,7 @@ const covOf=m=>{if(!m)return 0;const s=Math.min(1,256/Math.max(m.width,m.height)
 const invOf=m=>{const o=fullMask(),g=cx(o);g.globalCompositeOperation='destination-out';g.drawImage(m,0,0);return o};
 const minus=(a,b)=>{const o=cloneC(a),g=cx(o);g.globalCompositeOperation='destination-out';g.drawImage(b,0,0);return o};
 // statistics of the photo inside a mask, on a small proxy: median and percentiles of luminance, clipping, mean saturation
-function stats(m){const d=S.doc,s=Math.min(1,384/Math.max(d.w,d.h)),w=Math.max(1,d.w*s|0),h=Math.max(1,d.h*s|0),t=mk(w,h),g=rx(t);g.drawImage(flatSync(),0,0,w,h);const a=g.getImageData(0,0,w,h).data;
+function stats(m){const d=S.doc,s=Math.min(1,384/Math.max(d.w,d.h)),w=Math.max(1,d.w*s|0),h=Math.max(1,d.h*s|0),t=mk(w,h),g=rx(t);g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';/* Safari réduit sinon au plus proche : une texture fine fausserait la médiane */g.drawImage(flatSync(),0,0,w,h);const a=g.getImageData(0,0,w,h).data;
   let ma=null;if(m){const u=mk(w,h),ug=rx(u);ug.drawImage(m,0,0,w,h);ma=ug.getImageData(0,0,w,h).data}
   const L=[];let sat=0,ws=0,clip=0,dark=0,gs=0,gn=0,pl=-1;
   for(let i=0;i<a.length;i+=4){const wt=ma?ma[i+3]/255:1;if(wt<0.5||a[i+3]<10){pl=-1;continue}const r=a[i]/255,gg=a[i+1]/255,b=a[i+2]/255,l=0.2126*r+0.7152*gg+0.0722*b,mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);L.push(l);sat+=mx>0?(mx-mn)/mx:0;ws++;if(mx>0.985)clip++;if(l<0.1)dark++;if(pl>=0&&(i/4)%w){gs+=Math.abs(l-pl);gn++}pl=l}

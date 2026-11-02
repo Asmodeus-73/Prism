@@ -16,11 +16,11 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));const URL0=`http://127.0.0.
 const ENGINE=process.env.PRISM_BROWSER||'chromium';
 const browser=ENGINE==='chromium'?await pw.chromium.launch({args:['--enable-unsafe-swiftshader','--use-gl=swiftshader']}):await pw[ENGINE].launch();
 console.log('Navigateur : '+ENGINE+' '+browser.version());
-const results=[];let page,errs;
+const results=[];let page,errs,logs=[];
 // fonts and the update check go to the internet; the tests do not depend on them
 const IGNORE=/fonts\.(googleapis|gstatic)|api\.github\.com|net::ERR_|Failed to load resource|GroupMarkerNotSet|swiftshader/i;
 async function fresh(){if(page)await page.close();page=await browser.newPage({viewport:{width:1440,height:900}});errs=[];
-  page.on('pageerror',e=>errs.push('pageerror: '+(e.stack||e)));page.on('console',m=>{if(m.type()==='error'&&!IGNORE.test(m.text()))errs.push('console: '+m.text())});
+  page.on('pageerror',e=>errs.push('pageerror: '+(e.stack||e)));page.on('console',m=>{logs.push(m.text());if(logs.length>200)logs.shift();if(m.type()==='error'&&!IGNORE.test(m.text()))errs.push('console: '+m.text())});
   await page.route(/fonts\.(googleapis|gstatic)\.com|api\.github\.com/,r=>r.abort());
   await page.goto(URL0);await page.waitForFunction(()=>typeof loadSample==='function'&&document.querySelector('#view'));await page.waitForTimeout(300)}
 const ev=(fn,arg)=>page.evaluate(fn,arg);
@@ -358,11 +358,11 @@ async function openFix(...names){await ev(()=>{window.__d0=S.doc});await page.se
 const layerPx=(x,y)=>ev(([x,y])=>{const L=S.doc.layers.find(l=>l.kind==='pixel');return Array.from(rx(L.canvas).getImageData(x,y,1,1).data)},[x,y]);
 await test('formats : QOI, JPEG 2000 et PPM s’ouvrent au bon pixel',async()=>{await fresh();const e=[],near=(a,b,t=4)=>a.every((v,i)=>Math.abs(v-b[i])<=t);
   await openFix('photo.qoi');let r=await ev(()=>[S.doc.w,S.doc.h]);if(r.join()!=='64,48')e.push('QOI taille '+r);let px=await layerPx(2,3);if(px.join()!=='8,24,90,255')e.push('QOI pixel '+px);px=await layerPx(62,3);if(px[3]!==128)e.push('QOI alpha '+px);px=await layerPx(32,24);if(px.join()!=='240,200,40,255')e.push('QOI centre '+px);
-  await openFix('photo.jp2');r=await ev(()=>[S.doc.w,S.doc.h,S.doc.name]);if(r.join()!=='64,48,photo.jp2')e.push('JP2 '+r);px=await layerPx(3,44);if(!near(px,[40,90,160,255]))e.push('JP2 pixel '+px);px=await layerPx(32,24);if(!near(px,[240,200,40,255]))e.push('JP2 centre '+px);
+  await openFix('photo.jp2');r=await ev(()=>[S.doc.w,S.doc.h,S.doc.name]);if(r.join()!=='64,48,photo.jp2')e.push('JP2 '+r);px=await layerPx(3,44);if(!near(px,[40,90,160,255]))e.push('JP2 pixel '+px);px=await layerPx(32,24);if(!near(px,[240,200,40,255]))e.push('JP2 centre '+px);if(e.some(x=>x.startsWith('JP2')))e.push(...logs.filter(t=>/warn|jpx|jpeg ?2000|openjpeg|wasm/i.test(t)).slice(-8));
   await openFix('photo.ppm');px=await layerPx(32,24);if(px.join()!=='240,200,40,255')e.push('PPM '+px);
   if(e.length)throw new Error(e.join('\n'))});
 await test('photo animée : Motion Photo lue, image choisie ouverte, PNG animé en calques',async()=>{await fresh();
-  await openFix('motion.jpg');const m=await ev(()=>S.doc.motion&&{from:S.doc.motion.from,ts:S.doc.motion.ts,size:S.doc.motion.blob.size,type:S.doc.motion.type});
+  await openFix(ENGINE==='webkit'?'motion-h264.jpg':'motion.jpg');const m=await ev(()=>S.doc.motion&&{from:S.doc.motion.from,ts:S.doc.motion.ts,size:S.doc.motion.blob.size,type:S.doc.motion.type});
   if(!m||m.from!=='Motion Photo'||m.ts!==500000||!(m.size>500))throw new Error('Motion Photo non détectée '+JSON.stringify(m));
   await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-v');await page.waitForFunction(()=>document.querySelector('#mo-v').readyState>=2,null,{timeout:15000});
   const sl=await page.locator('#mo-t').boundingBox();await page.mouse.click(sl.x+sl.width*0.2,sl.y+sl.height/2);await page.waitForTimeout(300);
