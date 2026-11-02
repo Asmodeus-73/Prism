@@ -248,7 +248,8 @@
   async function checkUpdate(manual) {
     let found = null;
     try { found = await invoke('update_check'); } catch (e) {
-      if (manual) toast('Impossible de vérifier les mises à jour : ' + e, 6000);
+      // The private beta (Prism Beta) has no update address: it is replaced by hand.
+      if (manual) toast(/beta/.test(window.PRISM_VERSION || '') ? 'La bêta ne se met pas à jour toute seule : installe la suivante à la main.' : 'Impossible de vérifier les mises à jour : ' + e, 6000);
       return;
     }
     if (!found) { if (manual) toast('Prism est à jour.'); return; }

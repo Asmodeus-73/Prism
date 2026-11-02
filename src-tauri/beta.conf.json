@@ -1,0 +1,20 @@
+{
+  "productName": "Prism Beta",
+  "identifier": "app.prism.photo.beta",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Prism Bêta",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 600,
+        "center": true,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "bundle": { "createUpdaterArtifacts": false },
+  "plugins": { "updater": { "endpoints": [] } }
+}
