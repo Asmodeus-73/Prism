@@ -54,6 +54,15 @@ await test('réglages : finitions couleur (interrupteur, rendu 8 et 16 bits, ann
   const on=await ev(()=>!!(AL().dev.fx&&AL().dev.fx.bw&&AL().dev.fx.bw.on));const b8=await mean(8),b16=await mean(16);
   if(!on||Math.abs(b8)>0.6||Math.abs(b16)>0.6||Math.abs(a)<1)throw new Error(JSON.stringify({on,a,b8,b16}));
   await ev(()=>undo());const c=await mean(8);if(Math.abs(c-a)>0.01)throw new Error('annuler : '+a+' / '+c)});
+await test('interface 1.0 : calques à droite, capsule d’options, pastille de zoom, mode Focus',async()=>{await ev(()=>setTool('remove'));
+  const r=await ev(()=>({lay:!!document.querySelector('.side #layersPanel'),cap:!!document.querySelector('#stage>#optbar'),fam:[...document.querySelectorAll('#optbar .cap-fam [data-ft]')].map(b=>b.dataset.ft+(b.getAttribute('aria-pressed')==='true'?'*':'')).join(),
+    zoom:!!document.querySelector('#stage .cap-zoom #zoomLbl'),rows:getComputedStyle(document.querySelector('#app')).gridTemplateRows.split(' ').length}));
+  if(!r.lay||!r.cap||!r.zoom||r.rows!==2||!/remove\*/.test(r.fam))throw new Error(JSON.stringify(r));
+  await page.click('#optbar .cap-fam [data-ft=clone]');if(await ev(()=>S.tool)!=='clone')throw new Error('famille : '+await ev(()=>S.tool));
+  await ev(()=>document.activeElement&&document.activeElement.blur());await page.keyboard.press('Tab');await page.waitForTimeout(300);
+  const f=await ev(()=>[document.body.classList.contains('focus'),Math.round(document.querySelector('.side').getBoundingClientRect().width)]);
+  await page.keyboard.press('Tab');await page.waitForTimeout(300);const g=await ev(()=>document.body.classList.contains('focus'));
+  if(!f[0]||f[1]>2||g)throw new Error('focus '+JSON.stringify([f,g]))});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};

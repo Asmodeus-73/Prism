@@ -175,8 +175,9 @@ safe('zoom.buttons',()=>{const z=document.querySelector('.zoom');if(!z||document
 safe('stDoc.click',()=>{const s=document.getElementById('stDoc');if(s){s.title='Taille de l’image';s.addEventListener('click',()=>{if(S.doc&&typeof resizeDialog==='function')resizeDialog()})}});
 /* ====================================================================== R. tool rail: groups, stacks, repeat-press cycling, single names ====================================================================== */
 const NAMES={move:'Déplacer',transform:'Transformer',crop:'Recadrer',heal:'Correcteur',patch:'Pièce',redeye:'Yeux rouges',clone:'Tampon',remove:'Gomme IA',marquee:'Sélection',lasso:'Lasso',wand:'Baguette',pen:'Plume',brush:'Pinceau',eraser:'Gomme',gradient:'Dégradé',bucket:'Pot de peinture',dodge:'Densité',smudge:'Doigt',liquify:'Fluidité',text:'Texte',shape:'Formes',eyedropper:'Pipette',hand:'Main',zoom:'Zoom'};
-const GROUPS=[['Cadrer',['move','transform','crop']],['Retoucher',['heal','clone','remove']],['Sélectionner',['marquee','lasso','wand']],['Peindre et masquer',['brush','eraser','gradient','dodge']],['Ajouter',['text','shape']],['Vue',['eyedropper','hand']]];
-const STACKS={heal:['patch','redeye'],wand:['pen'],gradient:['bucket'],dodge:['smudge','liquify'],hand:['zoom']};
+/* 1.0: one rail button per family; the other tools of a family are one click away in the options capsule */
+const GROUPS=[['Déplacer',['move','crop']],['Sélectionner',['marquee','lasso','wand']],['Retoucher',['heal']],['Peindre',['brush','dodge']],['Texte et formes',['text','shape']],['Navigation',['eyedropper','hand']]];
+const STACKS={move:['transform'],heal:['remove','clone','patch','redeye'],wand:['pen'],brush:['eraser','gradient','bucket'],dodge:['smudge','liquify'],hand:['zoom']};
 const STACK_OF={};Object.entries(STACKS).forEach(([h,m])=>{STACK_OF[h]=h;m.forEach(x=>STACK_OF[x]=h)});
 const stackIds=h=>[h,...STACKS[h]];
 const SHOWN={};Object.keys(STACKS).forEach(h=>SHOWN[h]=h);
