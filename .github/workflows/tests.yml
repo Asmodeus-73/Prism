@@ -54,7 +54,7 @@ jobs:
         run: node tests/smoke.mjs
 
       - name: Synchronisation entre deux appareils (serveur dans Miniflare)
-        run: (cd server && npm ci) && node tests/sync.mjs && node tests/security.mjs
+        run: (cd server && npm ci) && node tests/sync.mjs && node tests/collab.mjs && node tests/security.mjs
 
   desktop:
     runs-on: ubuntu-latest

@@ -66,5 +66,40 @@ ok(got2.some(m => m.type === 'signal' && m.from === mac.data.device && m.data.sd
 await call('/v1/events', { method: 'POST', token: T2, json: { kind: 'put', pid: 'p2' } }); await new Promise(r => setTimeout(r, 300));
 ok(got1.some(m => m.type === 'event'), 'le Mac est prévenu en direct d’un changement');
 ws1.close(); ws2.close();
+// travail à plusieurs : Draconix partage une photo avec Marie, chacun son tour
+await db.exec('DELETE FROM attempts');
+const marie = await call('/v1/signup', { method: 'POST', json: { email: 'marie@example.com', password: 'motdepasse3', device: { name: 'Portable' } }, headers: { 'cf-connecting-ip': '10.9.0.1' } });
+const TM = marie.data.token;
+await call('/v1/blobs/t_sh', { method: 'PUT', token: T1, body: new Uint8Array(100), headers: { 'content-length': '100' } });
+const pe = await call('/v1/events', { method: 'POST', token: T1, json: { kind: 'put', pid: 'p_sh', body: { name: 'mariage.jpg' }, blobs: ['t_sh'] } });
+ok((await call('/v1/shares', { method: 'POST', token: TM, json: { pid: 'p_sh', email: 'draco@example.com' } })).status === 404, 'impossible de partager la photo de quelqu’un d’autre');
+ok((await call('/v1/shares', { method: 'POST', token: T1, json: { pid: 'p_sh', email: 'personne@example.com' } })).status === 404, 'adresse sans compte : refusé');
+ok((await call('/v1/shares', { method: 'POST', token: T1, json: { pid: 'p_sh', email: 'marie@example.com' } })).status === 201, 'photo partagée avec Marie');
+const sh = await call('/v1/shares', { token: TM }); ok(sh.data.shares.length === 1 && sh.data.shares[0].members.length === 2 && sh.data.shares[0].role === 'edit', 'Marie voit le partage et ses membres');
+const want = (await call('/v1/events?after=' + pe.data.seq, { token: T1 })).data.events.find(e => e.kind === 'want' && e.pid === 'p_sh');
+ok(!!want, 'les appareils de Draconix sont priés de renvoyer la photo');
+const pe2 = await call('/v1/events', { method: 'POST', token: T1, json: { kind: 'put', pid: 'p_sh', body: { name: 'mariage.jpg', v: 2 }, blobs: ['t_sh'] } });
+const me1 = (await call('/v1/events?after=0', { token: TM })).data.events.find(e => e.pid === 'p_sh' && e.kind === 'put');
+ok(me1 && me1.origin === mac.data.user && me1.body.v === 2, 'la photo arrive chez Marie');
+ok((await call('/v1/blobs/t_sh?from=' + me1.origin, { token: TM })).status === 200, 'Marie télécharge ses fichiers');
+ok((await call('/v1/blobs/t_sh?from=' + me1.origin, { token: other.data.token })).status === 404, 'un compte hors du partage ne peut pas');
+// chacun son tour
+ok((await call('/v1/locks/p_sh', { method: 'POST', token: TM })).status === 200, 'Marie prend la main');
+const busyLk = await call('/v1/locks/p_sh', { method: 'POST', token: T1 }); ok(busyLk.status === 409 && /marie/.test(busyLk.data.holder.name), 'Draconix voit que Marie retouche');
+ok((await call('/v1/events', { method: 'POST', token: T1, json: { kind: 'put', pid: 'p_sh', body: { v: 3 } } })).status === 423, 'son enregistrement attend son tour');
+await call('/v1/blobs/t_m', { method: 'PUT', token: TM, body: new Uint8Array(50), headers: { 'content-length': '50' } });
+ok((await call('/v1/events', { method: 'POST', token: TM, json: { kind: 'put', pid: 'p_sh', body: { v: 4 }, blobs: ['t_m'] } })).status === 201, 'Marie enregistre');
+const back = (await call('/v1/events?after=' + pe2.data.seq, { token: T1 })).data.events.find(e => e.kind === 'put' && e.pid === 'p_sh');
+ok(back && back.body.v === 4 && back.origin === marie.data.user, 'la retouche de Marie arrive chez Draconix');
+ok((await call('/v1/locks/p_sh', { method: 'DELETE', token: TM })).status === 200 && (await call('/v1/locks/p_sh', { method: 'POST', token: T1 })).status === 200, 'Marie rend la main, Draconix la prend');
+// transit vidé quand tous les appareils des deux comptes ont reçu
+const maxS = Math.max(...(await call('/v1/events?after=0', { token: TM })).data.events.map(e => e.seq));
+await call('/v1/ack', { method: 'POST', token: TM, json: { seq: maxS } });
+for (const t of [T1, T2]) await call('/v1/ack', { method: 'POST', token: t, json: { seq: 1e9 } });
+await new Promise(r => setTimeout(r, 300));
+ok((await call('/v1/usage', { token: T1 })).data.used === 0, 'transit vidé une fois reçu par les deux comptes');
+// Marie quitte, la propriétaire arrête le partage
+ok((await call('/v1/shares/p_sh/' + marie.data.user, { method: 'DELETE', token: other.data.token })).status === 404, 'un inconnu ne peut pas retirer Marie');
+ok((await call('/v1/shares/p_sh/' + marie.data.user, { method: 'DELETE', token: T1 })).status === 200 && (await call('/v1/shares', { token: TM })).data.shares.length === 0, 'Draconix retire Marie');
 await mf.dispose();
 console.log(fails ? fails + ' échec(s)' : 'tout est bon'); process.exit(fails ? 1 : 0);

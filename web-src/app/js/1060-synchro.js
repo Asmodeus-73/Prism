@@ -29,7 +29,7 @@ async function syApi(path, { method = 'GET', json, body, headers = {}, raw = fal
   catch (e) { throw Object.assign(new Error('Serveur injoignable'), { code: 'offline' }) }
   if (raw && r.ok) return r;
   let d = null; try { d = await r.json() } catch (e) { }
-  if (!r.ok) throw Object.assign(new Error((d && d.message) || ('Erreur ' + r.status)), { status: r.status, code: d && d.error, retryAfter: d && d.retryAfter });
+  if (!r.ok) throw Object.assign(new Error((d && d.message) || ('Erreur ' + r.status)), { status: r.status, code: d && d.error, retryAfter: d && d.retryAfter, data: d });
   return d;
 }
 
@@ -56,7 +56,7 @@ async function syPushOne(it) {
     if (!m) return true;                                // supprimé entre-temps : rien à envoyer
     const keys = [...manifestKeys(m)];
     /* tous les autres appareils sont allumés : les fichiers passeront directement, rien n'est déposé chez Cloudflare */
-    const direct = !it.force && window.PrismPeer && await syAllOnline();
+    const direct = !it.force && window.PrismPeer && !(window.PrismShare && PrismShare.isShared(m.id)) && await syAllOnline();   // une photo partagée passe toujours par le transit : les autres comptes ne sont pas en direct
     if (direct) SY.direct = (SY.direct || 0) + 1;
     /* une tuile déjà partie (ou reçue) lors d'une version précédente est déjà sur les autres appareils : on ne la renvoie pas,
        sauf si un appareil l'a redemandée (force) */
@@ -65,7 +65,8 @@ async function syPushOne(it) {
       const b = await IDB.get('blobs', k).catch(() => null); if (!b) continue;
       await syApi('/v1/blobs/' + encodeURIComponent(k), { method: 'PUT', body: b, headers: { 'content-type': b.type || 'application/octet-stream' } });
     }
-    await syApi('/v1/events', { method: 'POST', json: { kind: 'put', pid: m.id, body: m, blobs: keys } });
+    try { await syApi('/v1/events', { method: 'POST', json: { kind: 'put', pid: m.id, body: m, blobs: keys } }) }
+    catch (err) { if (err.status === 423) { syLog('photo partagée tenue par quelqu’un d’autre', m.id); return true } throw err }   // chacun son tour : rien à envoyer
     for (const k of keys) syMark(k);
   } else await syApi('/v1/events', { method: 'POST', json: { kind: it.kind, pid: it.pid } });
   SY.sent++; return true;
@@ -111,7 +112,7 @@ async function syApply(e) {
     const miss = [];
     for (const k of e.blobs || []) {
       if (await IDB.get('blobs', k).catch(() => null)) { syMark(k); continue }
-      try { const r = await syApi('/v1/blobs/' + encodeURIComponent(k), { raw: true }); await IDB.put('blobs', k, await r.blob()); syMark(k) }
+      try { const r = await syApi('/v1/blobs/' + encodeURIComponent(k) + (e.origin ? '?from=' + encodeURIComponent(e.origin) : ''), { raw: true }); await IDB.put('blobs', k, await r.blob()); syMark(k) }
       catch (err) { if (err.status === 404) miss.push(k); else throw err }
     }
     if (miss.length) {
@@ -165,6 +166,7 @@ function syLive() {
     if (m.type === 'event' && m.from !== SY.cfg.device) syKick(300);
     else if (m.type === 'peers') { SY.peers = (m.devices || []).filter(d => d.device !== SY.cfg.device); document.dispatchEvent(new CustomEvent('prism-peers')) }
     else if (m.type === 'signal' && window.PrismPeer) PrismPeer.onSignal(m.from, m.data);
+    else if ((m.type === 'share' || m.type === 'lock') && window.PrismShare) PrismShare.onLive(m);
   };
   ws.onclose = () => { SY.ws = null; SY.peers = []; if (!SY.cfg) return; const d = Math.min(60000, 1000 * 2 ** SY.wsTry++); setTimeout(syLive, d) };
   ws.onerror = () => { try { ws.close() } catch (e) { } };
@@ -249,6 +251,6 @@ async function syAccountDialog() {
 .sy-bar{height:6px;border-radius:3px;background:var(--chrome-2);overflow:hidden}.sy-bar i{display:block;height:100%;background:var(--accent)}
 .sy-u{color:var(--fg-2)}`; document.head.appendChild(st);
   const mi = MENU2.file.items; MENU2.file.items = () => { const a = mi(); a.push(SEP, MI(SY.cfg ? 'Compte Prism…' : 'Se connecter à son compte Prism…', { fn: syAccountDialog }), MI('Synchroniser maintenant', { fn: sySyncNow, dis: !SY.cfg })); return a };
-  window.PrismSync = { push: pid => { if (SY.cfg) syEnqueue('put', pid, true) }, dialog: syAccountDialog, now: sySyncNow, connect: syConnect, logout: syLogout, run: syRun, signal: sySignal, get state() { return { ...SY, cfg: SY.cfg && { ...SY.cfg, token: undefined } } }, _SY: SY };
+  window.PrismSync = { push: pid => { if (SY.cfg) syEnqueue('put', pid, true) }, api: syApi, kick: () => syKick(0), dialog: syAccountDialog, now: sySyncNow, connect: syConnect, logout: syLogout, run: syRun, signal: sySignal, get state() { return { ...SY, cfg: SY.cfg && { ...SY.cfg, token: undefined } } }, _SY: SY };
   if (SY.cfg) { syLive(); syKick(1500) }
 })();

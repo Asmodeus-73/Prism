@@ -105,12 +105,13 @@ const limit = env => +(env.TRANSIT_LIMIT || 9.5e9);
 const userLimit = env => +(env.USER_LIMIT || limit(env) * 0.6);   // un seul compte ne peut pas remplir tout le transit
 
 /* efface les fichiers en transit que tous les appareils du compte ont reçus */
+/* un fichier envoyé par un compte peut aussi être attendu par les comptes avec qui la photo est partagée (copies d'évènement, origin = ce compte) */
 async function sweepUser(env, user) {
-  const min = await env.DB.prepare('SELECT MIN(cursor) AS c FROM devices WHERE user = ?').bind(user).first();
-  const c = min?.c ?? 0;
-  const rows = (await env.DB.prepare('SELECT seq, blobs FROM events WHERE user = ? AND blobs != \'[]\'').bind(user).all()).results;
+  const rows = (await env.DB.prepare('SELECT user, seq, blobs FROM events WHERE (user = ? AND origin IS NULL) OR origin = ?').bind(user, user).all()).results.filter(r => r.blobs !== '[]');
+  const mins = new Map();
+  for (const u of new Set(rows.map(r => r.user))) mins.set(u, (await env.DB.prepare('SELECT MIN(cursor) AS c FROM devices WHERE user = ?').bind(u).first())?.c ?? 0);
   const done = new Set(), need = new Set();
-  for (const r of rows) for (const k of JSON.parse(r.blobs)) (r.seq <= c ? done : need).add(k);
+  for (const r of rows) for (const k of JSON.parse(r.blobs)) (r.seq <= mins.get(r.user) ? done : need).add(k);
   const gone = [...done].filter(k => !need.has(k));
   for (const k of gone) {
     await env.TRANSIT.delete(user + '/' + k);
@@ -118,6 +119,13 @@ async function sweepUser(env, user) {
   }
   return gone.length;
 }
+
+/* les comptes qui partagent cette photo (sans soi-même) */
+const others = async (env, pid, me) => (await env.DB.prepare('SELECT user, role FROM shares WHERE pid = ? AND user != ?').bind(pid, me).all()).results;
+const roleOf = async (env, pid, me) => (await env.DB.prepare('SELECT role FROM shares WHERE pid = ? AND user = ?').bind(pid, me).first())?.role || null;
+const LOCK_MS = 10 * 60e3;
+async function lockOf(env, pid) { const l = await env.DB.prepare('SELECT user, device, name, until FROM locks WHERE pid = ?').bind(pid).first(); return l && l.until > now() ? l : null; }
+async function tellShare(env, pid, me, msg) { for (const o of await others(env, pid, me)) await notify(env, o.user, msg); }
 
 async function notify(env, user, msg) {
   try { await env.LIVE.get(env.LIVE.idFromName(user)).fetch('https://live/notify', { method: 'POST', body: JSON.stringify(msg) }); } catch { /* personne de connecté */ }
@@ -194,7 +202,13 @@ async function route(req, env, ctx) {
       return json({ ok: true }, 201);
     }
     if (m === 'GET') {
-      const o = await env.TRANSIT.get(rk);
+      let o = await env.TRANSIT.get(rk);
+      // un fichier d'un autre compte : seulement s'il est annoncé dans un évènement de photo partagée reçu ici
+      const from = url.searchParams.get('from');
+      if (!o && from && PID_RE.test(from) && from !== me.user) {
+        const ok = await env.DB.prepare('SELECT 1 FROM events WHERE user = ? AND origin = ? AND blobs LIKE ? LIMIT 1').bind(me.user, from, '%"' + key + '"%').first();
+        if (ok) o = await env.TRANSIT.get(from + '/' + key);
+      }
       if (!o) return fail(404, 'gone', 'Ce fichier n’est plus en transit : il viendra d’un autre appareil.');
       const ct = o.httpMetadata?.contentType || '';
       return new Response(o.body, { headers: { ...CORS, ...SAFE, 'content-type': BLOB_TYPES.test(ct) ? ct : 'application/octet-stream', 'content-disposition': 'attachment', 'content-length': String(o.size) } });
@@ -210,21 +224,106 @@ async function route(req, env, ctx) {
     const blobs = Array.isArray(b.blobs) ? b.blobs.filter(k => typeof k === 'string' && KEY_RE.test(k)).slice(0, 5000) : [];
     const bodyTxt = b.body == null ? null : JSON.stringify(b.body);
     if (bodyTxt && bodyTxt.length > MAX_BODY) return fail(413, 'big', 'Projet trop gros.');
+    const role = pid === '*' ? null : await roleOf(env, pid, me.user);
+    if (role && kind === 'put') {   // chacun son tour : une photo partagée ne s'enregistre que chez celui qui la tient
+      const l = await lockOf(env, pid);
+      if (l && l.user !== me.user) return fail(423, 'locked', 'Quelqu’un d’autre retouche cette photo en ce moment.', { holder: { name: l.name, until: l.until } });
+    }
     const r = await env.DB.prepare('INSERT INTO events(user,device,kind,pid,body,blobs,created) VALUES(?,?,?,?,?,?,?) RETURNING seq')
       .bind(me.user, me.device, kind, pid, bodyTxt, JSON.stringify(blobs), now()).first();
     ctx.waitUntil(notify(env, me.user, { type: 'event', seq: r.seq, from: me.device }));
+    if (role) {
+      if (kind === 'delete' && role !== 'owner') {   // un invité qui supprime quitte seulement le partage
+        await env.DB.prepare('DELETE FROM shares WHERE pid = ? AND user = ?').bind(pid, me.user).run();
+        ctx.waitUntil(tellShare(env, pid, me.user, { type: 'share', pid }));
+      } else {
+        for (const o of await others(env, pid, me.user)) {
+          const c = await env.DB.prepare('INSERT INTO events(user,device,kind,pid,body,blobs,created,origin) VALUES(?,?,?,?,?,?,?,?) RETURNING seq')
+            .bind(o.user, me.device, kind, pid, bodyTxt, JSON.stringify(blobs), now(), me.user).first();
+          ctx.waitUntil(notify(env, o.user, { type: 'event', seq: c.seq, from: me.device }));
+        }
+        if (kind === 'delete') await env.DB.batch([env.DB.prepare('DELETE FROM shares WHERE pid = ?').bind(pid), env.DB.prepare('DELETE FROM locks WHERE pid = ?').bind(pid)]);
+      }
+    }
     return json({ seq: r.seq }, 201);
   }
   if (p === '/v1/events' && m === 'GET') {
     const after = Math.max(0, +url.searchParams.get('after') || 0);
-    const rows = (await env.DB.prepare('SELECT seq, device, kind, pid, body, blobs, created FROM events WHERE user = ? AND seq > ? ORDER BY seq LIMIT 200').bind(me.user, after).all()).results;
+    const rows = (await env.DB.prepare('SELECT seq, device, kind, pid, body, blobs, created, origin FROM events WHERE user = ? AND seq > ? ORDER BY seq LIMIT 200').bind(me.user, after).all()).results;
     return json({ events: rows.map(r => ({ ...r, body: r.body ? JSON.parse(r.body) : null, blobs: JSON.parse(r.blobs) })), more: rows.length === 200 });
   }
   if (p === '/v1/ack' && m === 'POST') {
     const b = await body(req), seq = Math.max(0, +b.seq || 0);
     await env.DB.prepare('UPDATE devices SET cursor = MAX(cursor, ?) WHERE id = ?').bind(seq, me.device).run();
-    ctx.waitUntil(sweepUser(env, me.user));
+    ctx.waitUntil((async () => {
+      await sweepUser(env, me.user);   // et les comptes dont on a reçu des photos partagées
+      for (const r of (await env.DB.prepare('SELECT DISTINCT origin FROM events WHERE user = ? AND origin IS NOT NULL').bind(me.user).all()).results) await sweepUser(env, r.origin);
+    })());
     return json({ ok: true });
+  }
+  /* ---------- travail à plusieurs ---------- */
+  if (p === '/v1/shares' && m === 'GET') {
+    const mine = (await env.DB.prepare('SELECT pid, role FROM shares WHERE user = ?').bind(me.user).all()).results;
+    const out = [];
+    for (const s of mine) {
+      const mem = (await env.DB.prepare('SELECT s.user, s.role, u.email FROM shares s JOIN users u ON u.id = s.user WHERE s.pid = ? ORDER BY s.created').bind(s.pid).all()).results;
+      const l = await lockOf(env, s.pid);
+      out.push({ pid: s.pid, role: s.role, members: mem.map(x => ({ user: x.user, email: x.email, role: x.role, me: x.user === me.user })), lock: l && { user: l.user, device: l.device, name: l.name, until: l.until, me: l.user === me.user } });
+    }
+    return json({ shares: out });
+  }
+  if (p === '/v1/shares' && m === 'POST') {
+    const b = await body(req), pid = String(b.pid || ''), email = String(b.email || '').trim().toLowerCase();
+    if (!PID_RE.test(pid)) return fail(400, 'pid', 'Identifiant de projet invalide.');
+    if (!EMAIL_RE.test(email)) return fail(400, 'email', 'Adresse e-mail invalide.');
+    const ipk = 'share:' + me.user;
+    if (await ipCount(env, ipk, 30, 3600e3, false)) return fail(429, 'slow', 'Trop d’invitations envoyées. Réessaie dans une heure.', { retryAfter: 3600 });
+    await ipCount(env, ipk, 30, 3600e3, true);
+    let role = await roleOf(env, pid, me.user);
+    if (!role) {   // premier partage : il faut avoir soi-même envoyé cette photo, et que personne d'autre ne la partage déjà
+      const own = await env.DB.prepare('SELECT 1 FROM events WHERE user = ? AND pid = ? AND origin IS NULL AND kind = \'put\' LIMIT 1').bind(me.user, pid).first();
+      const taken = await env.DB.prepare('SELECT 1 FROM shares WHERE pid = ? LIMIT 1').bind(pid).first();
+      if (!own || taken) return fail(404, 'pid', 'Photo inconnue : synchronise-la d’abord.');
+      await env.DB.prepare('INSERT INTO shares(pid,user,role,created) VALUES(?,?,?,?)').bind(pid, me.user, 'owner', now()).run();
+      role = 'owner';
+    }
+    if (role !== 'owner') return fail(403, 'owner', 'Seule la personne qui a partagé la photo peut inviter quelqu’un.');
+    const u = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+    if (!u) return fail(404, 'nouser', 'Aucun compte Prism avec cette adresse : la personne doit d’abord créer son compte.');
+    if (u.id === me.user) return fail(400, 'self', 'C’est ton propre compte.');
+    if ((await env.DB.prepare('SELECT COUNT(*) AS n FROM shares WHERE pid = ?').bind(pid).first()).n >= 10) return fail(400, 'full', 'Dix personnes au plus sur une même photo.');
+    await env.DB.prepare('INSERT OR IGNORE INTO shares(pid,user,role,created) VALUES(?,?,?,?)').bind(pid, u.id, 'edit', now()).run();
+    // l'invité n'a encore rien : on demande aux appareils de la propriétaire de renvoyer la photo (elle partira aussi chez lui)
+    const w = await env.DB.prepare('INSERT INTO events(user,device,kind,pid,body,blobs,created,origin) VALUES(?,?,?,?,?,?,?,?) RETURNING seq').bind(me.user, 'partage', 'want', pid, null, '[]', now(), u.id).first();
+    ctx.waitUntil(notify(env, me.user, { type: 'event', seq: w.seq, from: 'share' }));
+    ctx.waitUntil(notify(env, u.id, { type: 'share', pid }));
+    return json({ ok: true }, 201);
+  }
+  const sm = p.match(/^\/v1\/shares\/([A-Za-z0-9_.-]{1,64})\/([A-Za-z0-9_.-]{1,64})$/);
+  if (sm && m === 'DELETE') {
+    const [, pid, who] = sm, role = await roleOf(env, pid, me.user);
+    if (!role || (role !== 'owner' && who !== me.user)) return fail(404, 'share', 'Partage inconnu.');
+    if (role === 'owner' && who === me.user) await env.DB.batch([env.DB.prepare('DELETE FROM shares WHERE pid = ?').bind(pid), env.DB.prepare('DELETE FROM locks WHERE pid = ?').bind(pid)]);
+    else { await env.DB.prepare('DELETE FROM shares WHERE pid = ? AND user = ? AND role != \'owner\'').bind(pid, who).run(); await env.DB.prepare('DELETE FROM locks WHERE pid = ? AND user = ?').bind(pid, who).run(); }
+    ctx.waitUntil(notify(env, who, { type: 'share', pid })); ctx.waitUntil(tellShare(env, pid, me.user, { type: 'share', pid }));
+    return json({ ok: true });
+  }
+  const lm = p.match(/^\/v1\/locks\/([A-Za-z0-9_.-]{1,64})$/);
+  if (lm) {
+    const pid = lm[1], role = await roleOf(env, pid, me.user);
+    if (!role) return fail(404, 'share', 'Cette photo n’est pas partagée.');
+    const l = await lockOf(env, pid);
+    if (m === 'POST') {
+      if (l && l.user !== me.user) return fail(409, 'locked', 'Quelqu’un d’autre retouche cette photo en ce moment.', { holder: { name: l.name, until: l.until } });
+      const who = (await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(me.user).first())?.email || '';
+      await env.DB.prepare('INSERT OR REPLACE INTO locks(pid,user,device,name,until) VALUES(?,?,?,?,?)').bind(pid, me.user, me.device, who.split('@')[0], now() + LOCK_MS).run();
+      if (!l) ctx.waitUntil(tellShare(env, pid, me.user, { type: 'lock', pid }));
+      return json({ ok: true, until: now() + LOCK_MS });
+    }
+    if (m === 'DELETE') {
+      if (l && l.user === me.user) { await env.DB.prepare('DELETE FROM locks WHERE pid = ?').bind(pid).run(); ctx.waitUntil(tellShare(env, pid, me.user, { type: 'lock', pid })); }
+      return json({ ok: true });
+    }
   }
   if (p === '/v1/live' && req.headers.get('upgrade') === 'websocket') {
     const u = new URL('https://live/ws'); u.searchParams.set('device', me.device); u.searchParams.set('name', me.name);
@@ -240,6 +339,7 @@ async function sweepAll(env) {
   for (const r of rows) { await env.TRANSIT.delete(r.user + '/' + r.key); await env.DB.prepare('DELETE FROM transit WHERE user = ? AND key = ?').bind(r.user, r.key).run(); }
   await env.DB.prepare('DELETE FROM events WHERE created < ?').bind(now() - (+(env.EVENTS_DAYS || 30)) * 864e5).run();
   await env.DB.prepare('DELETE FROM attempts WHERE since < ?').bind(now() - 2 * 3600e3).run();
+  await env.DB.prepare('DELETE FROM locks WHERE until < ?').bind(now()).run();
   // un appareil muet depuis 180 jours perd sa session (il faudra se reconnecter)
   await env.DB.prepare('DELETE FROM sessions WHERE device IN (SELECT id FROM devices WHERE last < ?)').bind(now() - 180 * 864e5).run();
   return rows.length;

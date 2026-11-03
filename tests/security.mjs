@@ -45,13 +45,16 @@ ok(a1.status===a2.status&&a1.data.message===a2.data.message,'même réponse pour
 ok(Math.abs((t1-t0)-(t2-t1))<Math.max(60,(t1-t0)*.6),`même temps de réponse (${Math.round(t1-t0)} ms contre ${Math.round(t2-t1)} ms)`);
 await clear();
 
-attack('Lire les photos d’un autre compte');
+attack('Lire les photos d’un autre compte (directement ou par un faux partage)');
 await call('/v1/blobs/t_secret',{method:'PUT',token:T,body:new Uint8Array(2000),headers:{'content-length':'2000','content-type':'image/png'}});
 await call('/v1/events',{method:'POST',token:T,json:{kind:'put',pid:'p_secret',body:{id:'p_secret',name:'privé.jpg',w:10,h:10},blobs:['t_secret']}});
 ok((await call('/v1/blobs/t_secret',{token:E})).status===404,'le fichier de la victime est introuvable pour le pirate');
 ok(!(await call('/v1/events?after=0',{token:E})).data.events.some(e=>e.pid==='p_secret'),'son journal ne montre rien de la victime');
 ok((await call('/v1/devices/'+vic.data.device,{method:'DELETE',token:E})).status===404,'il ne peut pas retirer un appareil de la victime');
 ok((await call('/v1/me',{token:E})).data.devices.every(d=>d.id!==vic.data.device),'il ne voit pas ses appareils');
+ok((await call('/v1/shares',{method:'POST',token:E,json:{pid:'p_secret',email:'pirate@example.com'}})).status===404,'il ne peut pas « partager » la photo de la victime avec lui-même');
+ok((await call('/v1/blobs/t_secret?from='+vic.data.user,{token:E})).status===404,'ni lire ses fichiers en se faisant passer pour un invité');
+ok((await call('/v1/locks/p_secret',{method:'POST',token:E})).status===404,'ni bloquer sa photo');
 
 attack('Sortir de son dossier avec des noms de fichier piégés');
 const keys=['..','../'+vic.data.user+'/t_secret','%2e%2e%2f'+vic.data.user+'%2ft_secret','a/b','%E0%A4%A','x'.repeat(200),'t_secret%00.png'];
