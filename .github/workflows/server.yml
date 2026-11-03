@@ -1,0 +1,44 @@
+name: Déployer le serveur de synchronisation
+
+# À lancer à la main (onglet Actions). Il faut deux secrets sur le dépôt :
+#   CLOUDFLARE_API_TOKEN : jeton Cloudflare avec les droits Workers Scripts, D1 et Workers R2 Storage (modification)
+#   CLOUDFLARE_ACCOUNT_ID : l'identifiant du compte Cloudflare
+# Crée la base D1 et le bucket R2 la première fois, applique le schéma, puis publie le Worker.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER: npx --yes wrangler@4.156.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Les secrets Cloudflare sont là
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Ajoute les secrets CLOUDFLARE_API_TOKEN et CLOUDFLARE_ACCOUNT_ID au dépôt."; exit 1; fi
+      - name: Base D1 (créée la première fois)
+        run: |
+          id=$($WRANGLER d1 list --json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const a=JSON.parse(s);const d=a.find(x=>x.name==='prism-sync');process.stdout.write(d?d.uuid:'')})")
+          if [ -z "$id" ]; then
+            $WRANGLER d1 create prism-sync
+            id=$($WRANGLER d1 list --json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const a=JSON.parse(s);process.stdout.write(a.find(x=>x.name==='prism-sync').uuid)})")
+          fi
+          sed -i "s/REMPLACE_PAR_L_ID_D1/$id/" wrangler.toml
+          $WRANGLER d1 execute prism-sync --remote --file schema.sql
+      - name: Bucket R2 (créé la première fois)
+        run: $WRANGLER r2 bucket create prism-transit || echo "déjà là"
+      - name: Publier le Worker
+        run: $WRANGLER deploy
