@@ -55,7 +55,7 @@ await test('réglages : finitions couleur (interrupteur, rendu 8 et 16 bits, ann
   if(!on||Math.abs(b8)>0.6||Math.abs(b16)>0.6||Math.abs(a)<1)throw new Error(JSON.stringify({on,a,b8,b16}));
   await ev(()=>undo());const c=await mean(8);if(Math.abs(c-a)>0.01)throw new Error('annuler : '+a+' / '+c)});
 await test('interface 1.0 : calques à droite, capsule d’options, pastille de zoom, mode Focus',async()=>{await ev(()=>setTool('remove'));
-  const r=await ev(()=>({lay:!!document.querySelector('.side #layersPanel'),cap:!!document.querySelector('#stage>#optbar'),fam:[...document.querySelectorAll('#optbar .cap-fam [data-ft]')].map(b=>b.dataset.ft+(b.getAttribute('aria-pressed')==='true'?'*':'')).join(),
+  const r=await ev(()=>({lay:!!document.querySelector('.side #layersPanel,#atRail #layersPanel'),cap:!!document.querySelector('#stage>#optbar'),fam:[...document.querySelectorAll('#optbar .cap-fam [data-ft]')].map(b=>b.dataset.ft+(b.getAttribute('aria-pressed')==='true'?'*':'')).join(),
     zoom:!!document.querySelector('#stage .cap-zoom #zoomLbl'),rows:getComputedStyle(document.querySelector('#app')).gridTemplateRows.split(' ').length}));
   if(!r.lay||!r.cap||!r.zoom||r.rows!==2||!/remove\*/.test(r.fam))throw new Error(JSON.stringify(r));
   await page.click('#optbar .cap-fam [data-ft=clone]');if(await ev(()=>S.tool)!=='clone')throw new Error('famille : '+await ev(()=>S.tool));
@@ -63,6 +63,18 @@ await test('interface 1.0 : calques à droite, capsule d’options, pastille de 
   const f=await ev(()=>[document.body.classList.contains('focus'),getComputedStyle(document.querySelector('.side')).visibility]);
   await page.keyboard.press('Tab');await page.waitForTimeout(300);const g=await ev(()=>document.body.classList.contains('focus'));
   if(!f[0]||f[1]!=='hidden'||g)throw new Error('focus '+JSON.stringify([f,g]))});
+await test('atelier : panneau de gauche repliable, colonne de droite fixe, bascule photothèque, paramètres',async()=>{
+  const a=await ev(()=>[document.body.classList.contains('atelier'),!!document.querySelector('#atRail #atNav'),!!document.querySelector('#atSwitch [data-v=ed][aria-pressed=true]')].join());
+  if(a!=='true,true,true')throw new Error('atelier '+a);
+  const w0=await ev(()=>document.querySelector('#stage').getBoundingClientRect().width);
+  await page.click('#atFoldBtn');await page.waitForTimeout(250);
+  const b=await ev(()=>[document.body.classList.contains('at-fold'),getComputedStyle(document.querySelector('#atStrip')).display,document.querySelector('#stage').getBoundingClientRect().width,getComputedStyle(document.querySelector('aside.insp')).display]);
+  if(!b[0]||b[1]!=='flex'||!(b[2]>w0+150)||b[3]==='none')throw new Error('repli '+JSON.stringify(b));
+  await page.click('#atStrip [data-k=layers]');await page.waitForTimeout(200);if(await ev(()=>document.body.classList.contains('at-fold')))throw new Error('réouverture');
+  await ev(()=>PrismSettings());await page.click('#scrim .at-sw [data-acc="3"]');
+  const c=await ev(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+  await page.click('#scrim #atReset');const d=await ev(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());await ev(()=>closeDialog());
+  if(c!=='rgb(34,160,107)'||c===d)throw new Error('accent '+c+' / '+d)});
 await test('téléphone : barre de modes, grand curseur, comparer au doigt',async()=>{await page.setViewportSize({width:390,height:844});await page.waitForTimeout(400);
   try{const on=await ev(()=>document.body.classList.contains('phone'));if(!on)throw new Error('mode téléphone absent');
     await page.click('.p-modes [data-pm=reg]');await page.click('#pRegChips [data-k=exposure]');const before=await ev(()=>ADJ()&&ADJ().dev.exposure);
