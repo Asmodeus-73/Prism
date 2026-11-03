@@ -125,6 +125,11 @@ await test('versions : une à l’enregistrement, une nommée, revenir en arriè
     const menu=MENU2.file.items().some(x=>x&&x.label==='Versions de la photo…');
     await libOpen(pid);return [l1>=2,back,kept,copy,miss,menu].join()});
   if(r!=='true,true,true,true,0,true')throw new Error(r)});
+await test('visite guidée : étapes sur l’interface, Suivant, Échap l’arrête',async()=>{await ev(()=>PrismTour.start());await page.waitForSelector('#tour .tr-tip h3');
+  const n=await ev(()=>PrismTour.steps().length);await page.click('#tour [data-t="next"]');await page.click('#tour [data-t="next"]');await page.waitForTimeout(400);
+  const r=await ev(()=>{const h=document.querySelector('#tour .tr-hole').getBoundingClientRect(),d=document.querySelector('#dock').getBoundingClientRect();return Math.abs(h.left-d.left)<12&&Math.abs(h.height-d.height)<16});
+  await page.keyboard.press('Escape');const off=await ev(()=>!PrismTour.on&&!document.querySelector('#tour')&&PREF.get('tourDone',0)>0);const menu=await ev(()=>MENU2.help.items().some(x=>x&&x.label==='Visite guidée'));
+  if(!(n>=8&&r&&off&&menu))throw new Error([n,r,off,menu].join())});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
