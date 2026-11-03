@@ -78,7 +78,7 @@ function closeDoc(){clearTimeout(SAVE.timer);SAVE.timer=null;S.doc=null;S.histor
   try{updateDocName()}catch(e){}try{updateUndo()}catch(e){}try{renderHistory()}catch(e){}try{renderQA()}catch(e){}try{updateStDoc()}catch(e){}setSaveState('idle');
   const v=$('#view');if(v){const g=v.getContext('2d');g&&g.clearRect(0,0,v.width,v.height)}if(!LIB.open)$('#empty').hidden=false;requestRender()}
 async function libDelete(ids){const items=LIB.items.filter(i=>ids.includes(i.id));if(!items.length)return;const cl=items.some(i=>i.cloud);
-  if(!await askConfirm(items.length===1?`Supprimer « ${items[0].name} »${cl?' de cet appareil et de votre compte':''} ? Cette action est définitive.`:`Supprimer ${items.length} photos${cl?' de cet appareil et de votre compte':''} ? Cette action est définitive.`,{title:items.length>1?'Supprimer des photos':'Supprimer la photo',ok:items.length>1?`Supprimer ${items.length} photos`:'Supprimer',danger:true}))return;
+  if(!await askConfirm(items.length===1?`Supprimer « ${items[0].name} »${cl?' de cet appareil et de votre compte':''} ? ${window.PrismTrash?'Elle restera 30 jours dans la Corbeille de cet appareil.':'Cette action est définitive.'}`:`Supprimer ${items.length} photos${cl?' de cet appareil et de votre compte':''} ? ${window.PrismTrash?'Elles resteront 30 jours dans la Corbeille de cet appareil.':'Cette action est définitive.'}`,{title:items.length>1?'Supprimer des photos':'Supprimer la photo',ok:items.length>1?`Supprimer ${items.length} photos`:'Supprimer',danger:true}))return;
   const del=new Set(items.map(i=>i.id));GONE.add([...del]);
   const openDel=!!(S.doc&&del.has(S.doc.pid));
   if(openDel){clearTimeout(SAVE.timer);SAVE.timer=null;S.doc.nosave=true;S.doc.sync=false;await waitFor(()=>SAVE.running);SAVE.again=false}

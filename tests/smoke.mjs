@@ -88,6 +88,12 @@ await test('tablette : organisation bureau, panneau qui glisse par-dessus la pho
 await test('accueil : titre, accès rapides, Reprendre sur une rangée, zone de dépôt',async()=>{const r=await ev(()=>{const w=document.querySelector('#empty .welcome');
     return [!!w.querySelector('.w-head h2'),w.querySelectorAll('.w-tile').length,!!w.querySelector('.w-drop .w-fmt'),!!w.querySelector('.w-rh .w-all'),PrismHome.rel(Date.now()-5*60000),PrismHome.rel(Date.now()-864e5*1.02)]});
   if(!r[0]||r[1]!==4||!r[2]||!r[3]||r[4]!=='il y a 5 min')throw new Error(JSON.stringify(r))});
+await test('corbeille : une photo supprimée se restaure, ses tuiles restent',async()=>{const r=await ev(async()=>{S.doc.nosave=false;S.doc.saved=false;while(SAVE.running)await new Promise(r=>setTimeout(r,50));await saveNow();const id=S.doc.pid;await libLoad();
+    if(!LIB.items.some(i=>i.id===id))return 'absente de la photothèque '+id+' '+SAVE.state+' '+(await IDB.keys('projects')).join('|')+' '+LIB.items.map(i=>i.id).join('|');const pd=libDelete([id]);let bs=[];for(let i=0;i<50&&!bs.length;i++){await new Promise(r=>setTimeout(r,100));bs=document.querySelectorAll('#scrim .foot .btn')}if(!bs.length)return 'pas de confirmation';bs[bs.length-1].click();await pd;const gone=!(await IDB.get('projects',id));await gcBlobs();
+    const tr=(await PrismTrash.list()).find(e=>e.id===id);if(!tr)return 'pas dans la corbeille';const keys=manifestKeys(tr.m);let miss=0;for(const k of keys)if(!(await IDB.get('blobs',k)))miss++;
+    await PrismTrash.restore(id);const back=!!(await IDB.get('projects',id))&&LIB.items.some(i=>i.id===id)&&!(await PrismTrash.list()).some(e=>e.id===id);
+    await libOpen(id);return [gone,miss,back,S.doc&&S.doc.pid===id].join()});
+  if(r!=='true,0,true,true')throw new Error(r)});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
