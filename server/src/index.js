@@ -9,7 +9,7 @@
 const H = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS',
+  'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'access-control-allow-headers': 'authorization,content-type',
   'access-control-max-age': '86400',
 };
@@ -170,9 +170,22 @@ async function route(req, env, ctx) {
     return json({ ok: true });
   }
   if (p === '/v1/me' && m === 'GET') {
-    const u = await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(me.user).first();
+    const u = await env.DB.prepare('SELECT email, name, avatar FROM users WHERE id = ?').bind(me.user).first();
     const devs = (await env.DB.prepare('SELECT id, name, platform, last FROM devices WHERE user = ? ORDER BY last DESC').bind(me.user).all()).results;
-    return json({ user: me.user, email: u?.email, device: me.device, devices: devs });
+    return json({ user: me.user, email: u?.email, name: u?.name || '', avatar: u?.avatar || null, device: me.device, devices: devs });
+  }
+  // profil : nom affiché et photo (une petite image JPEG, PNG ou WebP en data URL, 200 Ko au plus)
+  if (p === '/v1/me' && m === 'PATCH') {
+    const b = await body(req, 300000), set = [], val = [];
+    if ('name' in b) { const n = String(b.name ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 60); set.push('name = ?'); val.push(n || null); }
+    if ('avatar' in b) {
+      const a = b.avatar;
+      if (a !== null && !(typeof a === 'string' && a.length <= 280000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(a))) return fail(400, 'avatar', 'La photo de profil doit être une image JPEG, PNG ou WebP de 200 Ko au plus.');
+      set.push('avatar = ?'); val.push(a);
+    }
+    if (!set.length) return fail(400, 'empty', 'Rien à changer.');
+    await env.DB.prepare(`UPDATE users SET ${set.join(', ')} WHERE id = ?`).bind(...val, me.user).run();
+    return json({ ok: true });
   }
   const dm = p.match(/^\/v1\/devices\/([A-Za-z0-9_.-]{1,64})$/);
   if (dm && m === 'DELETE') {

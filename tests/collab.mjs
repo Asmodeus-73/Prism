@@ -39,7 +39,7 @@ try{
   ok(await B.p.evaluate(()=>/retouche/.test(document.querySelector('#docname').textContent)),'le nom du document le dit');
   // Draconix ferme : Marie est prévenue et la reprend
   await A.p.evaluate(()=>closeDoc());
-  ok(await until(B.p,()=>{const t=document.querySelector('#toast');return t&&!t.hidden&&/est libre :/.test(t.textContent)},null,20000),'Marie est prévenue qu’elle est libre');
+  ok(await until(B.p,()=>{const t=document.querySelector('#toast');return t&&!t.hidden&&/» est libre/.test(t.textContent)},null,20000),'Marie est prévenue qu’elle est libre');
   await B.p.evaluate(()=>document.querySelector('#toast button').click());
   ok(await until(B.p,id=>S.doc&&S.doc.pid===id&&!S.doc.readonly&&PrismShare.state.held===id,pid,20000),'elle la reprend et peut la retoucher');
   // Marie retouche et enregistre : Draconix reçoit

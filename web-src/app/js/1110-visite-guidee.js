@@ -4,15 +4,15 @@
    Les étapes dont la zone n'est pas à l'écran (téléphone, panneau replié) sont sautées. */
 (()=>{
 const STEPS=[
-  {t:'Bienvenue dans Prism',d:'Une visite de 30 secondes pour trouver vos repères. Elle se fait sur la photo d’exemple.'},
-  {sel:'#menubar,#bMenu',t:'Les menus',d:'Toutes les commandes sont ici. Pour en trouver une par son nom, tapez '+MOD+'K.'},
-  {sel:'#dock',t:'Les outils',d:'Pinceau, sélection, retouche, texte… Appuyez deux fois sur la touche d’un outil pour passer à ses voisins de la même famille.'},
-  {sel:'#stage',t:'La photo',d:'Molette ou pincement pour zoomer, Espace + glisser pour vous déplacer. Le clic droit ouvre les commandes utiles à l’endroit visé.'},
-  {sel:'#pane-develop',t:'Les réglages',d:'Lumière, couleurs, détails, effets. Rien n’est définitif : chaque réglage reste modifiable, et un double-clic remet un curseur à zéro.'},
-  {sel:'#layersPanel,#lyrDock,#pane-layers',t:'Les calques',d:'Réglages locaux, masques, textes et formes, comme dans les logiciels pros. Le bouton + en ajoute.'},
-  {sel:'#bCompare',t:'Avant / après',d:'Comparez avec l’original (Y), ou maintenez la touche \\ pour le voir un instant.'},
-  {sel:'#bExport',t:'Exporter',d:'JPEG, PNG, TIFF, PSD avec calques, AVIF, WebP… avec la taille et la qualité de votre choix.'},
-  {t:'C’est parti !',d:'Votre travail s’enregistre tout seul. Aide > Visite guidée relance cette visite, et Aide > Personnaliser les raccourcis adapte les touches à vos habitudes.'}];
+  {t:'Bienvenue dans Prism',d:'30 secondes pour trouver vos repères.'},
+  {sel:'#menubar,#bMenu',t:'Les menus',d:'Toutes les commandes. '+MOD+'K pour en chercher une.'},
+  {sel:'#dock',t:'Les outils',d:'Deux appuis sur la touche d’un outil passent à ses voisins.'},
+  {sel:'#stage',t:'La photo',d:'Molette pour zoomer, Espace + glisser pour se déplacer, clic droit pour les commandes.'},
+  {sel:'#pane-develop',t:'Les réglages',d:'Tout reste modifiable. Double-clic : curseur à zéro. ⧉ : détacher une section.'},
+  {sel:'#layersPanel,#lyrDock,#pane-layers',t:'Les calques',d:'Réglages locaux, masques, textes, formes. + pour en ajouter.'},
+  {sel:'#bCompare',t:'Avant / après',d:'Y pour comparer, \\ maintenu pour voir l’original.'},
+  {sel:'#bExport',t:'Exporter',d:'JPEG, PNG, TIFF, PSD, AVIF, WebP…'},
+  {t:'C’est parti !',d:'Tout s’enregistre seul. Aide > Visite guidée pour revoir.'}];
 const vis=el=>{if(!el)return false;const r=el.getBoundingClientRect();return r.width>8&&r.height>8&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth&&getComputedStyle(el).visibility!=='hidden'};
 const target=s=>{if(!s.sel)return null;for(const q of s.sel.split(',')){const e=document.querySelector(q);if(vis(e))return e}return null};
 let T=null;
@@ -47,7 +47,7 @@ async function start(){if(T)return;closeDialog&&closeDialog();if(LIB&&LIB.open)t
 {const H=MENU2.help,_h=H.items;H.items=function(){const a=_h.apply(this,arguments);a.unshift(MI('Visite guidée',{icon:'help',fn:start}));return a}}
 /* premier lancement : on propose la visite (jamais pendant les tests automatiques) */
 setTimeout(()=>{if(PREF.get('tourDone',0)||navigator.webdriver||S.doc||$('#scrim'))return;
-  dialog({title:'Bienvenue dans Prism 1.0',body:'<p>Voulez-vous une visite de 30 secondes pour découvrir l’interface ? Elle se fait sur la photo d’exemple.</p>',
+  dialog({title:'Bienvenue dans Prism 1.0',body:'<p>Une visite de 30 secondes ?</p>',
     buttons:[{label:'Plus tard',onClick:()=>PREF.set('tourDone',Date.now())},{label:'Faire la visite',primary:true,onClick:()=>setTimeout(start,0)}]})},1800);
 window.PrismTour={start,end,get on(){return !!T},steps:()=>T?T.list.map(s=>s.t):[]};
 })();

@@ -48,7 +48,7 @@ function syEnqueue(kind, pid, force = false) {
   SY.out = SY.out.filter(x => !(x.pid === pid && (x.kind === kind || (kind !== 'want' && x.kind !== 'want'))));
   SY.out.push({ kind, pid, at: Date.now(), ...(force ? { force: true } : {}) }); sySave(); syKick(2500);
 }
-function syKick(ms = 0) { clearTimeout(SY.timer); if (!SY.cfg) return; const wait = Math.max(ms, SY.retryAt - Date.now()); SY.timer = setTimeout(syRun, Math.max(0, wait)) }
+function syKick(ms = 0) { clearTimeout(SY.timer); if (!SY.cfg || syEssai()) return; const wait = Math.max(ms, SY.retryAt - Date.now()); SY.timer = setTimeout(syRun, Math.max(0, wait)) }
 
 async function syPushOne(it) {
   if (it.kind === 'put') {
@@ -128,6 +128,7 @@ async function syApply(e) {
 async function syRefreshLib() { try { await libLoad(); if (LIB.open) renderLibrary(); const e = $('#empty'); if (e && !e.hidden) e.dispatchEvent(new Event('prism-refresh')) } catch (e) { } }
 
 async function syRun() {
+  if (syEssai()) return;
   if (!SY.cfg) return;
   if (SY.running) { SY.again = true; return }
   SY.running = true; syState('busy');
@@ -156,6 +157,7 @@ async function syRun() {
 
 /* ---- en direct : « il y a du nouveau », et qui est allumé ---- */
 function syLive() {
+  if (syEssai()) return;
   if (!SY.cfg || SY.ws || typeof WebSocket === 'undefined') return;
   const u = SY.cfg.url.replace(/^http/, 'ws').replace(/\/+$/, '') + '/v1/live?token=' + encodeURIComponent(SY.cfg.token);
   let ws; try { ws = new WebSocket(u) } catch (e) { return }
@@ -189,6 +191,7 @@ const sySignal = (to, data) => { if (SY.ws && SY.ws.readyState === 1) SY.ws.send
 async function syConnect(mode, url, email, password) {
   const r = await syApi(mode === 'signup' ? '/v1/signup' : '/v1/login', { method: 'POST', url, json: { email, password, device: { id: (SY.cfg && SY.cfg.device) || PREF.get('sync2Device', null), name: syDeviceName(), platform: syPlatform() } } });
   SY.cfg = { url: url.replace(/\/+$/, ''), token: r.token, device: r.device, email: r.email }; PREF.set('sync2Device', r.device);
+  syProfile().catch(() => { });
   SY.cursor = PREF.get('sync2CursorFor', {})[r.user] || SY.cursor; sySave();
   const all = await IDB.all('projects').catch(() => []);      // ce qui est sur cet appareil part vers les autres
   for (const m of all) if (m && m.id) SY.out.push({ kind: 'put', pid: m.id, at: Date.now() });
@@ -198,7 +201,7 @@ async function syConnect(mode, url, email, password) {
 async function syLogout() {
   try { await syApi('/v1/logout', { method: 'POST' }) } catch (e) { }
   try { SY.ws && SY.ws.close() } catch (e) { }
-  SY.cfg = null; SY.out = []; SY.ws = null; SY.peers = []; sySave(); syState('off');
+  SY.cfg = null; SY.out = []; SY.ws = null; SY.peers = []; sySave(); syState('off'); PREF.set('sync2Prof', null); syBadge();
 }
 async function sySyncNow() {
   if (!SY.cfg) { syAccountDialog(); return }
@@ -209,14 +212,13 @@ const syFmt = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : n
 async function syAccountDialog() {
   if (!SY.cfg) {
     const url0 = PREF.get('sync2Url', SYNC_URL_DEFAULT);
-    const body = `<p class="sy-p">Ton compte Prism relie tes appareils : une photo retouchée ici arrive sur les autres. Cloudflare ne sert que d'intermédiaire, rien n'y reste plus de 24 h.</p>
-      ${SYNC_URL_DEFAULT ? '' : `<label class="sy-f"><span>Serveur</span><input id="syUrl" type="url" placeholder="https://prism-sync….workers.dev" value="${esc(url0)}" autocomplete="off"></label>`}
+    const body = `<p class="sy-p">Votre compte relie vos appareils : une photo retouchée ici arrive sur les autres.</p>
+      ${SYNC_URL_DEFAULT ? '' : `<label class="sy-f"><span>Serveur</span><input id="syUrl" type="url" placeholder="Vide : compte d’essai" value="${esc(url0.startsWith('local:') ? '' : url0)}" autocomplete="off"></label><p class="sy-note">Bêta : sans serveur, le compte est créé en essai, sur cet appareil. Pas encore de synchronisation.</p>`}
       <label class="sy-f"><span>E-mail</span><input id="syEmail" type="email" autocomplete="username" value="${esc(PREF.get('sync2Email', ''))}"></label>
       <label class="sy-f"><span>Mot de passe</span><input id="syPw" type="password" autocomplete="current-password" minlength="8"></label>
       <p class="sy-err" id="syErr" role="alert"></p>`;
     const go = mode => dl => {
-      const url = SYNC_URL_DEFAULT || ($('#syUrl', dl).value || '').trim(), email = $('#syEmail', dl).value.trim(), pw = $('#syPw', dl).value, er = $('#syErr', dl);
-      if (!url) { er.textContent = 'Indique l’adresse du serveur.'; return false }
+      const url = SYNC_URL_DEFAULT || ($('#syUrl', dl).value || '').trim() || SY_ESSAI, email = $('#syEmail', dl).value.trim(), pw = $('#syPw', dl).value, er = $('#syErr', dl);
       PREF.set('sync2Url', url); PREF.set('sync2Email', email);
       er.textContent = mode === 'signup' ? 'Création du compte…' : 'Connexion…';
       syConnect(mode, url, email, pw).then(() => { closeDialog(); toast(mode === 'signup' ? 'Compte créé : cet appareil est relié' : 'Connecté : la synchronisation démarre') })
@@ -226,14 +228,15 @@ async function syAccountDialog() {
     dialog({ title: 'Compte Prism', body, buttons: [{ label: 'Annuler' }, { label: 'Créer un compte', onClick: go('signup') }, { label: 'Se connecter', primary: true, onClick: go('login') }], onOpen: dl => { const f = $('#syEmail', dl); f && f.focus() } });
     return;
   }
-  const dl = dialog({ title: 'Compte Prism', body: `<p class="sy-p">Connecté avec <b>${esc(SY.cfg.email || '')}</b>.</p><div id="syInfo" class="sy-info">Chargement…</div>`,
+  const dl = dialog({ title: 'Compte Prism', body: `<div id="syProf" class="sy-prof"></div>${syEssai() ? '<p class="sy-note">Compte d’essai, sur cet appareil seulement.</p>' : ''}<div id="syInfo" class="sy-info">Chargement…</div>`,
     buttons: [{ label: 'Fermer' }, { label: 'Se déconnecter', onClick: () => { syLogout().then(() => toast('Déconnecté : cet appareil ne se synchronise plus')) } }, { label: 'Synchroniser maintenant', primary: true, onClick: () => { sySyncNow(); return false } }] });
   const fill = async () => {
     const box = $('#syInfo', dl); if (!box) return;
     let me = null, use = null; try { [me, use] = await Promise.all([syApi('/v1/me'), syApi('/v1/usage')]) } catch (e) { box.textContent = e.message; return }
+    syProfFill($('#syProf', dl), me);
     const on = new Set(SY.peers.map(p => p.device));
     box.innerHTML = `<div class="sy-h">Appareils</div>${me.devices.map(d => `<div class="sy-dev"><span class="sy-dot${d.id === SY.cfg.device || on.has(d.id) ? ' on' : ''}"></span><b>${esc(d.name)}</b>${d.id === SY.cfg.device ? '<small>cet appareil</small>' : `<small>${on.has(d.id) ? 'allumé' : 'vu ' + esc(window.PrismHome ? PrismHome.rel(d.last) : new Date(d.last).toLocaleString('fr-FR'))}</small><button class="btn sm" data-rm="${esc(d.id)}">Retirer</button>`}</div>`).join('')}
-      <div class="sy-h">Transit Cloudflare</div><div class="sy-bar"><i style="width:${Math.min(100, 100 * use.used / use.limit).toFixed(1)}%"></i></div><small class="sy-u">${syFmt(use.used)} sur ${syFmt(use.limit)} · effacé dès réception, ${use.hours} h au plus</small>
+      ${syEssai() ? '' : `<div class="sy-h">Transit Cloudflare</div><div class="sy-bar"><i style="width:${Math.min(100, 100 * use.used / use.limit).toFixed(1)}%"></i></div><small class="sy-u">${syFmt(use.used)} sur ${syFmt(use.limit)} · effacé dès réception, ${use.hours} h au plus</small>`}
       <div class="sy-h">Cet appareil</div><small class="sy-u">${SY.state === 'ok' ? 'À jour' : SY.state === 'busy' ? 'Synchronisation…' : esc(SY.msg || 'En attente')}${SY.out.length ? ` · ${SY.out.length} envoi${SY.out.length > 1 ? 's' : ''} en attente` : ''}</small>`;
     box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { if (!await askConfirm('Retirer cet appareil du compte ? Il ne recevra plus rien.', { title: 'Retirer l’appareil', ok: 'Retirer', danger: true })) return syAccountDialog(); await syApi('/v1/devices/' + encodeURIComponent(b.dataset.rm), { method: 'DELETE' }).catch(e => toast(e.message)); syAccountDialog() });
   };

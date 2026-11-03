@@ -101,5 +101,13 @@ ok((await call('/v1/usage', { token: T1 })).data.used === 0, 'transit vidé une 
 // Marie quitte, la propriétaire arrête le partage
 ok((await call('/v1/shares/p_sh/' + marie.data.user, { method: 'DELETE', token: other.data.token })).status === 404, 'un inconnu ne peut pas retirer Marie');
 ok((await call('/v1/shares/p_sh/' + marie.data.user, { method: 'DELETE', token: T1 })).status === 200 && (await call('/v1/shares', { token: TM })).data.shares.length === 0, 'Draconix retire Marie');
+// ---- profil : nom et photo ----
+const PX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==';
+ok((await call('/v1/me', { method: 'PATCH', token: T1, json: { name: 'Draconix <b>', avatar: PX } })).status === 200, 'profil : nom et photo enregistrés');
+const prof = await call('/v1/me', { token: T2 }); ok(prof.data.name === 'Draconix b' && prof.data.avatar === PX, 'profil vu depuis l’autre appareil, balises retirées');
+ok((await call('/v1/me', { method: 'PATCH', token: T1, json: { avatar: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' } })).status === 400, 'photo SVG refusée');
+ok((await call('/v1/me', { method: 'PATCH', token: T1, json: { avatar: 'data:image/png;base64,' + 'A'.repeat(290000) } })).status >= 400, 'photo trop lourde refusée');
+ok((await call('/v1/me', { method: 'PATCH', json: { name: 'x' } })).status === 401, 'profil : il faut être connecté');
+ok((await call('/v1/me', { method: 'PATCH', token: T1, json: { avatar: null } })).status === 200 && (await call('/v1/me', { token: T1 })).data.avatar === null, 'photo retirée');
 await mf.dispose();
 console.log(fails ? fails + ' échec(s)' : 'tout est bon'); process.exit(fails ? 1 : 0);
