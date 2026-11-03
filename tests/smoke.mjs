@@ -134,6 +134,13 @@ await test('anglais : Affichage > Langue traduit menus et panneaux, retour au fr
   const en=await ev(()=>({bar:document.querySelector('#menubar').textContent,tab:document.body.textContent.includes('Adjustments'),lang:document.documentElement.lang,menu:MENU2.view.items().some(x=>x&&x.label==='Langue')}));
   await ev(()=>PrismLang.set('fr'));await page.waitForTimeout(300);const fr=await ev(()=>document.querySelector('#menubar').textContent);
   if(!/File.*Edit.*View.*Help/.test(en.bar)||!en.tab||en.lang!=='en'||!en.menu||!/Fichier.*Édition.*Affichage.*Aide/.test(fr))throw new Error(JSON.stringify({en,fr}))});
+await test('panneaux détachables : Calques et une section flottent, se déplacent, se remettent',async()=>{
+  await ev(()=>{PrismFloat.float('layers');PrismFloat.float('sec:base',{x:300,y:200,w:300,h:400})});await page.waitForTimeout(200);
+  const a=await ev(()=>({f:PrismFloat.floating(),pos:getComputedStyle(document.querySelector('[data-sec=base]')).position,ph:document.querySelectorAll('.pf-ph').length,saved:Object.keys(PREF.get('floats',{}))}));
+  const h=await page.locator('#devBody [data-sec=base] > summary').boundingBox();await page.mouse.move(h.x+30,h.y+12);await page.mouse.down();await page.mouse.move(h.x+130,h.y+52,{steps:5});await page.mouse.up();
+  const moved=await ev(()=>Math.round(document.querySelector('[data-sec=base]').getBoundingClientRect().left));
+  await ev(()=>PrismFloat.dockAll());const b=await ev(()=>({f:PrismFloat.floating(),ph:document.querySelectorAll('.pf-ph').length,saved:Object.keys(PREF.get('floats',{})).length}));
+  if(a.f.length!==2||a.pos!=='fixed'||a.ph!==2||a.saved.length!==2||Math.abs(moved-400)>4||b.f.length||b.ph||b.saved)throw new Error(JSON.stringify({a,moved,b}))});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
