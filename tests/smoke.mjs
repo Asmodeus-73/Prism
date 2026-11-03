@@ -130,6 +130,10 @@ await test('visite guidée : étapes sur l’interface, Suivant, Échap l’arr�
   const r=await ev(()=>{const h=document.querySelector('#tour .tr-hole').getBoundingClientRect(),d=document.querySelector('#dock').getBoundingClientRect();return Math.abs(h.left-d.left)<12&&Math.abs(h.height-d.height)<16});
   await page.keyboard.press('Escape');const off=await ev(()=>!PrismTour.on&&!document.querySelector('#tour')&&PREF.get('tourDone',0)>0);const menu=await ev(()=>MENU2.help.items().some(x=>x&&x.label==='Visite guidée'));
   if(!(n>=8&&r&&off&&menu))throw new Error([n,r,off,menu].join())});
+await test('anglais : Affichage > Langue traduit menus et panneaux, retour au français',async()=>{await ev(()=>PrismLang.set('en'));await page.waitForTimeout(300);
+  const en=await ev(()=>({bar:document.querySelector('#menubar').textContent,tab:document.body.textContent.includes('Adjustments'),lang:document.documentElement.lang,menu:MENU2.view.items().some(x=>x&&x.label==='Langue')}));
+  await ev(()=>PrismLang.set('fr'));await page.waitForTimeout(300);const fr=await ev(()=>document.querySelector('#menubar').textContent);
+  if(!/File.*Edit.*View.*Help/.test(en.bar)||!en.tab||en.lang!=='en'||!en.menu||!/Fichier.*Édition.*Affichage.*Aide/.test(fr))throw new Error(JSON.stringify({en,fr}))});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
