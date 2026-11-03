@@ -249,6 +249,6 @@ async function syAccountDialog() {
 .sy-bar{height:6px;border-radius:3px;background:var(--chrome-2);overflow:hidden}.sy-bar i{display:block;height:100%;background:var(--accent)}
 .sy-u{color:var(--fg-2)}`; document.head.appendChild(st);
   const mi = MENU2.file.items; MENU2.file.items = () => { const a = mi(); a.push(SEP, MI(SY.cfg ? 'Compte Prism…' : 'Se connecter à son compte Prism…', { fn: syAccountDialog }), MI('Synchroniser maintenant', { fn: sySyncNow, dis: !SY.cfg })); return a };
-  window.PrismSync = { dialog: syAccountDialog, now: sySyncNow, connect: syConnect, logout: syLogout, run: syRun, signal: sySignal, get state() { return { ...SY, cfg: SY.cfg && { ...SY.cfg, token: undefined } } }, _SY: SY };
+  window.PrismSync = { push: pid => { if (SY.cfg) syEnqueue('put', pid, true) }, dialog: syAccountDialog, now: sySyncNow, connect: syConnect, logout: syLogout, run: syRun, signal: sySignal, get state() { return { ...SY, cfg: SY.cfg && { ...SY.cfg, token: undefined } } }, _SY: SY };
   if (SY.cfg) { syLive(); syKick(1500) }
 })();

@@ -114,6 +114,17 @@ await test('raccourcis personnalisables : outil sur K, B donné à Exporter, men
   await ev(()=>{PrismKeys.set({});setTool('move')});await page.keyboard.press('b');const t3=await ev(()=>S.tool);
   const r=[r1[0],r1[1],r1[2],/était à/.test(r1[3]),t1,ex,t2,kbd,t3].join('|');
   if(r!=='k|b|K|false|brush|true|brush|B|brush')throw new Error(r+' '+dbg)});
+await test('versions : une à l’enregistrement, une nommée, revenir en arrière garde l’état actuel, ouvrir en copie',async()=>{const r=await ev(async()=>{const wait=async()=>{while(SAVE.running)await new Promise(r=>setTimeout(r,50))};
+    const d=S.doc;d.nosave=false;d.saved=false;await wait();await saveNow();const pid=S.doc.pid;await PrismVersions.forget(pid);
+    const v1=await PrismVersions.add(pid,{name:'Avant'});const n0=S.doc.layers.length;addLayer();S.doc.saved=false;await wait();await saveNow();await PrismVersions.add(pid);
+    const l1=(await PrismVersions.list(pid)).length;await PrismVersions.restore(v1.id);for(let i=0;i<60&&!(S.doc&&S.doc.pid===pid);i++)await new Promise(r=>setTimeout(r,100));
+    const back=S.doc&&S.doc.pid===pid&&S.doc.layers.length===n0,l2=await PrismVersions.list(pid);
+    const kept=l2.some(v=>v.m.layers.length===n0+1);
+    const nid=await PrismVersions.openCopy(v1.id);const copy=S.doc&&S.doc.pid===nid&&/version du/.test(S.doc.name);
+    await gcBlobs();let miss=0;for(const v of l2)for(const k of manifestKeys(v.m))if(!(await IDB.get('blobs',k)))miss++;
+    const menu=MENU2.file.items().some(x=>x&&x.label==='Versions de la photo…');
+    await libOpen(pid);return [l1>=2,back,kept,copy,miss,menu].join()});
+  if(r!=='true,true,true,true,0,true')throw new Error(r)});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
