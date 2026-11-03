@@ -1,6 +1,8 @@
 /* ================= Prism interface: brand, tooltips, command palette, welcome, document chip ================= */
 const PRISM_LOGO=`<svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="pgSpec" gradientUnits="userSpaceOnUse" x1="0" y1="7.6" x2="0" y2="19.6"><stop offset="0" stop-color="#ff4d5e"/><stop offset=".2" stop-color="#ff9a3c"/><stop offset=".38" stop-color="#ffe14a"/><stop offset=".55" stop-color="#4ee38a"/><stop offset=".72" stop-color="#38c6ff"/><stop offset=".88" stop-color="#5a6bff"/><stop offset="1" stop-color="#d04bff"/></linearGradient><linearGradient id="pgGlass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#9fd8ff"/></linearGradient><linearGradient id="pgBeam" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".2"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><path d="M13.6 11.1 23.6 7.8V19.8z" fill="url(#pgSpec)"/><path d="M13.6 11.1 23.6 11.4M13.6 11.1 23.6 14.6M13.6 11.1 23.6 17.3" stroke="#fff" stroke-opacity=".28" stroke-width=".35" fill="none"/><path d="M10 2.8 17.6 18.2H2.4z" fill="#fff" fill-opacity=".07" stroke="url(#pgGlass)" stroke-width="1.15" stroke-linejoin="round"/><path d="M.4 14.6 5.9 12.2 13.6 11.1" fill="none" stroke="url(#pgBeam)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-$('.mark').innerHTML=PRISM_LOGO+'<span>Prism</span>';
+/* chaque logo a ses propres identifiants de dégradé : deux logos dans la page ne se marchent pas dessus (un logo caché effaçait les couleurs de l'autre) */
+function prismLogo(){prismLogo.n=(prismLogo.n||0)+1;return PRISM_LOGO.replace(/pg(Spec|Glass|Beam)/g,'pg$1'+prismLogo.n)}
+$('.mark').innerHTML=prismLogo()+'<span>Prism</span>';
 /* histogram footer: shooting info line, as in Lightroom */
 (()=>{const h=$('.histo');if(h&&!$('#hexif')){const e=document.createElement('div');e.id='hexif';e.className='hexif';h.appendChild(e)}})();
 function updateExifLine(){const e=$('#hexif');if(!e)return;const d=S.doc,m=d&&S.meta&&!S.sample?S.meta:'';e.hidden=!m;e.innerHTML=m?m.split(' · ').map(x=>`<span>${esc(x)}</span>`).join(''):''}
@@ -44,7 +46,7 @@ function openCmdK(){if($('#cmdk'))return;hideTip();const items=cmdItems();const 
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&!e.altKey&&(e.key==='k'||e.key==='K'||e.code==='KeyK')){if($('#library')&&!e.target.closest('#library'))return;e.preventDefault();e.stopPropagation();$('#cmdk')?$('#cmdk').remove():openCmdK()}},true);
 $('#bCmd').onclick=()=>openCmdK();
 /* welcome screen */
-(()=>{const e=$('#empty');e.innerHTML=`<div class="welcome"><div class="w-logo">${PRISM_LOGO}</div><h2>Bienvenue dans Prism</h2><p>Ouvrez une photo pour commencer, ou glissez-la n’importe où dans cette fenêtre.</p>
+(()=>{const e=$('#empty');e.innerHTML=`<div class="welcome"><div class="w-logo">${prismLogo()}</div><h2>Bienvenue dans Prism</h2><p>Ouvrez une photo pour commencer, ou glissez-la n’importe où dans cette fenêtre.</p>
   <div class="w-acts"><button class="btn primary" id="bOpenEmpty">Ouvrir une photo…</button><button class="btn" id="bProjEmpty">Photothèque</button></div>
   <div class="w-tiles" id="wTiles"></div>
   <div class="w-recent" id="wRecent" hidden><h3>Reprendre</h3><div class="w-grid" id="wGrid"></div></div>

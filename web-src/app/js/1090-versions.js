@@ -75,4 +75,3 @@ async function versionsDialog(){const d=S.doc;if(!d||!d.pid){toast('Ouvrez une p
 window.PrismVersions.dialog=versionsDialog;
 /* Fichier > Versions de la photo…, et dans le panneau Historique */
 {const F=MENU2.file,_f=F.items;F.items=function(){const a=_f.apply(this,arguments),i=a.findIndex(x=>x&&x.label==='Renommer le document…');a.splice(i<0?a.length:i+1,0,MI('Versions de la photo…',{icon:'history',fn:versionsDialog,dis:S.doc?false:NODOC}));return a}}
-{const E=MENU2.edit,_e=E.items;E.items=function(){const a=_e.apply(this,arguments),i=a.findIndex(x=>x&&x.label==='Historique');if(i>=0)a.splice(i+1,0,MI('Versions de la photo…',{icon:'history',fn:versionsDialog,dis:S.doc?false:NODOC}));return a}}

@@ -134,6 +134,12 @@ await test('anglais : Affichage > Langue traduit menus et panneaux, retour au fr
   const en=await ev(()=>({bar:document.querySelector('#menubar').textContent,tab:document.body.textContent.includes('Adjustments'),lang:document.documentElement.lang,menu:MENU2.view.items().some(x=>x&&x.label==='Langue')}));
   await ev(()=>PrismLang.set('fr'));await page.waitForTimeout(300);const fr=await ev(()=>document.querySelector('#menubar').textContent);
   if(!/File.*Edit.*View.*Help/.test(en.bar)||!en.tab||en.lang!=='en'||!en.menu||!/Fichier.*Édition.*Affichage.*Aide/.test(fr))throw new Error(JSON.stringify({en,fr}))});
+await test('pipette : prend la couleur affichée, réglages compris',async()=>{await fresh();await sample();
+  await ev(()=>{const A=newAdjust('Test');A.dev.exposure=1.2;A.dev.saturation=60;S.doc.layers.push(A);S.docVer++;markComp();render();setTool('eyedropper')});await page.waitForTimeout(300);
+  const b=await page.locator('#view').boundingBox();const X=b.x+b.width*.4,Y=b.y+b.height*.4;await page.mouse.click(X,Y);await page.waitForTimeout(200);
+  const r=await ev(async([X,Y])=>{const R=view.getBoundingClientRect(),p=toDoc(X-R.left,Y-R.top),full=await renderDoc(1,{before:false});const q=full.getContext('2d').getImageData(Math.floor(p.x)-1,Math.floor(p.y)-1,3,3).data;let s=[0,0,0];for(let i=0;i<36;i+=4){s[0]+=q[i];s[1]+=q[i+1];s[2]+=q[i+2]}
+    const c=S.color.match(/\w\w/g).map(h=>parseInt(h,16));return {c,s:s.map(v=>v/9)}},[X,Y]);
+  if(r.c.some((v,i)=>Math.abs(v-r.s[i])>3))throw new Error('pipette '+JSON.stringify(r))});
 await test('panneaux détachables : Calques et une section flottent, se déplacent, se remettent',async()=>{
   await ev(()=>{PrismFloat.float('layers');PrismFloat.float('sec:base',{x:300,y:200,w:300,h:400})});await page.waitForTimeout(200);
   const a=await ev(()=>({f:PrismFloat.floating(),pos:getComputedStyle(document.querySelector('[data-sec=base]')).position,ph:document.querySelectorAll('.pf-ph').length,saved:Object.keys(PREF.get('floats',{}))}));
