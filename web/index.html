@@ -1730,7 +1730,7 @@ const IDB={_db:null,
 /* A canvas is encoded once into 2048 px PNG tiles; copy-on-write editing means an unchanged canvas keeps its identity, so it is never re-encoded or re-uploaded. */
 const TILE=2048,encCache=new WeakMap(),PIN=new Set();let PINLOG=null;const pin=k=>{PIN.add(k);PINLOG&&PINLOG.push(k)}; // PINLOG: keys pinned by the save in flight, unpinned if it fails
 /* manifests from a zip, IndexedDB or the cloud are untrusted: w/h must be sane integers (they reach innerHTML and canvas sizes) */
-function checkDims(m){if(!m||!(Number.isInteger(m.w)&&Number.isInteger(m.h)&&m.w>0&&m.h>0&&m.w<=65536&&m.h<=65536))throw new Error('projet illisible (dimensions invalides)');return m}
+function checkDims(m){if(!m||!(Number.isInteger(m.w)&&Number.isInteger(m.h)&&m.w>0&&m.h>0&&m.w<=65536&&m.h<=65536&&m.w*m.h<=268435456))throw new Error('projet illisible (dimensions invalides)');return m}
 const toBlob=(c,type='image/png',q)=>new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('encodage')),type,q));
 async function encodeCanvas(c){const hit=encCache.get(c);if(hit)return hit;const tiles=[];
   const ox=c.__sp?c.__sx:0,oy=c.__sp?c.__sy:0; // a sparse layer's cropped canvas: its tiles are placed in photo coordinates, so older versions load it too
@@ -3986,7 +3986,7 @@ const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','
 const albumsOf=it=>it.lib.albums||[];
 const allAlbums=()=>{const s=new Set(PREF.get('albumsReg',[]));LIB.items.forEach(i=>albumsOf(i).forEach(a=>s.add(a)));return[...s].sort((a,b)=>a.localeCompare(b,'fr'))};
 const smartList=()=>PREF.get('smartAlbums',[]);
-const dateKey=it=>{const t=(LIB.sort==='taken'||LIB.sort==='cam'||LIB.sort==='place'?takenOf(it):it.updatedAt),d=new Date(t);return[d.getFullYear(),d.getMonth()]};
+const dateKey=it=>{const t=(LIB.sort==='taken'||LIB.sort==='cam'||LIB.sort==='place'?takenOf(it):it.updatedAt),d=new Date(+t||0);return isNaN(d)?[1970,0]:[d.getFullYear(),d.getMonth()]};
 async function libPatch(ids,fn){const at=Date.now();for(const id of ids){const it=LIB.items.find(x=>x.id===id);if(!it)continue;const l={...it.lib};fn(l);l.at=at;it.lib=l;if(S.doc&&S.doc.pid===id)S.doc.lib=l;try{PrismTabs.tabs.forEach(t=>{if(t.doc&&t.doc.pid===id)t.doc.lib=l})}catch(e){} // docs parked in other tabs too
     if(it.local){it.local.lib=l;await IDB.put('projects',id,it.local).catch(()=>{})}if(it.cloud&&Cloud.ok){it.cloud.lib=l;Cloud.col.doc(id).update({lib:l}).catch(e=>console.warn(e))}}renderLibrary()}
 const addAlbum=(ids,name)=>libPatch(ids,l=>{l.albums=[...new Set([...(l.albums||[]),name])]});
@@ -9542,7 +9542,11 @@ async function syApply(e) {
     gcBlobs().catch(() => { }); await syRefreshLib(); SY.got++; return;
   }
   if (e.kind === 'put' && e.body) {
-    const m = checkDims(e.body);
+    // un appareil du compte peut être piraté : le projet doit être un objet sain, au bon identifiant, aux dimensions possibles
+    let m; try { m = checkDims(e.body) } catch (err) { syLog('projet refusé', e.pid, err.message); return }
+    if (typeof m !== 'object' || Array.isArray(m) || m.id !== e.pid || !/^[A-Za-z0-9_.-]{1,64}$/.test(m.id) || !Array.isArray(m.layers) || !m.layers.length || !m.layers.every(L => L && typeof L === 'object' && !Array.isArray(L))) { syLog('projet refusé', e.pid); return }
+    m = JSON.parse(JSON.stringify(m), (k, v) => (k === '__proto__' || k === 'constructor' || k === 'prototype') ? undefined : v);
+    if (typeof m.name !== 'string') m.name = 'Sans titre'; m.name = m.name.slice(0, 200);
     const local = await IDB.get('projects', m.id).catch(() => null);
     if (local && (local.updatedAt || 0) >= (m.updatedAt || 0)) return;          // la version d'ici est plus récente
     if (S.doc && S.doc.pid === m.id && !S.doc.saved) return;                    // en cours de retouche ici : elle repartira à l'enregistrement

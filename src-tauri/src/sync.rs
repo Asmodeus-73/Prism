@@ -275,3 +275,21 @@ pub fn protocol<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: tauri::http::
         responder.respond(res.unwrap());
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Attaque : un nom piégé ne doit jamais sortir du dossier de synchronisation.
+    #[test]
+    fn names_cannot_escape_the_folder() {
+        for bad in ["..", "../etc", "..\\x", "a/b", "/abs", "C:\\x", ".cache", "", "a\0b", "é", &"x".repeat(201)] {
+            assert!(safe(bad).is_err(), "{bad:?} accepté");
+        }
+        assert!(safe("p_1234.json").is_ok());
+        let root = Path::new("/r");
+        assert!(collection_dir(root, "../x").is_err());
+        assert!(collection_dir(root, "a/../../x").is_err());
+        assert_eq!(collection_dir(root, "a/b").unwrap(), root.join("docs").join("a__b"));
+    }
+}

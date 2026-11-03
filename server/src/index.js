@@ -13,7 +13,11 @@ const CORS = {
   'access-control-allow-headers': 'authorization,content-type',
   'access-control-max-age': '86400',
 };
-const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { ...H, ...CORS, ...extra } });
+/* aucune réponse n'est une page : le navigateur ne doit ni deviner le type, ni exécuter quoi que ce soit */
+const SAFE = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; sandbox", 'cache-control': 'no-store' };
+const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { ...H, ...CORS, ...SAFE, ...extra } });
+/* types rendus tels quels pour un fichier en transit ; tout le reste (HTML, SVG, scripts…) repart en binaire brut */
+const BLOB_TYPES = /^(image\/(jpeg|png|webp|avif|gif|heic|heif|tiff|jxl|x-[a-z0-9.+-]+)|application\/(json|octet-stream)|video\/(mp4|quicktime))$/;
 const fail = (status, code, msg, extra) => json({ error: code, message: msg, ...extra }, status);
 const now = () => Date.now();
 const enc = new TextEncoder();
@@ -43,8 +47,9 @@ async function body(req, max = MAX_BODY) {
 
 async function auth(env, req, url) {
   const h = req.headers.get('authorization') || '';
-  const t = h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token');
-  if (!t) return null;
+  // le jeton dans l'adresse n'est accepté que pour la WebSocket (un navigateur ne peut pas y mettre d'en-tête)
+  const t = h.startsWith('Bearer ') ? h.slice(7) : url.pathname === '/v1/live' ? url.searchParams.get('token') : null;
+  if (!t || t.length > 128) return null;
   const s = await env.DB.prepare('SELECT s.user, s.device, d.name FROM sessions s JOIN devices d ON d.id = s.device WHERE s.token = ?').bind(await sha(t)).first();
   if (!s) return null;
   await env.DB.prepare('UPDATE devices SET last = ? WHERE id = ?').bind(now(), s.device).run();
@@ -82,9 +87,22 @@ async function blocked(env, email) {
   const a = await env.DB.prepare('SELECT n, since FROM attempts WHERE email = ?').bind(email).first();
   return a && now() - a.since <= 15 * 60e3 && a.n >= 10;
 }
+/* par adresse IP : 30 échecs de connexion par quart d'heure (essais sur plusieurs comptes), 5 créations de compte par heure */
+const ipOf = req => (req.headers.get('cf-connecting-ip') || 'local').slice(0, 64);
+async function ipCount(env, key, max, win, add) {
+  const t = now(), a = await env.DB.prepare('SELECT n, since FROM attempts WHERE email = ?').bind(key).first();
+  const fresh = !a || t - a.since > win;
+  if (!add) return !fresh && a.n >= max;
+  if (fresh) await env.DB.prepare('INSERT OR REPLACE INTO attempts(email,n,since) VALUES(?,1,?)').bind(key, t).run();
+  else await env.DB.prepare('UPDATE attempts SET n = n + 1 WHERE email = ?').bind(key).run();
+  return false;
+}
+let DUMMY;   // une empreinte factice : une adresse inconnue coûte autant de calcul qu'un mauvais mot de passe
+const dummy = async () => DUMMY || (DUMMY = await hashPw('x'.repeat(12)));
 
-const used = async env => (await env.DB.prepare('SELECT COALESCE(SUM(size),0) AS s FROM transit').first()).s;
+const used = async (env, user) => (await (user ? env.DB.prepare('SELECT COALESCE(SUM(size),0) AS s FROM transit WHERE user = ?').bind(user) : env.DB.prepare('SELECT COALESCE(SUM(size),0) AS s FROM transit')).first()).s;
 const limit = env => +(env.TRANSIT_LIMIT || 9.5e9);
+const userLimit = env => +(env.USER_LIMIT || limit(env) * 0.6);   // un seul compte ne peut pas remplir tout le transit
 
 /* efface les fichiers en transit que tous les appareils du compte ont reçus */
 async function sweepUser(env, user) {
@@ -114,6 +132,9 @@ async function route(req, env, ctx) {
     const b = await body(req), email = String(b.email || '').trim().toLowerCase(), pw = String(b.password || '');
     if (!EMAIL_RE.test(email)) return fail(400, 'email', 'Adresse e-mail invalide.');
     if (pw.length < 8 || pw.length > 200) return fail(400, 'password', 'Le mot de passe doit faire au moins 8 caractères.');
+    const ipk = 'signup:' + ipOf(req);
+    if (await ipCount(env, ipk, 5, 3600e3, false)) return fail(429, 'slow', 'Trop de comptes créés depuis ce réseau. Réessaie dans une heure.', { retryAfter: 3600 });
+    await ipCount(env, ipk, 5, 3600e3, true);
     if (await env.DB.prepare('SELECT 1 FROM users WHERE email = ?').bind(email).first()) return fail(409, 'exists', 'Un compte existe déjà avec cette adresse.');
     const id = rid(8);
     await env.DB.prepare('INSERT INTO users(id,email,pw,created) VALUES(?,?,?,?)').bind(id, email, await hashPw(pw), now()).run();
@@ -121,11 +142,14 @@ async function route(req, env, ctx) {
   }
   if (p === '/v1/login' && m === 'POST') {
     const b = await body(req), email = String(b.email || '').trim().toLowerCase(), pw = String(b.password || '');
-    if (await blocked(env, email)) return fail(429, 'slow', 'Trop d’essais. Réessaie dans un quart d’heure.', { retryAfter: 900 });
+    const ipk = 'login:' + ipOf(req);
+    if (await blocked(env, email) || await ipCount(env, ipk, 30, 15 * 60e3, false)) return fail(429, 'slow', 'Trop d’essais. Réessaie dans un quart d’heure.', { retryAfter: 900 });
+    if (pw.length > 200) return fail(401, 'login', 'Adresse ou mot de passe incorrect.');
     const u = await env.DB.prepare('SELECT id, pw FROM users WHERE email = ?').bind(email).first();
-    const ok = !!u && same(await hashPw(pw, u.pw.split('$')[0]), u.pw);
+    const ref = u ? u.pw : await dummy();
+    const ok = same(await hashPw(pw, ref.split('$')[0]), ref) && !!u;
     await throttle(env, email, ok);
-    if (!ok) return fail(401, 'login', 'Adresse ou mot de passe incorrect.');
+    if (!ok) { await ipCount(env, ipk, 30, 15 * 60e3, true); return fail(401, 'login', 'Adresse ou mot de passe incorrect.'); }
     return json({ ...(await newSession(env, u.id, b.device)), email });
   }
 
@@ -155,23 +179,25 @@ async function route(req, env, ctx) {
 
   const bm = p.match(/^\/v1\/blobs\/(.+)$/);
   if (bm) {
-    const key = decodeURIComponent(bm[1]);
-    if (!KEY_RE.test(key)) return fail(400, 'key', 'Nom de fichier invalide.');
+    let key = ''; try { key = decodeURIComponent(bm[1]); } catch { /* encodage cassé */ }
+    if (!KEY_RE.test(key) || key === '.' || key === '..') return fail(400, 'key', 'Nom de fichier invalide.');
     const rk = me.user + '/' + key;
     if (m === 'PUT') {
       const size = +req.headers.get('content-length');
       if (!(size > 0)) return fail(411, 'length', 'Taille du fichier manquante.');
       if (size > MAX_BLOB) return fail(413, 'big', 'Fichier trop gros pour le transit (500 Mo au plus).');
       if (await env.DB.prepare('SELECT 1 FROM transit WHERE user = ? AND key = ?').bind(me.user, key).first()) return json({ ok: true, already: true });
-      if ((await used(env)) + size > limit(env)) return fail(507, 'full', 'Le transit est plein pour le moment : l’envoi reprendra tout seul.', { retryAfter: 600 });
-      await env.TRANSIT.put(rk, req.body, { httpMetadata: { contentType: req.headers.get('content-type') || 'application/octet-stream' } });
+      if ((await used(env)) + size > limit(env) || (await used(env, me.user)) + size > userLimit(env)) return fail(507, 'full', 'Le transit est plein pour le moment : l’envoi reprendra tout seul.', { retryAfter: 600 });
+      const ct = String(req.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      await env.TRANSIT.put(rk, req.body, { httpMetadata: { contentType: BLOB_TYPES.test(ct) ? ct : 'application/octet-stream' } });
       await env.DB.prepare('INSERT OR REPLACE INTO transit(user,key,size,created) VALUES(?,?,?,?)').bind(me.user, key, size, now()).run();
       return json({ ok: true }, 201);
     }
     if (m === 'GET') {
       const o = await env.TRANSIT.get(rk);
       if (!o) return fail(404, 'gone', 'Ce fichier n’est plus en transit : il viendra d’un autre appareil.');
-      return new Response(o.body, { headers: { ...CORS, 'content-type': o.httpMetadata?.contentType || 'application/octet-stream', 'content-length': String(o.size) } });
+      const ct = o.httpMetadata?.contentType || '';
+      return new Response(o.body, { headers: { ...CORS, ...SAFE, 'content-type': BLOB_TYPES.test(ct) ? ct : 'application/octet-stream', 'content-disposition': 'attachment', 'content-length': String(o.size) } });
     }
   }
 
@@ -213,7 +239,9 @@ async function sweepAll(env) {
   const rows = (await env.DB.prepare('SELECT user, key FROM transit WHERE created < ?').bind(old).all()).results;
   for (const r of rows) { await env.TRANSIT.delete(r.user + '/' + r.key); await env.DB.prepare('DELETE FROM transit WHERE user = ? AND key = ?').bind(r.user, r.key).run(); }
   await env.DB.prepare('DELETE FROM events WHERE created < ?').bind(now() - (+(env.EVENTS_DAYS || 30)) * 864e5).run();
-  await env.DB.prepare('DELETE FROM attempts WHERE since < ?').bind(now() - 3600e3).run();
+  await env.DB.prepare('DELETE FROM attempts WHERE since < ?').bind(now() - 2 * 3600e3).run();
+  // un appareil muet depuis 180 jours perd sa session (il faudra se reconnecter)
+  await env.DB.prepare('DELETE FROM sessions WHERE device IN (SELECT id FROM devices WHERE last < ?)').bind(now() - 180 * 864e5).run();
   return rows.length;
 }
 
@@ -245,7 +273,7 @@ export class Live {
   webSocketMessage(ws, data) {
     let m; try { m = JSON.parse(data); } catch { return; }
     const me = ws.deserializeAttachment();
-    if (m.type === 'signal' && m.to) {
+    if (m.type === 'signal' && typeof m.to === 'string' && m.to !== me.device && String(data).length <= 65536) {
       for (const w of this.state.getWebSockets()) { const a = w.deserializeAttachment(); if (a && a.device === m.to) w.send(JSON.stringify({ type: 'signal', from: me.device, data: m.data })); }
     } else if (m.type === 'ping') ws.send('{"type":"pong"}');
   }

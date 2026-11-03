@@ -17,7 +17,7 @@ const IDB={_db:null,
 /* A canvas is encoded once into 2048 px PNG tiles; copy-on-write editing means an unchanged canvas keeps its identity, so it is never re-encoded or re-uploaded. */
 const TILE=2048,encCache=new WeakMap(),PIN=new Set();let PINLOG=null;const pin=k=>{PIN.add(k);PINLOG&&PINLOG.push(k)}; // PINLOG: keys pinned by the save in flight, unpinned if it fails
 /* manifests from a zip, IndexedDB or the cloud are untrusted: w/h must be sane integers (they reach innerHTML and canvas sizes) */
-function checkDims(m){if(!m||!(Number.isInteger(m.w)&&Number.isInteger(m.h)&&m.w>0&&m.h>0&&m.w<=65536&&m.h<=65536))throw new Error('projet illisible (dimensions invalides)');return m}
+function checkDims(m){if(!m||!(Number.isInteger(m.w)&&Number.isInteger(m.h)&&m.w>0&&m.h>0&&m.w<=65536&&m.h<=65536&&m.w*m.h<=268435456))throw new Error('projet illisible (dimensions invalides)');return m}
 const toBlob=(c,type='image/png',q)=>new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('encodage')),type,q));
 async function encodeCanvas(c){const hit=encCache.get(c);if(hit)return hit;const tiles=[];
   const ox=c.__sp?c.__sx:0,oy=c.__sp?c.__sy:0; // a sparse layer's cropped canvas: its tiles are placed in photo coordinates, so older versions load it too

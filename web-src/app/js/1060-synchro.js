@@ -100,7 +100,11 @@ async function syApply(e) {
     gcBlobs().catch(() => { }); await syRefreshLib(); SY.got++; return;
   }
   if (e.kind === 'put' && e.body) {
-    const m = checkDims(e.body);
+    // un appareil du compte peut être piraté : le projet doit être un objet sain, au bon identifiant, aux dimensions possibles
+    let m; try { m = checkDims(e.body) } catch (err) { syLog('projet refusé', e.pid, err.message); return }
+    if (typeof m !== 'object' || Array.isArray(m) || m.id !== e.pid || !/^[A-Za-z0-9_.-]{1,64}$/.test(m.id) || !Array.isArray(m.layers) || !m.layers.length || !m.layers.every(L => L && typeof L === 'object' && !Array.isArray(L))) { syLog('projet refusé', e.pid); return }
+    m = JSON.parse(JSON.stringify(m), (k, v) => (k === '__proto__' || k === 'constructor' || k === 'prototype') ? undefined : v);
+    if (typeof m.name !== 'string') m.name = 'Sans titre'; m.name = m.name.slice(0, 200);
     const local = await IDB.get('projects', m.id).catch(() => null);
     if (local && (local.updatedAt || 0) >= (m.updatedAt || 0)) return;          // la version d'ici est plus récente
     if (S.doc && S.doc.pid === m.id && !S.doc.saved) return;                    // en cours de retouche ici : elle repartira à l'enregistrement

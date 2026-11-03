@@ -54,7 +54,7 @@ jobs:
         run: node tests/smoke.mjs
 
       - name: Synchronisation entre deux appareils (serveur dans Miniflare)
-        run: (cd server && npm ci) && node tests/sync.mjs
+        run: (cd server && npm ci) && node tests/sync.mjs && node tests/security.mjs
 
   desktop:
     runs-on: ubuntu-latest
@@ -92,6 +92,10 @@ jobs:
       - name: Le code de l'application compile
         working-directory: src-tauri
         run: cargo clippy --locked -- -D warnings
+
+      - name: Tests de l'application (chemins piégés, dossier surveillé)
+        working-directory: src-tauri
+        run: cargo test --locked --lib -- sync:: tether::
 
   # The Mac app shows the editor in WebKit (WKWebView), not Chromium: the same tests,
   # in WebKit on a real Mac, catch what only breaks there.
