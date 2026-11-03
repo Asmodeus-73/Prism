@@ -103,6 +103,17 @@ await test('nouveaux effets : nuages, fractale, vitrail, verre dépoli, déforma
       const o2=F.run(s,pp),same=rx(o2).getImageData(0,0,o.width,o.height).data.every((v,i)=>v===a[i]);if(o.width!==s.width||df<500||!same)bad.push(id+':'+df+':'+same)}
     const G=window.__FILTER_GROUPS.flatMap(g=>g[1]);return bad.concat(['clouds','oil','polar'].filter(x=>!G.includes(x)).map(x=>'menu '+x)).join()});
   if(r)throw new Error(r)});
+await test('raccourcis personnalisables : outil sur K, B donné à Exporter, menu à jour, tout réinitialiser',async()=>{
+  await ev(()=>{PrismKeys.set({});closeDialog();PrismKeys.dialog()});await page.waitForSelector('#scrim .kc-r[data-id="tool:brush"]');
+  await page.click('#scrim .kc-r[data-id="tool:brush"] [data-cap]');await page.keyboard.press('k');const dbg=await ev(()=>JSON.stringify(PrismKeys.get())+' '+document.querySelector('#scrim .kc-msg').textContent+' '+document.querySelectorAll('#scrim').length);
+  await page.click('#scrim .kc-r[data-id="menu:file/Exporter"] [data-cap]');await page.keyboard.press('b');
+  const r1=await ev(()=>{const K=PrismKeys.get();return [K['tool:brush'],K['menu:file/Exporter'],document.querySelector('#scrim .kc-r[data-id="tool:brush"] .kc-k').textContent.trim(),document.querySelector('#scrim .kc-msg').textContent]});
+  await ev(()=>closeDialog());await ev(()=>setTool('move'));await page.mouse.move(700,450);await page.keyboard.press('k');const t1=await ev(()=>S.tool);
+  await page.keyboard.press('b');await page.waitForSelector('#scrim',{timeout:4000}).catch(()=>{});const ex=await ev(()=>!!document.querySelector('#scrim')&&document.querySelector('#scrim').textContent.includes('Export'));await ev(()=>closeDialog());const t2=await ev(()=>S.tool);
+  const kbd=await ev(()=>{const it=MENU2.file.items().find(x=>x&&x.label==='Exporter…');return it&&it.kbd});
+  await ev(()=>{PrismKeys.set({});setTool('move')});await page.keyboard.press('b');const t3=await ev(()=>S.tool);
+  const r=[r1[0],r1[1],r1[2],/était à/.test(r1[3]),t1,ex,t2,kbd,t3].join('|');
+  if(r!=='k|b|K|false|brush|true|brush|B|brush')throw new Error(r+' '+dbg)});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
