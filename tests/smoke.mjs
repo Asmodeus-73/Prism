@@ -98,6 +98,11 @@ await test('aperçu rapide : une photo lente se calcule en plus petit pendant le
     S.sliding=true;LQ.full=600;LQ.last=0;markContent();await fr();const k1=S.workSize.k,small=work.width<S.workSize.w;S.sliding=false;await new Promise(r=>setTimeout(r,450));await fr();
     return [k1<1,small,S.workSize.k===1,work.width===S.workSize.w].join()});
   if(r!=='true,true,true,true')throw new Error(r)});
+await test('nouveaux effets : nuages, fractale, vitrail, verre dépoli, déformation, inversion polaire, croquis, peinture',async()=>{const r=await ev(()=>{const src=S.doc.layers[0].canvas,s=resample(src,320,214),bad=[];
+    for(const id of ['clouds','fractal','stained','frosted','organic','polar','pencil','oil']){const F=FILTERS[id],pp={};F.params.forEach(q=>pp[q[0]]=q[5]);const o=F.run(s,pp),a=rx(o).getImageData(0,0,o.width,o.height).data,b=rx(s).getImageData(0,0,s.width,s.height).data;let df=0;for(let i=0;i<a.length;i+=16)df+=Math.abs(a[i]-b[i]);
+      const o2=F.run(s,pp),same=rx(o2).getImageData(0,0,o.width,o.height).data.every((v,i)=>v===a[i]);if(o.width!==s.width||df<500||!same)bad.push(id+':'+df+':'+same)}
+    const G=window.__FILTER_GROUPS.flatMap(g=>g[1]);return bad.concat(['clouds','oil','polar'].filter(x=>!G.includes(x)).map(x=>'menu '+x)).join()});
+  if(r)throw new Error(r)});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
