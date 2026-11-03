@@ -53,6 +53,9 @@ jobs:
       - name: Tests de l'éditeur
         run: node tests/smoke.mjs
 
+      - name: Synchronisation entre deux appareils (serveur dans Miniflare)
+        run: (cd server && npm ci) && node tests/sync.mjs
+
   desktop:
     runs-on: ubuntu-latest
     steps:
