@@ -94,6 +94,10 @@ await test('corbeille : une photo supprimée se restaure, ses tuiles restent',as
     await PrismTrash.restore(id);const back=!!(await IDB.get('projects',id))&&LIB.items.some(i=>i.id===id)&&!(await PrismTrash.list()).some(e=>e.id===id);
     await libOpen(id);return [gone,miss,back,S.doc&&S.doc.pid===id].join()});
   if(r!=='true,0,true,true')throw new Error(r)});
+await test('aperçu rapide : une photo lente se calcule en plus petit pendant le glissé, en entier ensuite',async()=>{const r=await ev(async()=>{const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    S.sliding=true;LQ.full=600;LQ.last=0;markContent();await fr();const k1=S.workSize.k,small=work.width<S.workSize.w;S.sliding=false;await new Promise(r=>setTimeout(r,450));await fr();
+    return [k1<1,small,S.workSize.k===1,work.width===S.workSize.w].join()});
+  if(r!=='true,true,true,true')throw new Error(r)});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
