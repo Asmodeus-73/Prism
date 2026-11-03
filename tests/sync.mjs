@@ -16,7 +16,7 @@ for(const s of fs.readFileSync(path.join(srv,'schema.sql'),'utf8').replace(/--.*
 const ENGINE=process.env.PRISM_BROWSER||'chromium';
 const browser=ENGINE==='chromium'?await pw.chromium.launch({args:['--enable-unsafe-swiftshader','--use-gl=swiftshader']}):await pw[ENGINE].launch();
 const dev=async()=>{const c=await browser.newContext({viewport:{width:1280,height:800}}),p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(String(e)));
-  await p.route(/fonts\.(googleapis|gstatic)\.com|api\.github\.com/,r=>r.abort());await p.goto(PAGE);await p.waitForFunction(()=>window.PrismSync&&typeof loadSample==='function');return {p,errs}};
+  await p.route(/fonts\.(googleapis|gstatic)\.com|api\.github\.com/,r=>r.abort());await p.goto(PAGE);await p.waitForFunction(()=>window.PrismSync&&typeof loadSample==='function');return {p,c,errs}};
 let fails=0;const ok=(c,m)=>{console.log((c?'✓ ':'✗ ')+m);if(!c)fails++};
 const until=async(p,fn,arg,ms=20000)=>{try{await p.waitForFunction(fn,arg,{timeout:ms,polling:200});return true}catch(e){return false}};
 const A=await dev(),B=await dev();
@@ -26,12 +26,26 @@ try{
   await B.p.evaluate(([u])=>PrismSync.connect('login',u,'draco@example.com','motdepasse1'),[API]);
   ok(await B.p.evaluate(()=>!!PrismSync.state.cfg),'la tour se connecte au même compte');
   // le Mac ouvre et retouche une photo
+  ok(await until(A.p,()=>PrismSync._SY.peers.length===1),'le Mac voit la tour allumée');
+  await new Promise(r=>setTimeout(r,2500));await until(A.p,()=>!PrismSync._SY.out.length&&!PrismSync._SY.running);  // la demande « tout renvoyer » de la tour est traitée
   const pid=await A.p.evaluate(async()=>{await loadSample();await new Promise(r=>setTimeout(r,400));S.doc.nosave=false;S.doc.saved=false;while(SAVE.running)await new Promise(r=>setTimeout(r,50));await saveNow();return S.doc.pid});
   ok(!!pid,'le Mac enregistre la photo');
   ok(await until(B.p,id=>!!LIB.items.find(i=>i.id===id),pid),'la photo arrive dans la Photothèque de la tour');
   ok(await B.p.evaluate(async id=>{const m=await IDB.get('projects',id);for(const k of manifestKeys(m))if(!(await IDB.get('blobs',k)))return false;return true},pid),'tous ses fichiers sont là');
+  ok(await A.p.evaluate(()=>PrismSync._SY.direct>0),'les deux sont allumés : les fichiers sont passés en direct, sans transit');
   await B.p.evaluate(id=>libOpen(id),pid);ok(await until(B.p,id=>S.doc&&S.doc.pid===id&&S.doc.layers.length>0,pid),'la tour l’ouvre');
   ok(await until(A.p,()=>true,null,1000)&&(await (async()=>{for(let i=0;i<40;i++){const u=await (await fetch(API+'/v1/usage',{headers:{authorization:'Bearer '+(await A.p.evaluate(()=>PrismSync._SY.cfg.token))}})).json();if(u.used===0)return true;await new Promise(r=>setTimeout(r,250))}return false})()),'le transit Cloudflare est vidé une fois reçu');
+  // la tour s'éteint : le Mac passe par le transit, la tour récupère en revenant
+  await B.p.evaluate(()=>{closeDoc()});await B.c.setOffline(true);await B.p.evaluate(()=>{try{PrismSync._SY.ws.close()}catch(e){}});
+  ok(await until(A.p,()=>PrismSync._SY.peers.length===0),'le Mac voit que la tour est éteinte');
+  await A.p.evaluate(async()=>{S.doc.name='lac-retouche.jpg';S.doc.saved=false;while(SAVE.running)await new Promise(r=>setTimeout(r,50));await saveNow()});
+  const tok=await A.p.evaluate(()=>PrismSync._SY.cfg.token);const usage=async()=>(await (await fetch(API+'/v1/usage',{headers:{authorization:'Bearer '+tok}})).json()).used;
+  let up=0;for(let i=0;i<60&&!up;i++){up=await usage();if(!up)await new Promise(r=>setTimeout(r,250))}
+  ok(up>0,'la photo attend dans le transit ('+Math.round(up/1024)+' Ko)');
+  await B.c.setOffline(false);await B.p.evaluate(()=>window.dispatchEvent(new Event('online')));
+  ok(await until(B.p,async id=>((await IDB.get('projects',id))||{}).name==='lac-retouche.jpg',pid,40000),'la tour récupère la retouche en revenant');
+  let z=-1;for(let i=0;i<60&&z!==0;i++){z=await usage();if(z)await new Promise(r=>setTimeout(r,250))}
+  ok(z===0,'puis le transit est vidé');
   // suppression sur le Mac
   await B.p.evaluate(()=>{closeDoc()});
   await A.p.evaluate(async id=>{await libLoad();const pd=libDelete([id]);let bs=[];for(let i=0;i<50&&!bs.length;i++){await new Promise(r=>setTimeout(r,100));bs=document.querySelectorAll('#scrim .foot .btn')}bs[bs.length-1].click();await pd},pid);

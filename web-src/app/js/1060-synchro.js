@@ -33,11 +33,20 @@ async function syApi(path, { method = 'GET', json, body, headers = {}, raw = fal
   return d;
 }
 
+/* les autres appareils du compte sont-ils tous allumés ? (liste du compte gardée 5 minutes) */
+let syDevs = { at: 0, ids: [] };
+async function syAllOnline() {
+  if (Date.now() - syDevs.at > 300000) { try { const me = await syApi('/v1/me'); syDevs = { at: Date.now(), ids: me.devices.map(d => d.id).filter(id => id !== SY.cfg.device) } } catch (e) { return false } }
+  const on = new Set(SY.peers.map(p => p.device));
+  return syDevs.ids.length > 0 && syDevs.ids.every(id => on.has(id));
+}
+const syKnown = k => IDB.get('amap', 'sy:' + k).then(v => !!v).catch(() => false);
+const syMark = k => IDB.put('amap', 'sy:' + k, 1).catch(() => { });
 /* ---- file d'attente ---- */
-function syEnqueue(kind, pid) {
+function syEnqueue(kind, pid, force = false) {
   if (!SY.cfg) return;
   SY.out = SY.out.filter(x => !(x.pid === pid && (x.kind === kind || (kind !== 'want' && x.kind !== 'want'))));
-  SY.out.push({ kind, pid, at: Date.now() }); sySave(); syKick(2500);
+  SY.out.push({ kind, pid, at: Date.now(), ...(force ? { force: true } : {}) }); sySave(); syKick(2500);
 }
 function syKick(ms = 0) { clearTimeout(SY.timer); if (!SY.cfg) return; const wait = Math.max(ms, SY.retryAt - Date.now()); SY.timer = setTimeout(syRun, Math.max(0, wait)) }
 
@@ -46,11 +55,18 @@ async function syPushOne(it) {
     const m = await IDB.get('projects', it.pid).catch(() => null);
     if (!m) return true;                                // supprimé entre-temps : rien à envoyer
     const keys = [...manifestKeys(m)];
-    for (const k of keys) {
+    /* tous les autres appareils sont allumés : les fichiers passeront directement, rien n'est déposé chez Cloudflare */
+    const direct = !it.force && window.PrismPeer && await syAllOnline();
+    if (direct) SY.direct = (SY.direct || 0) + 1;
+    /* une tuile déjà partie (ou reçue) lors d'une version précédente est déjà sur les autres appareils : on ne la renvoie pas,
+       sauf si un appareil l'a redemandée (force) */
+    if (!direct) for (const k of keys) {
+      if (!it.force && await syKnown(k)) continue;
       const b = await IDB.get('blobs', k).catch(() => null); if (!b) continue;
       await syApi('/v1/blobs/' + encodeURIComponent(k), { method: 'PUT', body: b, headers: { 'content-type': b.type || 'application/octet-stream' } });
     }
     await syApi('/v1/events', { method: 'POST', json: { kind: 'put', pid: m.id, body: m, blobs: keys } });
+    for (const k of keys) syMark(k);
   } else await syApi('/v1/events', { method: 'POST', json: { kind: it.kind, pid: it.pid } });
   SY.sent++; return true;
 }
@@ -70,7 +86,7 @@ async function syPull() {
 async function syApply(e) {
   if (e.kind === 'want') {
     const all = await IDB.all('projects').catch(() => []);
-    for (const m of all) if (m && m.id && (e.pid === '*' || e.pid === m.id)) syEnqueue('put', m.id);
+    for (const m of all) if (m && m.id && (e.pid === '*' || e.pid === m.id)) syEnqueue('put', m.id, true);   // redemandé : on passe par le transit
     return;
   }
   if (e.kind === 'delete') {
@@ -90,12 +106,13 @@ async function syApply(e) {
     if (S.doc && S.doc.pid === m.id && !S.doc.saved) return;                    // en cours de retouche ici : elle repartira à l'enregistrement
     const miss = [];
     for (const k of e.blobs || []) {
-      if (await IDB.get('blobs', k).catch(() => null)) continue;
-      try { const r = await syApi('/v1/blobs/' + encodeURIComponent(k), { raw: true }); await IDB.put('blobs', k, await r.blob()) }
+      if (await IDB.get('blobs', k).catch(() => null)) { syMark(k); continue }
+      try { const r = await syApi('/v1/blobs/' + encodeURIComponent(k), { raw: true }); await IDB.put('blobs', k, await r.blob()); syMark(k) }
       catch (err) { if (err.status === 404) miss.push(k); else throw err }
     }
     if (miss.length) {
       const got = window.PrismPeer ? await PrismPeer.fetchMany(miss).catch(() => []) : [];
+      got.forEach(syMark);
       if (got.length < miss.length) { syLog('fichiers manquants pour', m.id, miss.length - got.length); syEnqueue('want', m.id); return }
     }
     PREF.set('libGone', GONE.get().filter(x => x.id !== m.id));
