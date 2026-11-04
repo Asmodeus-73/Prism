@@ -504,6 +504,18 @@ await test('rendu film : pellicule couleur, diapositive, noir et blanc, négatif
   await page.selectOption('#lm-film','20');await page.waitForTimeout(400);await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();
   await page.waitForFunction(()=>S.history[S.hi].label==='Simulation de pellicule',null,{timeout:120000});
   const bw=await ev(()=>{const d=rx(pixelTarget().canvas).getImageData(900,300,1,1).data;return Math.abs(d[0]-d[1])<=2&&Math.abs(d[1]-d[2])<=2});if(!bw)throw new Error('Double-X pas en noir et blanc')});
+await test('photothèque : une photo importée est gardée telle quelle (pas de ré-encodage), se rouvre au pixel près',async()=>{await fresh();
+  const r=await ev(async()=>{const c=mk(1200,800),g=cx(c);const gr=g.createLinearGradient(0,0,1200,800);gr.addColorStop(0,'#c0392b');gr.addColorStop(1,'#2e86de');g.fillStyle=gr;g.fillRect(0,0,1200,800);for(let i=0;i<400;i++){g.fillStyle=`hsl(${i*7},70%,${30+i%40}%)`;g.fillRect((i*37)%1180,(i*53)%780,18,14)}
+    const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9));const f=new File([b],'essai.jpg',{type:'image/jpeg'});
+    await importToLibrary([f]);const d=S.doc,pid=d.pid;const m=await IDB.get('projects',pid);const t=m.layers[0].canvas,blob=await IDB.get('blobs',t[0].key);
+    const ref=rx(d.layers[0].canvas).getImageData(0,0,1200,800).data;S.doc=null;await openLocalProject(pid);const L=S.doc.layers[0],cv=L.canvas;const got=rx(cv).getImageData(0,0,1200,800).data;let diff=0;for(let i=0;i<ref.length;i++)diff=Math.max(diff,Math.abs(ref[i]-got[i]));
+    return [d.name,t.length,blob&&blob.type,!LIB.open,diff].join('|')});
+  if(r!=='essai.jpg|1|image/jpeg|true|0')throw new Error(r)});
+await test('photothèque : le double-clic ouvre la photo même si la grille se redessine entre les deux clics',async()=>{
+  await ev(()=>openLibrary());await page.waitForSelector('.lb-card');const id=await page.$eval('.lb-card',e=>e.dataset.id);
+  await ev(()=>{S.doc=null});const box=await page.locator(`.lb-card[data-id="${id}"]`).boundingBox();const x=box.x+box.width/2,y=box.y+box.height/3;
+  await page.mouse.click(x,y);await ev(()=>{LIB._press=0;renderLibrary()});await page.mouse.click(x,y);
+  await page.waitForFunction(id=>S.doc&&S.doc.pid===id&&!LIB.open,id,{timeout:15000})});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
