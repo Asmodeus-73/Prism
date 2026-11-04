@@ -67,7 +67,9 @@ await test('atelier : panneau de gauche repliable, colonne de droite fixe, bascu
   const a=await ev(()=>[document.body.classList.contains('atelier'),!!document.querySelector('#atRail #atNav'),!!document.querySelector('#atSwitch [data-v=ed][aria-pressed=true]')].join());
   if(a!=='true,true,true')throw new Error('atelier '+a);
   const w0=await ev(()=>document.querySelector('#stage').getBoundingClientRect().width);
-  await page.click('#atFoldBtn');await page.waitForTimeout(250);
+  await page.click('#atFoldBtn');
+  /* the stage widens with a transition: wait for it to settle (slow CI machines) */
+  for(let k=0;k<20&&await ev(w=>document.querySelector('#stage').getBoundingClientRect().width<=w+150,w0);k++)await page.waitForTimeout(100);
   const b=await ev(()=>[document.body.classList.contains('at-fold'),getComputedStyle(document.querySelector('#atStrip')).display,document.querySelector('#stage').getBoundingClientRect().width,getComputedStyle(document.querySelector('aside.insp')).display]);
   if(!b[0]||b[1]!=='flex'||!(b[2]>w0+150)||b[3]==='none')throw new Error('repli '+JSON.stringify(b));
   await page.click('#atStrip [data-k=layers]');await page.waitForTimeout(200);if(await ev(()=>document.body.classList.contains('at-fold')))throw new Error('réouverture');
