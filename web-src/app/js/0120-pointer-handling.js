@@ -9,7 +9,7 @@ view.addEventListener('pointermove',e=>{const p=evPos(e);S.pointer={cx:p.cx,cy:p
 view.addEventListener('pointerup',e=>{pointers.delete(e.pointerId);if(pinch){if(pointers.size<2)pinch=null;return}onUp(e)});
 view.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);pinch=null;cancelStroke();cancelDrag();requestRender()});
 view.addEventListener('pointerleave',()=>{if(S.pointer)S.pointer.inside=false;requestRender()});
-stage.addEventListener('wheel',e=>{if(!S.doc)return;e.preventDefault();const p=evPos(e);if(e.ctrlKey||e.metaKey||e.altKey)zoomAt(S.zoom*Math.exp(-e.deltaY*(e.deltaMode?0.05:0.0022)),p.cx,p.cy);else{S.fitted=false;S.panX-=e.deltaX;S.panY-=e.deltaY;markContent()}},{passive:false});
+stage.addEventListener('wheel',e=>{if(!S.doc)return;e.preventDefault();const p=evPos(e);if(e.ctrlKey||e.metaKey||e.altKey)zoomAt(S.zoom*Math.exp(-e.deltaY*(e.deltaMode?0.05:0.0022)),p.cx,p.cy);else{S.fitted=false;panTo(S.panX-e.deltaX,S.panY-e.deltaY)}},{passive:false});
 view.addEventListener('dblclick',()=>{if(S.tool==='hand')fit()});
 function onDown(e,p){const t=S.tool,alt=e.altKey;
   if(S.wbPick){S.wbPick=false;$('#btnWB')?.classList.remove('on');wbFromPoint(p);return}

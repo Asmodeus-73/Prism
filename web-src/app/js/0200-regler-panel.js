@@ -68,7 +68,7 @@ function renderThumbs(){const d=S.doc,A=ADJ();if(!d||!A||!$('[data-sec="presets"
 /* curve editor */
 let curveDrag=null;
 function curvePts(){const A=ADJ();return A?A.dev.curve[curveCh]:[[0,0],[1,1]]}
-function drawCurve(){const c=$('#curve');if(!c||!ADJ())return;const g=cx(c),W=c.width,H=c.height,st=getComputedStyle(document.documentElement);g.clearRect(0,0,W,H);const hs=S.lastHist;
+function drawCurve(){const c=$('#curve');if(!c||!ADJ())return;const g=cx(c),W=c.width,H=c.height,st=rootStyle();g.clearRect(0,0,W,H);const hs=S.lastHist;
   if(hs){const A=curveCh==='rgb'?null:hs[{r:'R',g:'G',b:'B'}[curveCh]];let mx=1;const v=i=>A?A[i]:(hs.R[i]+hs.G[i]+hs.B[i]);for(let i=2;i<254;i++)mx=Math.max(mx,v(i));g.fillStyle=st.getPropertyValue('--line-2');g.beginPath();g.moveTo(0,H);for(let i=0;i<256;i++)g.lineTo(i/255*W,H-Math.min(1,Math.sqrt(v(i)/mx))*H*0.9);g.lineTo(W,H);g.fill()}
   g.strokeStyle=st.getPropertyValue('--fg-3');g.globalAlpha=0.35;g.lineWidth=1;g.beginPath();for(let k=1;k<4;k++){g.moveTo(W*k/4,0);g.lineTo(W*k/4,H);g.moveTo(0,H*k/4);g.lineTo(W,H*k/4)}g.moveTo(0,H);g.lineTo(W,0);g.stroke();g.globalAlpha=1;
   const col={rgb:st.getPropertyValue('--fg'),r:'#e5483d',g:'#45b450',b:'#4a7be6'}[curveCh],f=curveFn(curvePts());g.strokeStyle=col;g.lineWidth=3;g.beginPath();for(let i=0;i<=W;i+=2){const y=f(i/W);i?g.lineTo(i,H-y*H):g.moveTo(i,H-y*H)}g.stroke();g.fillStyle=col;curvePts().forEach(([x,y])=>{g.beginPath();g.arc(x*W,H-y*H,9,0,7);g.fill()})}

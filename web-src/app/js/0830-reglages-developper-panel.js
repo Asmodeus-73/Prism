@@ -115,7 +115,10 @@ mark();
 (()=>{
 const _h=histogram;let hx=null;
 function inView(){const d=S.doc,v=view;if(!d)return true;const M=new DOMMatrix(viewMatrix(0,0));return[[0,0],[d.w,0],[0,d.h],[d.w,d.h]].every(([x,y])=>{const p=M.transformPoint(new DOMPoint(x,y));return p.x>=-1&&p.y>=-1&&p.x<=v.width+1&&p.y<=v.height+1})}
-function wholeDoc(){const d=S.doc,s=Math.min(1,512/Math.max(d.w,d.h)),W=Math.max(1,Math.round(d.w*s)),H=Math.max(1,Math.round(d.h*s));
+let whKey='',whImg=null;
+/* zoom ou déplacement : la photo entière n'a pas changé, on garde son histogramme */
+function wholeDoc(){const d=S.doc,key=[S.docVer,d.w,d.h,!!S.holdBefore,!!(PROOF&&PROOF.on),d.layers.map(L=>(L.visible?1:0)+(L.kind==='adjust'?JSON.stringify(L.dev):'')+L.opacity+L.blend).join('|')].join('#');if(S.stroke||d.layers.some(L=>L.preview||L.maskPreview)){whKey='';return wholeDoc0()}if(key===whKey&&whImg)return whImg;const im=wholeDoc0();whKey=key;whImg=im;return im}
+function wholeDoc0(){const d=S.doc,s=Math.min(1,512/Math.max(d.w,d.h)),W=Math.max(1,Math.round(d.w*s)),H=Math.max(1,Math.round(d.h*s));
   if(!hx||hx.width!==W||hx.height!==H)hx=mk(W,H);const g=rx(hx);renderStack(g,W,H,[s,0,0,s,0,0],{scale:s,ox:0,oy:0,before:S.holdBefore});if(PROOF.on)proofApply(g,W,H);return g.getImageData(0,0,W,H)}
 histogram=function(img){let im=img;try{if(S.doc&&!inView())im=wholeDoc()}catch(e){console.warn(e);im=img}
   const r=_h.call(this,im);
