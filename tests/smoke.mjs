@@ -568,7 +568,7 @@ await test('effets modifiables : filtre sur une sélection, liste dans Calques, 
   await ev(()=>undo());await page.waitForTimeout(200);const r5=await ev(()=>S.doc.layers.some(l=>PrismEffects.valid(l)));
   if(!(r1.ok&&r1.rows===1&&r1.out&&r1.inn&&r2&&r3===true&&r4&&r5))throw new Error(JSON.stringify({r1,r2,r3,r4,r5}))});
 await test('signaler un problème : Aide, rapport avec version et journal d’erreurs, ticket GitHub court',async()=>{
-  await ev(()=>{console.warn('essai de journal');setTimeout(()=>{throw new Error('erreur volontaire')},0)});await page.waitForTimeout(150);errs.length=0;await page.waitForTimeout(100);
+  await ev(()=>{console.warn('essai de journal');const sc=document.createElement('script');sc.textContent="setTimeout(function(){throw new Error('erreur volontaire')},0)";document.head.appendChild(sc);sc.remove()});await page.waitForTimeout(150);errs.length=0;await page.waitForTimeout(100);
   const r=await ev(()=>{const it=MENU2.help.items().some(x=>x&&x.label==='Signaler un problème…');PrismReport.dialog();const o=document.querySelector('#rpOut').value,u=PrismReport.issueUrl('Test',true);closeDialog();
     return{it,v:o.includes('Version : '+PRISM_VERSION),log:/erreur volontaire/.test(o)&&/essai de journal/.test(o),u:u.startsWith('https://github.com/Asmodeus-73/Prism/issues/new?')&&u.length<=7500}});
   if(!(r.it&&r.v&&r.log&&r.u))throw new Error(JSON.stringify(r))});
