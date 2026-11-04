@@ -186,7 +186,8 @@ async function takeProject(m,take){
     if(L.canvas)L.canvas=await Promise.all(L.canvas.map(take));
     if(L.mask)L.mask=await Promise.all(L.mask.map(take));
     for(const f of ['hi','fbase']){if(L[f]){try{L[f]=await Promise.all(L[f].map(take))}catch(e){L[f]=null;if(f==='fbase')L.filters=null}}}
-    if(L.so&&L.so.t){try{L.so={...L.so,t:await Promise.all(L.so.t.map(take))}}catch(e){L.so=null}}}
+    if(L.so&&L.so.t){try{L.so={...L.so,t:await Promise.all(L.so.t.map(take))}}catch(e){L.so=null}}
+    if(L.filters)L.filters=await Promise.all(L.filters.map(async f=>{if(!f||!Array.isArray(f.den))return f;try{return{...f,den:await Promise.all(f.den.map(take))}}catch(e){return{...f,den:null}}}))}
   if(m.raw&&m.raw.key){try{m.raw={...m.raw,key:(await take({key:m.raw.key})).key}}catch(e){m.raw=null}}
   if(m.thumb)m.thumb=(await take({key:m.thumb})).key}
 const zext=(m,k)=>k===m.thumb?'.jpg':'.png';
@@ -209,8 +210,12 @@ async function restoreLibrary2(file){
     for(const id of ids){
       busy(true,'Restauration… '+(++i)+' / '+ids.length,i/ids.length);
       if(have.has(id)){skipped++;continue}
-      try{const m=checkDims(JSON.parse(new TextDecoder().decode(await z.get('p/'+id+'/revelateur.json'))));
-        const take=async t=>{const ext=zext(m,t.key);const data=await z.get('p/'+id+'/tiles/'+t.key+ext);if(!data)throw new Error('tuile manquante');PIN.add(t.key);await IDB.put('blobs',t.key,new Blob([data],{type:ext==='.jpg'?'image/jpeg':'image/png'}));return t};
+      /* une sauvegarde peut venir d'ailleurs : identifiant sain et identique au projet, objets sans « __proto__ », et jamais une tuile d'une autre photo écrasée */
+      if(!/^[A-Za-z0-9_.-]{1,64}$/.test(id)){failed++;continue}
+      try{const m=checkDims(JSON.parse(new TextDecoder().decode(await z.get('p/'+id+'/revelateur.json')),(k,v)=>(k==='__proto__'||k==='constructor'||k==='prototype')?undefined:v));
+        if(!m||typeof m!=='object'||Array.isArray(m)||!Array.isArray(m.layers))throw new Error('projet illisible');m.id=id;if(typeof m.name!=='string')m.name='Sans titre';m.name=m.name.slice(0,200);
+        const take=async t=>{if(!t||typeof t.key!=='string'||!/^[A-Za-z0-9_.-]{1,128}$/.test(t.key))throw new Error('tuile invalide');if(await IDB.get('blobs',t.key).catch(()=>null)){PIN.add(t.key);return t}
+          const ext=zext(m,t.key);const data=await z.get('p/'+id+'/tiles/'+t.key+ext);if(!data)throw new Error('tuile manquante');PIN.add(t.key);await IDB.put('blobs',t.key,new Blob([data],{type:ext==='.jpg'?'image/jpeg':'image/png'}));return t};
         await takeProject(m,take);m.sync=false;await IDB.put('projects',id,m);manifestKeys(m).forEach(k=>PIN.delete(k));added++}
       catch(e){failed++;console.warn('restauration',id,e)}
       await tick()}
@@ -331,7 +336,7 @@ let gcRun=null,gcAgain=false;
 async function gcOnce(){
   const all=await IDB.keys('blobs');
   const ms=await IDB.all('projects'),keep=new Set();ms.forEach(m=>manifestKeys(m).forEach(k=>keep.add(k)));PIN.forEach(k=>keep.add(k));
-  if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [lcv(L),L.mask,L.fbase,L.so&&L.so.src]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}
+  if(S.doc){if(S.doc.raw&&S.doc.raw.key)keep.add(S.doc.raw.key);for(const L of S.doc.layers)for(const c of [lcv(L),L.mask,L.fbase,L.so&&L.so.src,...(L.filters||[]).map(f=>f&&f.den&&f.den.c)]){const t=c&&encCache.get(c);t&&t.forEach(x=>keep.add(x.key))}}
   if(window.PrismTrash)(await PrismTrash.keys().catch(()=>[])).forEach(k=>keep.add(k)); // la Corbeille garde les tuiles de ses photos
   if(window.PrismVersions)(await PrismVersions.keys().catch(()=>[])).forEach(k=>keep.add(k)); // les versions aussi
   const hk=await (window.PrismHist?PrismHist.keep(keep,ms):[]);

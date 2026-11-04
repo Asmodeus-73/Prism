@@ -572,6 +572,21 @@ await test('signaler un problème : Aide, rapport avec version et journal d’er
   const r=await ev(()=>{const it=MENU2.help.items().some(x=>x&&x.label==='Signaler un problème…');PrismReport.dialog();const o=document.querySelector('#rpOut').value,u=PrismReport.issueUrl('Test',true);closeDialog();
     return{it,v:o.includes('Version : '+PRISM_VERSION),log:/erreur volontaire/.test(o)&&/essai de journal/.test(o),u:u.startsWith('https://github.com/Asmodeus-73/Prism/issues/new?')&&u.length<=7500}});
   if(!(r.it&&r.v&&r.log&&r.u))throw new Error(JSON.stringify(r))});
+await test('effets modifiables : contraste local et visages (appliquer, œil, modifier, annuler)',async()=>{
+  const idle=async()=>{await page.waitForFunction(()=>!document.querySelector('#busy:not([hidden])'),null,{timeout:120000});await page.waitForTimeout(300)};
+  const primary=async()=>{await page.waitForSelector('#scrim button.primary',{timeout:60000});await page.waitForTimeout(300);await page.click('#scrim button.primary');await page.waitForTimeout(300)};
+  const sum=()=>ev(()=>{const L=S.doc.layers.find(l=>l.filters),d=L.canvas.getContext('2d').getImageData(0,0,L.canvas.width,L.canvas.height).data;let s=0;for(let i=0;i<d.length;i+=31)s+=d[i];return s});
+  for(const k of ['llap','faces']){await fresh();await sample();await ev(()=>{switchTab('layers');S.doc.active=S.doc.layers.findIndex(l=>l.kind==='pixel');syncAll()});
+    await ev(k==='llap'?()=>PrismFilm.llap():()=>PrismDepth.faces());await idle();await page.waitForSelector('#scrim');
+    if(k==='faces'){const b=await page.locator('#view').boundingBox();await page.mouse.click(b.x+b.width*.5,b.y+b.height*.5);await page.waitForTimeout(400)}
+    await primary();await idle();
+    const x=await ev(()=>{const L=S.doc.layers.find(l=>l.filters);return L&&L.filters[0].x});const s1=await sum();
+    await page.click('#pane-layers [data-fxt]');await idle();const s0=await sum();await page.click('#pane-layers [data-fxt]');await idle();const s1b=await sum();
+    await page.click('#pane-layers [data-fxe]');await idle();await page.waitForSelector('#scrim');await page.waitForTimeout(400);await page.click('#scrim button:text-is("Annuler")');await page.waitForTimeout(1500);await idle();const sc=await sum();
+    await page.click('#pane-layers [data-fxe]');await idle();await page.waitForSelector('#scrim');await page.waitForTimeout(400);
+    await ev(()=>{const i=[...document.querySelectorAll('#scrim input[type=range]')].pop();i.value=String(+i.min+(+i.max-+i.min)*.3);i.dispatchEvent(new Event('input',{bubbles:true}))});await page.waitForTimeout(500);await primary();await idle();await page.waitForTimeout(500);
+    const s2=await sum(),n=await ev(()=>{const L=S.doc.layers.find(l=>l.filters);return L&&PrismEffects.valid(L)?L.filters.length:0});
+    if(x!==k||s0===s1||s1b!==s1||sc!==s1||s2===s1||n!==1)throw new Error(JSON.stringify({k,x,s0,s1,s1b,sc,s2,n}))}});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

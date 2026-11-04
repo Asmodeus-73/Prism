@@ -26,7 +26,7 @@ const rid = (n = 16) => hex(crypto.getRandomValues(new Uint8Array(n)));
 const sha = async s => hex(await crypto.subtle.digest('SHA-256', enc.encode(s)));
 const KEY_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 const PID_RE = /^[A-Za-z0-9_.-]{1,64}$/;
-const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
+const EMAIL_RE = /^[^\s@<>"'`]{1,64}@[^\s@<>"'`]{1,190}\.[^\s@<>"'`]{2,}$/;   // pas de balise ni de guillemet : l'adresse s'affiche chez les autres membres d'un partage
 const MAX_BODY = 4 << 20;          // un manifeste de projet (JSON) : 4 Mo au plus
 const MAX_BLOB = 500 << 20;        // un fichier : 500 Mo au plus
 
@@ -40,8 +40,15 @@ const same = (a, b) => { if (a.length !== b.length) return false; let d = 0; for
 async function body(req, max = MAX_BODY) {
   const len = +req.headers.get('content-length') || 0;
   if (len > max) throw Object.assign(new Error('trop gros'), { status: 413 });
-  const t = await req.text();
-  if (t.length > max) throw Object.assign(new Error('trop gros'), { status: 413 });
+  // lu morceau par morceau : un corps sans taille annoncée ne remplit pas la mémoire avant d'être refusé
+  let t = '';
+  if (req.body) {
+    const rd = req.body.getReader(), dec = new TextDecoder(); let n = 0;
+    for (;;) { const { done, value } = await rd.read(); if (done) break; n += value.byteLength;
+      if (n > max) { try { await rd.cancel(); } catch { } throw Object.assign(new Error('trop gros'), { status: 413 }); }
+      t += dec.decode(value, { stream: true }); }
+    t += dec.decode();
+  }
   try { return JSON.parse(t || '{}'); } catch { throw Object.assign(new Error('JSON invalide'), { status: 400 }); }
 }
 
@@ -57,7 +64,8 @@ async function auth(env, req, url) {
 }
 
 async function newSession(env, user, dev) {
-  const name = String(dev?.name || 'Appareil').slice(0, 60), platform = String(dev?.platform || 'web').slice(0, 20);
+  const clean = v => String(v ?? '').replace(/[\u0000-\u001f\u007f<>"'`]/g, '').trim();
+  const name = clean(dev?.name).slice(0, 60) || 'Appareil', platform = clean(dev?.platform).slice(0, 20) || 'web';
   let device = dev?.id && PID_RE.test(dev.id) ? dev.id : null;
   if (device) {
     const d = await env.DB.prepare('SELECT user FROM devices WHERE id = ?').bind(device).first();
@@ -210,7 +218,14 @@ async function route(req, env, ctx) {
       if (await env.DB.prepare('SELECT 1 FROM transit WHERE user = ? AND key = ?').bind(me.user, key).first()) return json({ ok: true, already: true });
       if ((await used(env)) + size > limit(env) || (await used(env, me.user)) + size > userLimit(env)) return fail(507, 'full', 'Le transit est plein pour le moment : l’envoi reprendra tout seul.', { retryAfter: 600 });
       const ct = String(req.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-      await env.TRANSIT.put(rk, req.body, { httpMetadata: { contentType: BLOB_TYPES.test(ct) ? ct : 'application/octet-stream' } });
+      // le fichier doit faire exactement la taille annoncée : sinon le quota du transit serait contourné
+      const fl = new FixedLengthStream(size);
+      const piped = req.body ? req.body.pipeTo(fl.writable).catch(() => { }) : fl.writable.close();
+      try { await env.TRANSIT.put(rk, fl.readable, { httpMetadata: { contentType: BLOB_TYPES.test(ct) ? ct : 'application/octet-stream' } }); }
+      catch { await env.TRANSIT.delete(rk).catch(() => { }); return fail(400, 'length', 'Le fichier ne fait pas la taille annoncée.'); }
+      await piped;
+      const head = await env.TRANSIT.head(rk);
+      if (!head || head.size !== size) { await env.TRANSIT.delete(rk).catch(() => { }); return fail(400, 'length', 'Le fichier ne fait pas la taille annoncée.'); }
       await env.DB.prepare('INSERT OR REPLACE INTO transit(user,key,size,created) VALUES(?,?,?,?)').bind(me.user, key, size, now()).run();
       return json({ ok: true }, 201);
     }
@@ -219,7 +234,8 @@ async function route(req, env, ctx) {
       // un fichier d'un autre compte : seulement s'il est annoncé dans un évènement de photo partagée reçu ici
       const from = url.searchParams.get('from');
       if (!o && from && PID_RE.test(from) && from !== me.user) {
-        const ok = await env.DB.prepare('SELECT 1 FROM events WHERE user = ? AND origin = ? AND blobs LIKE ? LIMIT 1').bind(me.user, from, '%"' + key + '"%').first();
+        // instr : recherche exacte (avec LIKE, le « _ » d'un nom de fichier valait n'importe quel caractère)
+        const ok = await env.DB.prepare('SELECT 1 FROM events WHERE user = ? AND origin = ? AND instr(blobs, ?) > 0 LIMIT 1').bind(me.user, from, '"' + key + '"').first();
         if (ok) o = await env.TRANSIT.get(from + '/' + key);
       }
       if (!o) return fail(404, 'gone', 'Ce fichier n’est plus en transit : il viendra d’un autre appareil.');
@@ -229,6 +245,10 @@ async function route(req, env, ctx) {
   }
 
   if (p === '/v1/events' && m === 'POST') {
+    // 1 200 évènements par minute et par compte : assez pour importer une grosse photothèque, pas pour remplir la base
+    const evk = 'events:' + me.user;
+    if (await ipCount(env, evk, 1200, 60e3, false)) return fail(429, 'slow', 'Trop d’envois d’un coup : la synchronisation reprendra dans une minute.', { retryAfter: 60 });
+    await ipCount(env, evk, 1200, 60e3, true);
     const b = await body(req);
     const kind = String(b.kind || '');
     if (!['put', 'delete', 'want'].includes(kind)) return fail(400, 'kind', 'Type d’évènement inconnu.');
@@ -290,12 +310,15 @@ async function route(req, env, ctx) {
     if (!PID_RE.test(pid)) return fail(400, 'pid', 'Identifiant de projet invalide.');
     if (!EMAIL_RE.test(email)) return fail(400, 'email', 'Adresse e-mail invalide.');
     const ipk = 'share:' + me.user;
-    if (await ipCount(env, ipk, 30, 3600e3, false)) return fail(429, 'slow', 'Trop d’invitations envoyées. Réessaie dans une heure.', { retryAfter: 3600 });
-    await ipCount(env, ipk, 30, 3600e3, true);
+    // 10 invitations par heure : la réponse dit si l'adresse a un compte, on ne laisse pas en tester des milliers
+    if (await ipCount(env, ipk, 10, 3600e3, false)) return fail(429, 'slow', 'Trop d’invitations envoyées. Réessaie dans une heure.', { retryAfter: 3600 });
+    await ipCount(env, ipk, 10, 3600e3, true);
     let role = await roleOf(env, pid, me.user);
     if (!role) {   // premier partage : il faut avoir soi-même envoyé cette photo, et que personne d'autre ne la partage déjà
       const own = await env.DB.prepare('SELECT 1 FROM events WHERE user = ? AND pid = ? AND origin IS NULL AND kind = \'put\' LIMIT 1').bind(me.user, pid).first();
-      const taken = await env.DB.prepare('SELECT 1 FROM shares WHERE pid = ? LIMIT 1').bind(pid).first();
+      // la photo d'un autre compte au même identifiant : la partager écraserait la sienne chez lui
+      const taken = await env.DB.prepare('SELECT 1 FROM shares WHERE pid = ? LIMIT 1').bind(pid).first()
+        || await env.DB.prepare('SELECT 1 FROM events WHERE pid = ? AND user != ? AND origin IS NULL LIMIT 1').bind(pid, me.user).first();
       if (!own || taken) return fail(404, 'pid', 'Photo inconnue : synchronise-la d’abord.');
       await env.DB.prepare('INSERT INTO shares(pid,user,role,created) VALUES(?,?,?,?)').bind(pid, me.user, 'owner', now()).run();
       role = 'owner';

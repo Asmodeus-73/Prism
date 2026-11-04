@@ -58,11 +58,7 @@ fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
 /// Only that page is allowed, and no shell is involved (the URL reaches the opener as one argument).
 #[tauri::command]
 fn report_issue(url: String) -> Result<(), String> {
-    const BASE: &str = "https://github.com/Asmodeus-73/Prism/issues/new?";
-    if !url.starts_with(BASE)
-        || url.len() > 8000
-        || !url.bytes().all(|b| b.is_ascii_graphic())
-    {
+    if !issue_url_ok(&url) {
         return Err("adresse refusée".into());
     }
     #[cfg(target_os = "macos")]
@@ -76,6 +72,35 @@ fn report_issue(url: String) -> Result<(), String> {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let mut cmd = std::process::Command::new("xdg-open");
     cmd.arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Only a new-issue page of the Prism repository, already percent-encoded (no space, quote or control character).
+fn issue_url_ok(url: &str) -> bool {
+    const BASE: &str = "https://github.com/Asmodeus-73/Prism/issues/new?";
+    url.starts_with(BASE)
+        && url.len() <= 8000
+        && url.bytes().all(|b| b.is_ascii_graphic() && b != b'"' && b != b'\\' && b != b'`')
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::issue_url_ok;
+    #[test]
+    fn only_prism_issues() {
+        assert!(issue_url_ok("https://github.com/Asmodeus-73/Prism/issues/new?title=a&body=b%20c"));
+        for bad in [
+            "https://evil.example/issues/new?x",
+            "https://github.com/Asmodeus-73/Prism/issues/new?title=a b",
+            "https://github.com/Asmodeus-73/Prism/issues/new?\"&calc",
+            "https://github.com/Asmodeus-73/Prism/issues/new?a\nb",
+            "file:///etc/passwd",
+            "https://github.com/Asmodeus-73/Prism/issues/newx",
+            "https://github.com/Asmodeus-73/Prism.evil.example/issues/new?",
+        ] {
+            assert!(!issue_url_ok(bad), "{bad}");
+        }
+        assert!(!issue_url_ok(&format!("https://github.com/Asmodeus-73/Prism/issues/new?{}", "a".repeat(9000))));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -92,6 +92,8 @@ async function syApply(e) {
   }
   if (e.kind === 'delete') {
     const had = await IDB.get('projects', e.pid).catch(() => null); if (!had) return;
+    // un autre compte ne supprime que la photo qu'il nous a lui-même partagée
+    if (e.origin && had.shareFrom !== e.origin) { syLog('suppression refusée', e.pid); return }
     GONE.add([e.pid]);
     const open = S.doc && S.doc.pid === e.pid;
     if (open) { S.doc.nosave = true; clearTimeout(SAVE.timer); SAVE.timer = null }
@@ -107,6 +109,11 @@ async function syApply(e) {
     m = JSON.parse(JSON.stringify(m), (k, v) => (k === '__proto__' || k === 'constructor' || k === 'prototype') ? undefined : v);
     if (typeof m.name !== 'string') m.name = 'Sans titre'; m.name = m.name.slice(0, 200);
     const local = await IDB.get('projects', m.id).catch(() => null);
+    /* une photo venue d'un autre compte : jamais par-dessus une photo à soi au même identifiant, sauf si on la partage avec lui */
+    if (e.origin) {
+      if (local && local.shareFrom !== e.origin) { if (window.PrismShare) await PrismShare.refresh().catch(() => { }); if (!(window.PrismShare && PrismShare.isShared(m.id))) { syLog('projet d’un autre compte refusé', e.pid); return } }
+      m.shareFrom = local ? local.shareFrom : e.origin;
+    } else if (local && local.shareFrom) m.shareFrom = local.shareFrom;
     if (local && (local.updatedAt || 0) >= (m.updatedAt || 0)) return;          // la version d'ici est plus récente
     if (S.doc && S.doc.pid === m.id && !S.doc.saved) return;                    // en cours de retouche ici : elle repartira à l'enregistrement
     const miss = [];

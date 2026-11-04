@@ -73,7 +73,7 @@ async function restoreLibrary(file){
       if(have.has(id)){skipped++;continue}
       const m=JSON.parse(new TextDecoder().decode(await z.get('p/'+id+'/revelateur.json')));
       const take=async t=>{const ext=t.key===m.thumb?'.jpg':'.png';const data=await z.get('p/'+id+'/tiles/'+t.key+ext);if(!data)throw new Error('tuile manquante');await IDB.put('blobs',t.key,new Blob([data],{type:ext==='.jpg'?'image/jpeg':'image/png'}));return t};
-      for(const L of m.layers){for(const f of ['canvas','mask','hi','fbase']){if(L[f])try{await Promise.all(L[f].map(take))}catch(e){if(f==='hi'||f==='fbase')L[f]=null;else throw e}}}
+      for(const L of m.layers){for(const f of ['canvas','mask','hi','fbase']){if(L[f])try{await Promise.all(L[f].map(take))}catch(e){if(f==='hi'||f==='fbase')L[f]=null;else throw e}}for(const f of L.filters||[]){if(f&&Array.isArray(f.den))try{await Promise.all(f.den.map(take))}catch(e){f.den=null}}}
       if(m.raw&&m.raw.key){try{await take({key:m.raw.key})}catch(e){m.raw=null}}
       if(m.thumb)await take({key:m.thumb});
       m.sync=false;await IDB.put('projects',id,m);added++;await tick()}
@@ -478,7 +478,7 @@ const _enc=encodeCanvas;
 encodeCanvas=async function(c){const hit=encCache.get(c);if(hit){try{let ok=true;for(const t of hit)if(!await tileOK(t)){ok=false;break}if(!ok)encCache.delete(c)}catch(e){encCache.delete(c)}}return _enc.call(this,c)};
 
 const HK=id=>'hist_'+id;
-const canv=L=>[lcv(L),L.mask,L.fbase,L.so&&L.so.src];
+const canv=L=>[lcv(L),L.mask,L.fbase,L.so&&L.so.src,...(L.filters||[]).map(f=>f&&f.den&&f.den.c)];
 /* keys that must survive garbage collection: tiles of every canvas still reachable from undo history or snapshots, plus saved history records */
 async function keep(keepSet,projects){
   const add=s=>{if(!s||!s.layers)return;for(const L of s.layers)for(const c of canv(L)){const t=c&&encCache.get(c);t&&t.forEach(x=>keepSet.add(x.key))}};

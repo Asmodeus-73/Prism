@@ -105,6 +105,128 @@ ok(!ews.got.some(m=>m.type==='peers'&&m.devices.some(d=>d.device===vic.data.devi
 let wsBad=false;try{await wsOpen('0'.repeat(64))}catch(e){wsBad=true}ok(wsBad,'connexion en direct refusée sans vrai jeton');
 vws.w.close();ews.w.close();
 
+// ---------- serveur : seconde série (bêta 18) ----------
+await clear();
+const acct=async(email,ip)=>(await signup(email,ip)).data;
+const putB=(tok,key,n=500,ct='image/png')=>call('/v1/blobs/'+key,{method:'PUT',token:tok,body:new Uint8Array(n),headers:{'content-length':String(n),'content-type':ct}});
+const own=await acct('proprio@example.com','10.20.0.1'),gst=await acct('invite@example.com','10.20.0.2'),trd=await acct('tiers@example.com','10.20.0.3');
+await putB(own.token,'tZaX1');await putB(own.token,'t_aX1');
+await call('/v1/events',{method:'POST',token:own.token,json:{kind:'put',pid:'p_sh',body:{id:'p_sh'},blobs:['tZaX1']}});
+const shr=await call('/v1/shares',{method:'POST',token:own.token,json:{pid:'p_sh',email:'invite@example.com'}});
+await call('/v1/events',{method:'POST',token:own.token,json:{kind:'put',pid:'p_sh',body:{id:'p_sh'},blobs:['tZaX1']}});
+
+attack('Lire le fichier privé d’un compte grâce au joker « _ » d’un partage');
+ok(shr.status===201&&(await call('/v1/blobs/tZaX1?from='+own.user,{token:gst.token})).status===200,'le fichier partagé reste lisible par l’invité');
+ok((await call('/v1/blobs/t_aX1?from='+own.user,{token:gst.token})).status===404,'le fichier privé au nom presque identique reste introuvable');
+
+attack('Envoyer moins (ou plus) que la taille annoncée pour tromper le quota du transit');
+const net=await import('node:net');
+const rawPut=(key,declared,sent)=>new Promise(res=>{const u=new URL(API);const s=net.connect(+u.port,u.hostname,()=>{s.write(`PUT /v1/blobs/${key} HTTP/1.1\r\nHost: ${u.host}\r\nAuthorization: Bearer ${E}\r\nContent-Type: image/png\r\nContent-Length: ${declared}\r\nConnection: close\r\n\r\n`);s.write(Buffer.alloc(sent));s.end()});
+  let b='';s.on('data',d=>b+=d);s.on('close',()=>res(+((b.match(/^HTTP\/1\.1 (\d+)/)||[])[1]||0)));s.on('error',()=>res(0));setTimeout(()=>{s.destroy();res(0)},8000)});
+const short=await rawPut('t_short',4000,100);
+ok(short!==201&&(await call('/v1/blobs/t_short',{token:E})).status===404,`fichier incomplet refusé, rien n’est gardé (${short||'coupé'})`);
+ok((await db.prepare('SELECT COUNT(*) AS n FROM transit WHERE key=?').bind('t_short').first()).n===0,'le quota ne compte pas de faux fichier');
+
+attack('Requête sans taille annoncée de 10 Mo');
+const chunked=await new Promise(res=>{const u=new URL(API+'/v1/events'),q=http.request({host:u.hostname,port:u.port,path:u.pathname,method:'POST',headers:{authorization:'Bearer '+E,'content-type':'application/json','transfer-encoding':'chunked'}},r=>{res(r.statusCode);r.resume()});
+  q.on('error',()=>res(413));q.write('{"kind":"put","pid":"p1","body":{"x":"');for(let i=0;i<10;i++)q.write('a'.repeat(1<<20));q.end('"}}')});
+ok(chunked===413,'refusée dès qu’elle dépasse 4 Mo ('+chunked+')');
+
+attack('Jetons piégés (vide, très long, caractères spéciaux)');
+const tk=[];for(const t of ['',' ','x'.repeat(5000),'%00','../../etc/passwd',"' OR 1=1 --",'Bearer '+T])tk.push((await call('/v1/me',{headers:{authorization:'Bearer '+t}})).status);
+ok(tk.every(s=>s===401),'tous refusés ('+tk.join(', ')+')');
+
+attack('Un invité qui invite d’autres personnes ou retire la propriétaire');
+ok((await call('/v1/shares',{method:'POST',token:gst.token,json:{pid:'p_sh',email:'tiers@example.com'}})).status===403,'il ne peut pas inviter');
+ok((await call('/v1/shares/p_sh/'+own.user,{method:'DELETE',token:gst.token})).status===404,'il ne peut pas retirer la propriétaire');
+ok((await call('/v1/shares',{token:own.token})).data.shares.some(s=>s.pid==='p_sh'&&s.members.length===2),'le partage est intact');
+
+attack('Retoucher une photo partagée pendant que quelqu’un d’autre la tient');
+await call('/v1/locks/p_sh',{method:'POST',token:own.token});
+ok((await call('/v1/locks/p_sh',{method:'POST',token:gst.token})).status===409,'impossible de lui prendre la main');
+ok((await call('/v1/events',{method:'POST',token:gst.token,json:{kind:'put',pid:'p_sh',body:{id:'p_sh',name:'écrasée'},blobs:[]}})).status===423,'ses enregistrements sont refusés');
+await call('/v1/locks/p_sh',{method:'DELETE',token:gst.token});
+ok((await call('/v1/shares',{token:own.token})).data.shares.find(s=>s.pid==='p_sh').lock?.me===true,'il ne peut pas libérer le verrou d’un autre');
+await call('/v1/locks/p_sh',{method:'DELETE',token:own.token});
+
+attack('Un invité qui supprime la photo de la propriétaire');
+const before=(await db.prepare("SELECT COUNT(*) AS n FROM events WHERE user=? AND kind='delete'").bind(own.user).first()).n;
+await call('/v1/events',{method:'POST',token:gst.token,json:{kind:'delete',pid:'p_sh'}});
+ok((await db.prepare("SELECT COUNT(*) AS n FROM events WHERE user=? AND kind='delete'").bind(own.user).first()).n===before,'rien n’est supprimé chez elle : il quitte seulement le partage');
+
+attack('Tester des milliers d’adresses par les invitations (savoir qui a un compte)');
+const inv=[];for(let i=0;i<12;i++)inv.push((await call('/v1/shares',{method:'POST',token:own.token,json:{pid:'p_sh',email:`inconnu${i}@example.com`}})).status);
+ok(inv.slice(0,9).every(s=>s===404)&&inv.slice(9).every(s=>s===429),'bloqué après 10 invitations par heure ('+inv.join(',')+')');
+
+attack('Faux partage d’une photo d’un autre compte, au même identifiant, pour écraser la sienne');
+await call('/v1/events',{method:'POST',token:E,json:{kind:'put',pid:'p_secret',body:{id:'p_secret',name:'piège'},blobs:[]}});
+ok((await call('/v1/shares',{method:'POST',token:E,json:{pid:'p_secret',email:'victime@example.com'}})).status===404,'refusé : cet identifiant appartient déjà à un autre compte');
+
+attack('Se faire passer pour l’appareil d’un autre compte');
+const imp=await login('pirate@example.com','motdepasse1','10.20.0.9',undefined);
+const imp2=await call('/v1/login',{method:'POST',json:{email:'pirate@example.com',password:'motdepasse1',device:{id:vic.data.device,name:'remplacé'}},headers:{'cf-connecting-ip':'10.20.0.10'}});
+ok(imp.status===200&&imp2.data.device!==vic.data.device,'il reçoit son propre appareil');
+ok((await call('/v1/me',{token:T})).data.devices.every(d=>d.name!=='remplacé'),'l’appareil de la victime garde son nom');
+
+attack('Profil et appareil piégés (nom avec du code, photo en SVG ou en adresse javascript:)');
+await call('/v1/me',{method:'PATCH',token:E,json:{name:'<img src=x onerror=alert(1)>Bob'}});
+ok(!/[<>]/.test((await call('/v1/me',{token:E})).data.name),'le nom est nettoyé');
+const av=[];for(const a of ['data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=','javascript:alert(1)','https://evil.example/p.png','data:image/png;base64,'+'A'.repeat(300000)])av.push((await call('/v1/me',{method:'PATCH',token:E,json:{avatar:a}})).status);
+ok(av.every(s=>s===400||s===413),'photos piégées refusées ('+av.join(',')+')');
+const dn=await call('/v1/login',{method:'POST',json:{email:'pirate@example.com',password:'motdepasse1',device:{name:'<script>x</script>Mac'}},headers:{'cf-connecting-ip':'10.20.0.11'}});
+ok((await call('/v1/me',{token:dn.data.token})).data.devices.every(d=>!/[<>]/.test(d.name)),'le nom d’appareil est nettoyé');
+
+attack('Mot de passe de 100 000 caractères (faire calculer le serveur)');
+const tl=performance.now(),lp=await login('victime@example.com','a'.repeat(100000),'10.20.0.12'),dt=performance.now()-tl;
+ok(lp.status===401&&dt<2000,`refusé sans calcul (${Math.round(dt)} ms)`);
+ok((await signup('long@example.com','10.20.0.13').then(()=>call('/v1/signup',{method:'POST',json:{email:'long2@example.com',password:'a'.repeat(100000)},headers:{'cf-connecting-ip':'10.20.0.14'}}))).status===400,'création de compte refusée');
+
+attack('Adresses e-mail piégées');
+const em=[];for(const e of ['a@b','<script>@x.fr','a"b@x.fr','a\n@x.fr','x'.repeat(300)+'@x.fr','a@x.fr\r\nBcc: y@z.fr'])em.push((await call('/v1/signup',{method:'POST',json:{email:e,password:'motdepasse1'},headers:{'cf-connecting-ip':'10.20.1.'+em.length}})).status);
+ok(em.every(s=>s===400),'toutes refusées ('+em.join(',')+')');
+await clear();
+
+attack('Requêtes malformées : JSON très imbriqué, texte invalide, types inattendus');
+const mal=[await call('/v1/events',{method:'POST',token:E,body:'['.repeat(200000),headers:{'content-type':'application/json'}}),await call('/v1/events',{method:'POST',token:E,body:'pas du json'}),
+  await call('/v1/events',{method:'POST',token:E,json:{kind:['put'],pid:{}}}),await call('/v1/ack',{method:'POST',token:E,json:{seq:'x'}}),await call('/v1/events?after=-5',{token:E}),await call('/v1/events?after=1e400',{token:E})];
+ok(mal.every(r=>r.status!==500),'aucune erreur du serveur ('+mal.map(r=>r.status).join(',')+')');
+
+attack('Faire effacer le transit des autres en annonçant avoir tout reçu');
+await call('/v1/ack',{method:'POST',token:E,json:{seq:1e18}});await new Promise(r=>setTimeout(r,300));
+ok((await call('/v1/blobs/t_v2',{token:T})).status===200,'les fichiers de la victime restent en transit');
+
+attack('Saturer ou détourner la connexion en direct');
+const w1=await wsOpen(E);w1.w.send('x'.repeat(200000));w1.w.send('{pas du json');w1.w.send(JSON.stringify({type:'signal',to:'x'.repeat(10000),data:'y'.repeat(70000)}));w1.w.send('{"type":"ping"}');
+await new Promise(r=>setTimeout(r,600));ok(w1.got.some(m=>m.type==='pong'),'le serveur répond toujours');w1.w.close();
+const w2=await new Promise((res,rej)=>{const w=new WebSocket(API.replace(/^http/,'ws')+'/v1/live?token='+E+'&device='+vic.data.device);const got=[];w.onmessage=e=>got.push(JSON.parse(e.data));w.onopen=()=>res({w,got});w.onerror=rej});
+await new Promise(r=>setTimeout(r,400));ok(!w2.got.some(m=>m.type==='peers'&&m.devices.some(d=>d.device===vic.data.device)),'un faux identifiant d’appareil dans l’adresse est ignoré');w2.w.close();
+
+attack('Méthodes et adresses inattendues');
+const odd=[];for(const [m,u] of [['PUT','/v1/me'],['DELETE','/v1/events'],['GET','/v1/blobs/'],['POST','/v1/locks/'],['PATCH','/v1/shares'],['GET','/v1/blobs/%'],['POST','/v1/me']])odd.push((await call(u,{method:m,token:E})).status);
+ok(odd.every(s=>s!==500&&s!==200),'refusées sans erreur ('+odd.join(',')+')');
+
+attack('Lire les réponses depuis un site tiers (cookies, CORS)');
+const cr=await call('/v1/me',{token:E,headers:{origin:'https://evil.example'}});
+ok(!cr.headers.get('access-control-allow-credentials')&&!cr.headers.get('set-cookie'),'aucun cookie : un site tiers n’a rien à voler sans le jeton');
+
+attack('Annoncer 100 000 fichiers dans un évènement');
+const many=Array.from({length:100000},(_,i)=>'t'+i);await call('/v1/events',{method:'POST',token:E,json:{kind:'put',pid:'p_many',body:{id:'p_many'},blobs:many}});
+const last=(await call('/v1/events?after=0',{token:E})).data.events.filter(e=>e.pid==='p_many').pop();
+ok(last&&last.blobs.length<=5000,'la liste est coupée à 5 000');
+
+attack('Réutiliser le jeton d’un appareil retiré pour la connexion en direct');
+let wsLost=false;try{const x=await wsOpen(lost.token);x.w.close()}catch(e){wsLost=true}ok(wsLost,'refusé');
+
+attack('Déposer un fichier dans le dossier d’un autre compte, ou une photo sous son identifiant');
+const cross=[];for(const k of [vic.data.user+'/t_x','..%2f'+vic.data.user+'%2ft_x',encodeURIComponent('../'+vic.data.user+'/t_x')])cross.push((await call('/v1/blobs/'+k,{method:'PUT',token:E,body:new Uint8Array(10),headers:{'content-length':'10'}})).status);
+ok(cross.every(s=>s===400),'clés refusées ('+cross.join(',')+')');
+const nV=(await call('/v1/events?after=0',{token:T})).data.events.length;await call('/v1/events',{method:'POST',token:E,json:{kind:'put',pid:'p_secret',body:{id:'p_secret',name:'écrasée'},blobs:[]}});
+ok((await call('/v1/events?after=0',{token:T})).data.events.length===nV,'rien n’arrive chez la victime');
+
+attack('Remplir la base de milliers d’évènements');
+let ev429=0;await Promise.all(Array.from({length:25},async(_,w)=>{for(let i=0;i<52;i++){const r=await call('/v1/events',{method:'POST',token:E,json:{kind:'want',pid:'*'}});if(r.status===429)ev429++}}));
+ok(ev429>0,'freiné après 1 200 par minute ('+ev429+' refusés sur 1 300)');
+
 // ---------- l'éditeur ----------
 const ENGINE=process.env.PRISM_BROWSER||'chromium';
 const browser=ENGINE==='chromium'?await pw.chromium.launch({args:['--enable-unsafe-swiftshader','--use-gl=swiftshader']}):await pw[ENGINE].launch();
@@ -171,5 +293,95 @@ try{
   ok(!!cs&&!/script-src[^;]*'unsafe-eval'/.test(cs)&&!/script-src[^;]*\*/.test(cs.replace(/https:\/\/\*\.\w+/g,'')),'pas de scripts venus de n’importe où');
   ok(/object-src 'none'|default-src 'self'/.test(cs),'pas de plugins ni de contenu étranger par défaut');
   ok(!/frame-src[^;]*\*/.test(cs),'pas de page étrangère dans un cadre');
+
+  // ---------- éditeur : seconde série (bêta 18) ----------
+  const hits=[];await p.route(/evil\.example/,r=>{hits.push(r.request().url());r.abort()});
+  await p.evaluate(async()=>{closeDialog&&closeDialog();await loadSample();await new Promise(r=>setTimeout(r,300))});
+
+  attack('Effet piégé dans un projet (nom avec du code, « __proto__ », masque vers une adresse web)');
+  await p.evaluate(async X=>{const L=S.doc.layers.find(l=>l.kind==='pixel');L.fbase=cloneC(L.canvas);L.filters=[{x:X,p:{}},{id:'__proto__',p:{}},{x:'constructor',p:{}},{id:'blur',p:{r:2},m:'https://evil.example/m.png'}];L.fout=L.canvas;
+    S.doc.active=S.doc.layers.indexOf(L);switchTab('layers');syncAll();await new Promise(r=>setTimeout(r,200));
+    try{PrismEffects.effectsDialog();await new Promise(r=>setTimeout(r,200));closeDialog()}catch(e){}
+    await PrismEffects.setList(L,L.filters.map(f=>({...f,off:true})),'x').catch(()=>{});await new Promise(r=>setTimeout(r,500))},XSS);
+  ok(!(await pwned()),'le code du nom ne s’exécute pas');
+  ok(!hits.length,'aucune requête vers l’adresse du masque');
+  ok(await p.evaluate(()=>({}).run===undefined&&Object.prototype.name===undefined),'les objets de Prism ne sont pas contaminés');
+
+  attack('Nom de calque et texte piégés (panneau Calques, historique, menus)');
+  await p.evaluate(async X=>{const L=S.doc.layers[S.doc.layers.length-1];L.name=X;pushHistory(X);syncAll();switchTab('history');await new Promise(r=>setTimeout(r,150));switchTab('layers');
+    for(const k of Object.keys(MENU2)){try{openBar(k);await new Promise(r=>setTimeout(r,40))}catch(e){}}document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))},XSS);
+  ok(!(await pwned()),'le code n’est jamais exécuté');
+
+  attack('Sauvegarde de photothèque piégée (prendre la place d’une photo, écraser ses tuiles, « __proto__ »)');
+  const bk=await p.evaluate(async X=>{const ms=(await IDB.all('projects')).filter(m=>m&&m.layers&&m.layers.length);const v=ms[0];const keys=[...manifestKeys(v)];const before=await Promise.all(keys.map(async k=>(await IDB.get('blobs',k)).size));
+    const red=mk(64,64);const g=cx(red);g.fillStyle='#f00';g.fillRect(0,0,64,64);const rb=new Uint8Array(await (await toBlob(red,'image/png')).arrayBuffer());
+    const evil={...v,id:v.id,name:X,cam:X,updatedAt:Date.now()+9};const enc=new TextEncoder();
+    const raw=JSON.stringify(evil).replace('{','{"__proto__":{"pwn":1},');
+    const files=[{name:'prism-library.json',data:enc.encode('{"v":1}')},{name:'p/p_evil/revelateur.json',data:enc.encode(raw)},{name:'p/'+encodeURIComponent('../x')+'/revelateur.json',data:enc.encode(raw)},...keys.map(k=>({name:'p/p_evil/tiles/'+k+(k===v.thumb?'.jpg':'.png'),data:rb}))];
+    const z=await makeZip(files);await PrismBackup.restore(new File([z],'piege.prism-lib.zip'));await new Promise(r=>setTimeout(r,400));
+    const after=await Promise.all(keys.map(async k=>(await IDB.get('blobs',k)).size));const e=await IDB.get('projects','p_evil');const vv=await IDB.get('projects',v.id);
+    try{await openLibrary();await new Promise(r=>setTimeout(r,400));closeLibrary&&closeLibrary()}catch(err){}
+    return {same:before.join()===after.join(),eid:e&&e.id,vname:vv&&vv.name,proto:({}).pwn}},XSS);
+  ok(bk.same,'les tuiles de la photo existante ne sont pas écrasées');
+  ok(bk.eid==='p_evil'&&bk.vname!==XSS,'le projet importé garde son propre identifiant : l’autre photo est intacte');
+  ok(bk.proto===undefined&&!(await pwned()),'pas de contamination ni de code exécuté (nom, appareil photo)');
+
+  attack('SVG avec une image d’un autre site (pixel espion)');
+  await p.evaluate(()=>{window.__d0=S.doc});
+  await p.setInputFiles('#fileOpen',{name:'espion.svg',mimeType:'image/svg+xml',buffer:Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="40" height="40"><image href="https://evil.example/pixel.png" width="40" height="40"/><image xlink:href="https://evil.example/p2.png" width="4" height="4"/><style>@import url(https://evil.example/x.css);</style></svg>')});
+  await until(()=>S.doc!==window.__d0,null,10000);await p.waitForTimeout(500);
+  ok(!hits.length,'aucune requête vers l’autre site ('+hits.length+')');
+
+  attack('Journal de « Signaler un problème » : pas de jeton, de mot de passe ni de chemin local');
+  const rep=await p.evaluate(()=>{console.error('échec wss://prism.example.workers.dev/v1/live?token=SECRETTOKEN123 file:///Users/eliot/Photos/vacances/plage.jpg password=hunter22 Bearer abcdef123456');return PrismReport.report('test',true)});
+  ok(!/SECRETTOKEN123|hunter22|abcdef123456|\/Users\/eliot|vacances/.test(rep),'le journal est nettoyé');
+
+  attack('Lien du rapport : toujours vers les tickets de Prism, même avec une description piégée');
+  const ru=await p.evaluate(()=>PrismReport.issueUrl('"><script>x</script>\njavascript:alert(1)\u0000 https://evil.example',true));
+  ok(ru.startsWith('https://github.com/Asmodeus-73/Prism/issues/new?')&&!/[\s"<>]/.test(ru),'adresse fixe, texte encodé');
+  ok(/fn issue_url_ok/.test(fs.readFileSync(path.join(here,'..','src-tauri','src','lib.rs'),'utf8')),'l’app de bureau refuse toute autre adresse (test dans lib.rs)');
+
+  attack('Compte d’essai : mot de passe jamais gardé en clair, photo de profil piégée refusée');
+  const es=await p.evaluate(async()=>{const pw='MotDePasseSecret9';try{await syEssaiApi('/v1/signup',{method:'POST',json:{email:'essai-secu@example.com',password:pw}})}catch(e){}
+    const raw=localStorage.getItem('prism-essai-comptes')||'';let bad=0;for(const a of ['data:image/svg+xml;base64,PHN2Zz4=','javascript:alert(1)','https://evil.example/a.png'])if(!SY_AVATAR.test(a))bad++;return{clear:raw.includes(pw),has:raw.includes('essai-secu'),bad}});
+  ok(es.has&&!es.clear,'le mot de passe est haché (PBKDF2)');ok(es.bad===3,'photos de profil piégées refusées');
+
+  attack('Page web : une image, un script ou une feuille d’un autre site est bloqué');
+  const cspv=await p.evaluate(async()=>{const v=[];document.addEventListener('securitypolicyviolation',e=>v.push(e.violatedDirective));
+    const i=new Image();i.src='https://evil.example/beacon.png';document.body.appendChild(i);const s=document.createElement('script');s.src='https://evil.example/x.js';document.head.appendChild(s);
+    await new Promise(r=>setTimeout(r,500));i.remove();s.remove();return v});
+  ok(cspv.some(d=>/img-src/.test(d))&&cspv.some(d=>/script-src/.test(d)),'bloqués par les règles de la page ('+cspv.join(', ')+')');
+
+  attack('Message d’une autre fenêtre, collage et glisser-déposer piégés');
+  await p.evaluate(async X=>{window.postMessage({type:'open',url:'https://evil.example/x.jpg',html:X},'*');
+    const dt=new DataTransfer();dt.setData('text/html',X);dt.setData('text/uri-list','https://evil.example/drop.jpg');dt.setData('text/plain','https://evil.example/t.jpg');
+    document.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true}));const st=document.querySelector('#stage')||document.body;st.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}));await new Promise(r=>setTimeout(r,600))},XSS);
+  ok(!(await pwned())&&!hits.length,'rien n’est exécuté ni téléchargé');
+
+  attack('Raccourcis et préréglages piégés dans les préférences');
+  await p.evaluate(async X=>{try{PREF.set('keys2',JSON.parse('{"__proto__":{"pwn":1},"tool.brush":"'+X.replace(/"/g,'\\"')+'"}'))}catch(e){}
+    try{PrismKeys&&PrismKeys.dialog&&PrismKeys.dialog();await new Promise(r=>setTimeout(r,300));closeDialog()}catch(e){}
+    try{shortcutsDialog();await new Promise(r=>setTimeout(r,200));closeDialog()}catch(e){}},XSS);
+  ok(!(await pwned())&&await p.evaluate(()=>({}).pwn===undefined),'rien n’est exécuté ni contaminé');
+
+  attack('Masque d’effet géant dans un projet (60 000 × 60 000 px pour saturer la mémoire)');
+  const bomb=await p.evaluate(async b64=>{const L=S.doc.layers.find(l=>l.kind==='pixel');L.fbase=cloneC(L.canvas);L.filters=[{id:'blur',p:{r:2},m:'data:image/png;base64,'+b64}];L.fout=L.canvas;
+    let err='';await PrismEffects.ready(L.filters,L).catch(e=>{err=e.message});delete L.fbase;delete L.filters;delete L.fout;return err},png.toString('base64'));
+  ok(/masque/.test(bomb),'masque refusé avant d’être décodé ('+bomb+')');
+
+  attack('Rapport de problème : ni nom de photo ni contenu');
+  const rn=await p.evaluate(()=>{if(S.doc)S.doc.name='vacances-secretes-2026.jpg';return PrismReport.report('',true)});
+  ok(!/vacances-secretes/.test(rn),'le nom de la photo n’y est pas');
+
+  attack('Photo reçue d’un autre compte au même identifiant qu’une photo à soi (écraser ou supprimer)');
+  const sw=await p.evaluate(async()=>{const m=(await IDB.all('projects')).find(x=>x&&x.layers&&x.layers.length&&!x.shareFrom);
+    await syApply({kind:'put',pid:m.id,origin:'u_pirate',body:{...m,name:'écrasée par un autre compte',updatedAt:Date.now()+99},blobs:[]});
+    await syApply({kind:'delete',pid:m.id,origin:'u_pirate'});const a=await IDB.get('projects',m.id);return a?a.name:null});
+  ok(sw&&sw!=='écrasée par un autre compte','la photo n’est ni remplacée ni supprimée');
+
+  attack('Réglages d’effet piégés dans un projet (rayon d’un milliard, texte, valeurs négatives)');
+  const tq=await p.evaluate(async()=>{const L=S.doc.layers.find(l=>l.kind==='pixel');L.fbase=cloneC(L.canvas);L.filters=[{id:'blur',p:{r:1e9}},{id:'blur',p:{r:'<b>'}},{id:'blur',p:{r:-1e9}}];L.fout=L.canvas;
+    const t=performance.now();await PrismEffects.setList(L,L.filters.map(f=>({...f})),'x');return performance.now()-t});
+  ok(tq<20000,'recalculé en '+Math.round(tq)+' ms, réglages ramenés dans leurs bornes');
 }finally{await browser.close();await mf.dispose();server.close()}
 console.log('\n'+(fails?fails+' échec(s)':`${n} attaques, toutes repoussées`));process.exit(fails?1:0);
