@@ -3,8 +3,8 @@
 (() => {
   const en = document.documentElement.lang === 'en';
   const T = en
-    ? { mac: 'Download for Mac', win: 'Download for Windows', web: 'Use online', alsoWin: 'Also for <a href="#download">Windows</a>', alsoMac: 'Also for <a href="#download">Mac</a>', free: 'Free', desk: 'Mac and Windows version', ver: v => 'Version ' + v + '. Free, no account, no ads.' }
-    : { mac: 'Télécharger pour Mac', win: 'Télécharger pour Windows', web: 'Utiliser en ligne', alsoWin: 'Aussi pour <a href="#telecharger">Windows</a>', alsoMac: 'Aussi pour <a href="#telecharger">Mac</a>', free: 'Gratuit', desk: 'Version Mac et Windows', ver: v => 'Version ' + v + '. Gratuit, sans compte et sans publicité.' };
+    ? { mac: 'Download for Mac', win: 'Download for Windows', web: 'Use online', alsoWin: '<a href="#download">Windows version</a>', alsoMac: '<a href="#download">Mac version</a>', free: 'Free', desk: 'Mac and Windows version', ver: v => 'Version ' + v + '. Free, no account, no ads.' }
+    : { mac: 'Télécharger pour Mac', win: 'Télécharger pour Windows', web: 'Utiliser en ligne', alsoWin: '<a href="#telecharger">Version Windows</a>', alsoMac: '<a href="#telecharger">Version Mac</a>', free: 'Gratuit', desk: 'Version Mac et Windows', ver: v => 'Version ' + v + '. Gratuit, sans compte et sans publicité.' };
   const $ = id => document.getElementById(id);
   const ua = navigator.userAgent, pf = navigator.platform || '';
   const touch = navigator.maxTouchPoints > 1;

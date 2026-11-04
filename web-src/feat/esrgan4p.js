@@ -102,7 +102,7 @@ function upDialog(){
   const row=(n,v,t,sub,chk,dis)=>`<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;${dis?'opacity:.5':''}"><input type="radio" name="${n}" value="${v}" ${chk?'checked':''} ${dis?'disabled':''} style="margin-top:3px"><span><b style="font-weight:600">${t}</b><br><span class="muted" style="font-size:12px">${sub}</span></span></label>`;
   dialog({title:'Agrandir avec l’IA',body:`<p class="muted" style="margin:0 0 6px">Actuellement ${d.w} × ${d.h} px.</p>
     ${row('upq','fast','Rapide','Quelques secondes. Bords et textes nets.',f!=='max')}
-    ${row('upq','max','Qualité maximale','Plus de détails dans les textures, mais bien plus lent. Premier usage : modèle de 33 Mo à télécharger.',f==='max')}
+    ${row('upq','max','Qualité maximale','Plus de détails dans les textures, plus lent. Premier usage : modèle de 33 Mo à télécharger.',f==='max')}
     <hr style="border:0;border-top:1px solid var(--line-2);margin:6px 0">
     <div style="display:flex;gap:20px">${row('ups',2,'×2',`${d.w*2} × ${d.h*2}`,sc!==4||!fits(4),!fits(2))}${row('ups',4,'×4',`${d.w*4} × ${d.h*4}`,sc===4&&fits(4),!fits(4))}</div>`,
     buttons:[{label:'Annuler'},{label:'Agrandir',primary:true,onClick:dl=>{const q=dl.querySelector('input[name=upq]:checked').value,s=+dl.querySelector('input[name=ups]:checked').value;PREF.set('upQ',q);PREF.set('upS',s);setTimeout(()=>AI.upscale(s,q==='max'?'max':undefined),30)}}]});

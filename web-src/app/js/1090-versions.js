@@ -61,9 +61,9 @@ async function versionsDialog(){const d=S.doc;if(!d||!d.pid){toast('Ouvrez une p
   const pid=d.pid,list=await VERS.of(pid).catch(()=>[]);
   const when=t=>new Date(t).toLocaleString('fr-FR',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   const body=`<div class="vr-new"><input id="vrName" type="text" maxlength="60" placeholder="Nom de la version (par exemple « Avant le ciel »)"><button class="btn" id="vrAdd">Créer une version</button></div>`+
-    (list.length?`<div class="vr-list">${list.map(v=>`<div class="vr-it" data-id="${esc(v.id)}"><img alt=""><div><b>${esc(v.name||when(v.at))}</b><small>${v.name?esc(when(v.at))+' · ':''}${v.why?esc(v.why):v.named?'Version nommée':'Enregistrée automatiquement'} · ${v.m.layers.length} calque${v.m.layers.length>1?'s':''}</small></div>
+    (list.length?`<div class="vr-list">${list.map(v=>`<div class="vr-it" data-id="${esc(v.id)}"><img alt=""><div><b>${esc(v.name||when(v.at))}</b><small>${v.name?esc(when(v.at))+' · ':''}${v.why?esc(v.why):v.named?'Version nommée':'Automatique'} · ${v.m.layers.length} calque${v.m.layers.length>1?'s':''}</small></div>
       <div class="acts"><button class="btn sm primary" data-v="restore">Revenir à celle-ci</button><button class="btn sm" data-v="copy">Ouvrir en copie</button><button class="btn sm" data-v="del" aria-label="Supprimer la version">Supprimer</button></div></div>`).join('')}</div>`
-      :`<p class="vr-empty">Pas encore de version. Prism en garde une tous les quarts d’heure.</p>`);
+      :`<p class="vr-empty">Aucune version. Prism en garde une tous les quarts d’heure.</p>`);
   const dl=dialog({title:'Versions de « '+(d.name||'Sans titre')+' »',body,buttons:[{label:'Fermer',primary:true}]});
   dl.querySelectorAll('.vr-it').forEach(r=>{const v=list.find(x=>x.id===r.dataset.id),img=r.querySelector('img');if(v&&v.m.thumb)IDB.get('blobs',v.m.thumb).then(b=>{if(b){const u=URL.createObjectURL(b);img.onload=()=>URL.revokeObjectURL(u);img.src=u}}).catch(()=>{})});
   const add=async()=>{const n=$('#vrName',dl).value.trim();const v=await vAdd(pid,{name:n||'Version du '+new Date().toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'})});closeDialog();toast(v?'Version créée':'Rien de nouveau');versionsDialog()};

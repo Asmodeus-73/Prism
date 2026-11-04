@@ -588,7 +588,7 @@ function homeDevelop(){
       const au=document.getElementById('btnAuto');au.after(b);b.addEventListener('click',e=>{e.stopPropagation();togglePresets()})}
     const au=document.getElementById('btnAuto');if(au){au.innerHTML=`${svg('<path d="M10 2.5l1.6 4.4 4.4 1.6-4.4 1.6L10 14.5l-1.6-4.4L4 8.5l4.4-1.6z"/>',14)}<span>Auto</span>`}
     const rs=document.getElementById('btnResetAll');if(rs){rs.innerHTML=svg(RESET_IC,15);rs.title='Tout réinitialiser';rs.setAttribute('aria-label','Tout réinitialiser');rs.classList.add('w47-ic')}}
-  const wb=document.getElementById('btnWB');if(wb&&!wb.dataset.w47){wb.dataset.w47='1';wb.className='w47-wb';wb.innerHTML=svg(PIPETTE,14);wb.title='Balance des blancs : cliquez ensuite sur un gris ou un blanc';wb.setAttribute('aria-label','Pipette balance des blancs');
+  const wb=document.getElementById('btnWB');if(wb&&!wb.dataset.w47){wb.dataset.w47='1';wb.className='w47-wb';wb.innerHTML=svg(PIPETTE,14);wb.title='Balance des blancs : cliquez sur un gris ou un blanc';wb.setAttribute('aria-label','Pipette balance des blancs');
     wb.addEventListener('dblclick',e=>e.stopPropagation(),true);wb.addEventListener('contextmenu',e=>e.stopPropagation(),true)}
   /* sub-headings on tall windows, a 1px divider otherwise */
   const temp=pane.querySelector('.row[data-k=temp]'),expo=pane.querySelector('.row[data-k=exposure]');

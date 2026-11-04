@@ -175,7 +175,7 @@ function dnRunAsync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),p
     const r=dnRegion(pl.P,c),im=sg.getImageData(r.x,r.y,r.w,r.h),o=dnTile({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}});rg.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y);await new Promise(r=>setTimeout(r,0))}
    return res}
   dialog({title:F.name,light:true,
-   body:P.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(big?'<p class="muted">Aperçu sur la zone centrale ; l’application traite toute la photo.</p>':'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+   body:P.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(big?'<p class="muted">Aperçu sur la zone centrale ; l’application traite toute la photo.</p>':'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),
    onOpen:el=>{P.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});prev()},
    buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
     {label:'Appliquer',primary:true,onClick:()=>{clear();if(!alive(d,L)){toast('Le calque n’existe plus');return}

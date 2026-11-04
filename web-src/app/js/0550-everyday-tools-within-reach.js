@@ -25,7 +25,7 @@ const QA_ALL=[
   ['resize','Taille','resize',()=>pick('image','Taille de l’image').fn(),'Changer la taille de l’image'],
   ['upscale','Agrandir ×2','zoomin',()=>pick('image','Agrandir ×2').fn(),'Agrandir ×2 avec l’IA'],
   ['reset','Tout annuler','reset',()=>{const b=$('#btnResetAll');if(b)b.click()},'Remettre le réglage actif à zéro'],
-  ['jpeg','JPEG rapide','export',()=>quickExport('jpeg'),'Exporter tout de suite en JPEG haute qualité'],
+  ['jpeg','JPEG rapide','export',()=>quickExport('jpeg'),'Exporter en JPEG haute qualité'],
   ['export','Exporter','export',()=>exportDialog(),'Choisir le format et la taille d’export'],
   ['share','Partager','share',()=>pick('file','Partager pour avis').fn(),'Partager pour avis'],
   ['library','Photothèque','lib',()=>openLibrary(),'Toutes vos photos']];

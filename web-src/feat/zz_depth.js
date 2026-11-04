@@ -90,7 +90,7 @@ async function fxDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!
   const prev=(ms=120)=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!alive())return;try{L.preview=run();o.mark&&o.mark(L.preview,p,L);markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},ms)};
   dialog({title:o.title,light:true,
     body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+(o.colors||[]).map(c=>`<div class="row"><label for="dp-${c[0]}">${c[1]}</label><input type="color" id="dp-${c[0]}" value="${toHex(p[c[0]])}" ${COL}></div>`).join('')
-      +o.params.map(q=>rangeRow('dp-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join('')+(o.extra||'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+      +o.params.map(q=>rangeRow('dp-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join('')+(o.extra||'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),
     onOpen:el=>{o.params.forEach(q=>{const i=$('#dp-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#dp-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});
       (o.colors||[]).forEach(c=>{const i=$('#dp-'+c[0],el);i.oninput=()=>{p[c[0]]=hex(i.value);prev()}});
       if(o.onPhoto)off=onPhoto((k,pt)=>{o.onPhoto(k,pt,p,el);prev(k==='move'?60:0)});o.onOpen&&o.onOpen(el,p,prev);prev(0)},

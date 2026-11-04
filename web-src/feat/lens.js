@@ -308,7 +308,7 @@ function lensDialog(){
   body:`<div class="lensH">Profil de l’objectif</div><div class="lensP"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="lfOn"><span id="lfName" class="muted">Recherche du profil…</span></label>
     <div class="lensPr"><input id="lfQ" placeholder="Chercher un objectif (${'base lensfun'})" autocomplete="off"><select id="lfSel" hidden></select></div>
     <div class="lensPr"><label>Focale <input id="lfF" type="number" min="1" max="2000" step="1" style="width:70px"> mm</label><label>Ouverture f/ <input id="lfA" type="number" min="0.7" max="64" step="0.1" style="width:60px"></label></div></div>`+
-   PAR.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+   PAR.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),
   onOpen:el=>{PAR.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});profileUI(el,d,p,prev)},
   buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
    {label:'Appliquer',primary:true,onClick:()=>{clear();if(idle(p)){toast('Aucune correction à appliquer');markComp();return}applyLens(d,L,orig,{...p})}}]})}

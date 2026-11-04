@@ -77,7 +77,7 @@ function fxDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toa
   const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!alive())return;try{L.preview=run();markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},140)};
   const colRow=c=>`<div class="row"><label for="fv-${c[0]}">${c[1]}</label><input type="color" id="fv-${c[0]}" value="${toHex(p[c[0]]||[0,0,0])}" style="width:44px;height:26px;padding:0;border:0;background:none"><button class="btn sm" data-pick="${c[0]}" title="Prendre la couleur sur la photo">Pipette</button></div>`;
   dialog({title:o.title,light:true,
-    body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+(o.colors||[]).map(colRow).join('')+o.params.map(q=>rangeRow('fv-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join('')+(o.extra||'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+    body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+(o.colors||[]).map(colRow).join('')+o.params.map(q=>rangeRow('fv-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join('')+(o.extra||'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),
     onOpen:el=>{o.params.forEach(q=>{const i=$('#fv-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#fv-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});
       (o.colors||[]).forEach(c=>{const i=$('#fv-'+c[0],el);i.oninput=()=>{p[c[0]]=hex(i.value);prev()};
         $(`[data-pick="${c[0]}"]`,el).onclick=()=>pickOnce(L,v=>{p[c[0]]=v;i.value=toHex(v);prev()})});

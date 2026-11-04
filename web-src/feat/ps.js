@@ -6,7 +6,7 @@ const PSX={jobs:0};
 let psMainP=null;
 /* le module sur la page : pour les actions enregistrées et les effets modifiables, qui appellent les filtres sans attendre */
 PSX.load=()=>window.PSI?Promise.resolve(window.PSI):(psMainP||(psMainP=loadScript(asset('ps/ps.js')).then(()=>window.PSI,e=>{psMainP=null;throw e})));
-PSX.sync=(op,args)=>{if(!window.PSI)throw new Error('le module de calcul se charge encore : réessayez dans un instant');return PSI.run(op,args)};
+PSX.sync=(op,args)=>{if(!window.PSI)throw new Error('module de calcul en chargement : réessayez dans un instant');return PSI.run(op,args)};
 {const pre=()=>PSX.load().catch(e=>console.warn('ps.js',e));if(window.requestIdleCallback)requestIdleCallback(pre,{timeout:4000});else setTimeout(pre,1500)}
 
 /* travaux : un worker par calcul (2 gardés au repos) ; annuler = arrêter le worker, l'interface ne se fige jamais */
@@ -84,7 +84,7 @@ PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target(
       job=null;if(d.sel)r=PSX.mixSel(orig,r,d.sel);L.preview=r;markComp();const st2=$('#ps-state');if(st2)st2.textContent=F.preview==='crop'&&(orig.width>(F.cropSide||900)||orig.height>(F.cropSide||900))?'Aperçu à 100 % sur la zone au centre de l’écran.':''}
     catch(e){if(PSX.cancelled(e))return;console.error(e);const st2=$('#ps-state');if(st2)st2.textContent='';toast('Aperçu impossible : '+(e.message||e),3000)}},F.delay||160)};
   dialog({title:F.name,light:true,
-    body:(F.note?`<p class="muted" style="margin:0 0 8px">${F.note}</p>`:'')+F.params.map(q=>psRow(F,q,p[q[0]])).join('')+(F.extraBody?F.extraBody(p):'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':'')+'<p class="muted" id="ps-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>',
+    body:(F.note?`<p class="muted" style="margin:0 0 8px">${F.note}</p>`:'')+F.params.map(q=>psRow(F,q,p[q[0]])).join('')+(F.extraBody?F.extraBody(p):'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':'')+'<p class="muted" id="ps-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>',
     onOpen:el=>{F.params.forEach(q=>{const i=$('#ps-'+q[0],el);if(!i)return;const ev=i.tagName==='SELECT'||i.type==='checkbox'?'onchange':'oninput';
         i[ev]=()=>{PSX.read(F,el,p);if(F.onInput)F.onInput(q[0],p,el);const o=$('#ps-'+q[0]+'-o',el);if(o)o.textContent=fmtN(+i.value,q[4])+(q[6]||'');refresh()}});
       if(F.onOpen)F.onOpen(el,p,refresh);refresh()},

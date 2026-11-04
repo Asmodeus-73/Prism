@@ -94,7 +94,7 @@ DN.ask=(d,L,img,den)=>{const W=img.width,H=img.height,orig=L.canvas;let k=1,tmr=
   const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!(S.doc===d&&d.layers.includes(L)))return;L.preview=make();markComp()},90)};
   const clear=()=>{clearTimeout(tmr);delete L.preview};
   DN.lastUI={set:v=>{k=v/100;prev()}};
-  dialog({title:'Débruitage IA',light:true,body:rangeRow('dn-k','Force',0,100,1,100,' %')+'<p class="muted">Mélange entre l’original (0) et la version débruitée (100).'+(d.sel?' Appliqué uniquement à la sélection.':'')+'</p>',
+  dialog({title:'Débruitage IA',light:true,body:rangeRow('dn-k','Force',0,100,1,100,' %')+'<p class="muted">Mélange entre l’original (0) et la version débruitée (100).'+(d.sel?' Appliqué à la sélection.':'')+'</p>',
     onOpen:el=>{const i=$('#dn-k',el);i.oninput=()=>{k=+i.value/100;$('#dn-k-o',el).textContent=fmtN(+i.value,1)+' %';prev()};prev()},
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();if(!(S.doc===d&&d.layers.includes(L))){toast('Le calque n’existe plus');return}

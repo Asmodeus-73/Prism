@@ -53,7 +53,7 @@ async function syEssaiApi(path, { method = 'GET', json } = {}) {
   if (path === '/v1/shares' && method === 'GET') return { shares: [] };
   const dm = path.match(/^\/v1\/devices\/(.+)$/);
   if (dm && method === 'DELETE') { for (const t in d.sessions) if (d.sessions[t].user === u.id && d.sessions[t].device === decodeURIComponent(dm[1])) delete d.sessions[t]; ESSAI.save(d); return { ok: true } }
-  syFail(503, 'essai', 'Pas encore de serveur : en mode essai, rien ne se synchronise.');
+  syFail(503, 'essai', 'Mode essai : rien ne se synchronise.');
 }
 { const _api = syApi;
   syApi = async function (path, o = {}) { const base = o.url || (SY.cfg && SY.cfg.url) || SYNC_URL_DEFAULT || '';

@@ -1,6 +1,6 @@
 /* ===== wave32: formes combinées (union, soustraction, intersection, exclusion) et repères enregistrés ===== */
 (()=>{
-const OPS=[['add','Union','Fusionne les formes en une seule'],['sub','Soustraction','Retire les formes du dessus de celle du dessous'],['int','Intersection','Garde uniquement la zone commune'],['xor','Exclusion','Garde les zones non communes']];
+const OPS=[['add','Union','Fusionne les formes en une seule'],['sub','Soustraction','Retire les formes du dessus de celle du dessous'],['int','Intersection','Garde la zone commune'],['xor','Exclusion','Garde les zones non communes']];
 const COMP={add:'source-over',sub:'destination-out',int:'destination-in',xor:'xor'};
 const simple=s=>s&&s.type!=='compound'&&s.type!=='line'&&s.type!=='arrow';
 const _dst=drawShapeTo;

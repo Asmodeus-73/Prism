@@ -135,7 +135,7 @@ const _odP=onDown;onDown=function(e,p){const t=S.tool,d=S.doc;
 
 /* ---------- options bar: what matters stays visible on laptop screens ---------- */
 const _pxP=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pxP.apply(this,arguments)||'';
- if(t==='eyedropper'){const e=S.opts.eyedropper;h+=`<label title="Moyenne des pixels autour du clic">Échantillon<select data-sel="eyedropper.sample">${[['1','1 pixel'],['3','3 × 3'],['5','5 × 5'],['11','11 × 11'],['31','31 × 31']].map(([v,l])=>`<option value="${v}" ${String(e.sample)===v?'selected':''}>${l}</option>`).join('')}</select></label><label title="Décoché : prélève seulement le calque actif"><input type="checkbox" data-chk="eyedropper.all" ${e.all!==false?'checked':''}>Tous les calques</label>`}
+ if(t==='eyedropper'){const e=S.opts.eyedropper;h+=`<label title="Moyenne des pixels autour du clic">Échantillon<select data-sel="eyedropper.sample">${[['1','1 pixel'],['3','3 × 3'],['5','5 × 5'],['11','11 × 11'],['31','31 × 31']].map(([v,l])=>`<option value="${v}" ${String(e.sample)===v?'selected':''}>${l}</option>`).join('')}</select></label><label title="Décoché : calque actif seul"><input type="checkbox" data-chk="eyedropper.all" ${e.all!==false?'checked':''}>Tous les calques</label>`}
  return h};
 // the colour swatch was squeezed to a 6 px sliver as soon as the options overflowed
 (()=>{const st=document.createElement('style');st.textContent='#pill .swatch{flex:none}';document.body.appendChild(st)})();

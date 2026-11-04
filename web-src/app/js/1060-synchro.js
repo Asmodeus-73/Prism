@@ -219,7 +219,7 @@ async function syAccountDialog() {
     const body = `<p class="sy-p">Votre compte relie vos appareils : une photo retouchée ici arrive sur les autres.</p>
       <form id="syForm" class="sy-form" method="post" action="#" autocomplete="on" novalidate>
       <div class="sy-mode" role="tablist" aria-label="Compte"><button type="button" role="tab" data-m="login" aria-selected="true">Se connecter</button><button type="button" role="tab" data-m="signup" aria-selected="false">Créer un compte</button></div>
-      ${SYNC_URL_DEFAULT ? '' : `<label class="sy-f"><span>Serveur</span><input id="syUrl" name="server" type="url" placeholder="Vide : compte d’essai" value="${esc(url0.startsWith('local:') ? '' : url0)}" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore></label><p class="sy-note">Bêta : sans serveur, le compte est créé en essai, sur cet appareil. Pas encore de synchronisation.</p>`}
+      ${SYNC_URL_DEFAULT ? '' : `<label class="sy-f"><span>Serveur</span><input id="syUrl" name="server" type="url" placeholder="Vide : compte d’essai" value="${esc(url0.startsWith('local:') ? '' : url0)}" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore></label><p class="sy-note">Bêta : compte d’essai sur cet appareil, sans synchronisation.</p>`}
       <label class="sy-f"><span>E-mail</span><input id="syEmail" name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" required value="${esc(PREF.get('sync2Email', ''))}"></label>
       <label class="sy-f"><span>Mot de passe</span><input id="syPw" name="password" type="password" autocomplete="current-password" minlength="8" required passwordrules="minlength: 8;"></label>
       <p class="sy-hint" id="syHint" hidden>8 caractères minimum. Votre gestionnaire de mots de passe peut en proposer un.</p>
@@ -251,7 +251,7 @@ async function syAccountDialog() {
       } });
     return;
   }
-  const dl = dialog({ title: 'Compte Prism', body: `<div id="syProf" class="sy-prof"></div>${syEssai() ? '<p class="sy-note">Compte d’essai, sur cet appareil seulement.</p>' : ''}<div id="syInfo" class="sy-info">Chargement…</div>`,
+  const dl = dialog({ title: 'Compte Prism', body: `<div id="syProf" class="sy-prof"></div>${syEssai() ? '<p class="sy-note">Compte d’essai, sur cet appareil.</p>' : ''}<div id="syInfo" class="sy-info">Chargement…</div>`,
     buttons: [{ label: 'Fermer' }, { label: 'Se déconnecter', onClick: () => { syLogout().then(() => toast('Déconnecté : cet appareil ne se synchronise plus')) } }, { label: 'Synchroniser maintenant', primary: true, onClick: () => { sySyncNow(); return false } }] });
   const fill = async () => {
     const box = $('#syInfo', dl); if (!box) return;

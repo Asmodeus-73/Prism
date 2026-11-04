@@ -211,7 +211,7 @@ function liveDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){t
   const clear=()=>{clearTimeout(tmr);job++;delete L.preview};
   const prev=()=>{clearTimeout(tmr);tmr=setTimeout(async()=>{const my=++job;try{const r=await o.run(src.c,src.k,p,null,L);if(my!==job||!alive())return;let c=finalC(L,toCanvas(r),p.amount/100);if(d.sel)c=mixSel(L.canvas,c,d.sel);L.preview=c;markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},180)};
   const row=q=>q[1]==='select'?`<div class="row"><label for="lm-${q[0]}">${q[2]}</label><select id="lm-${q[0]}">${q[3].map((t,i)=>`<option value="${i}"${i===p[q[0]]?' selected':''}>${t}</option>`).join('')}</select></div>`:rangeRow('lm-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6]);
-  dialog({title:o.title,light:true,body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+o.params.map(row).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+  dialog({title:o.title,light:true,body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+o.params.map(row).join('')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),
     onOpen:el=>{o.params.forEach(q=>{const i=$('#lm-'+q[0],el);if(q[1]==='select')i.onchange=()=>{p[q[0]]=+i.value;o.sync&&o.sync(el,p);prev()};else i.oninput=()=>{p[q[0]]=+i.value;$('#lm-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});o.sync&&o.sync(el,p);prev()},
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();markComp();if(!alive()){toast('Le calque n’existe plus');return}
