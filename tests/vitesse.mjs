@@ -40,7 +40,7 @@ await step('passer à la photothèque',MAX.phototheque,async()=>{await page.clic
 await step('ajouter deux photos de 24 Mpx',MAX.ajouter2,async()=>{await page.evaluate(()=>{const _p=pickFiles;pickFiles=async()=>{pickFiles=_p;return [__F[1],__F[2]]}});await page.click('#lbAdd');
   await page.waitForFunction(()=>LIB.open&&document.querySelectorAll('#library .lb-card').length>=3,null,{timeout:120000});await idle()});
 for(let i=0;i<3;i++){const id=await page.evaluate(i=>[...document.querySelectorAll('#library .lb-card')].map(c=>c.dataset.id).filter(x=>!S.doc||x!==S.doc.pid)[i%2],i);
-  await step(`double-clic pour rouvrir une photo (${i+1}/3)`,MAX.rouvrir,async()=>{const b=await page.locator(`#library .lb-card[data-id="${id}"]`).boundingBox();await page.mouse.dblclick(b.x+b.width/2,b.y+b.height/3);
+  await step(`double-clic pour rouvrir une photo (${i+1}/3)`,MAX.rouvrir,async()=>{const card=page.locator(`#library .lb-card[data-id="${id}"]`);let b=null;for(let k=0;k<20&&!b;k++){await card.waitFor({state:'visible',timeout:10000});b=await card.boundingBox()}await page.mouse.dblclick(b.x+b.width/2,b.y+b.height/3);
     await page.waitForFunction(id=>S.doc&&S.doc.pid===id&&!LIB.open,id,{timeout:30000});await idle()});
   await page.click('#atSwitch [data-v=lib]');await page.waitForSelector('#library .lb-card')}
 await step('revenir à l’éditeur',MAX.retour,async()=>{await page.click('#atSwitch [data-v=ed]');await page.waitForFunction(()=>!LIB.open&&S.doc,null,{timeout:30000})});
