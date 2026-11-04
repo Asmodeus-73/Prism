@@ -54,6 +54,30 @@ fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
     window.print().map_err(|e| e.to_string())
 }
 
+/// Opens a new GitHub issue for Prism in the default browser ("Signaler un problème").
+/// Only that page is allowed, and no shell is involved (the URL reaches the opener as one argument).
+#[tauri::command]
+fn report_issue(url: String) -> Result<(), String> {
+    const BASE: &str = "https://github.com/Asmodeus-73/Prism/issues/new?";
+    if !url.starts_with(BASE)
+        || url.len() > 8000
+        || !url.bytes().all(|b| b.is_ascii_graphic())
+    {
+        return Err("adresse refusée".into());
+    }
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("rundll32");
+        c.arg("url.dll,FileProtocolHandler");
+        c
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let mut cmd = std::process::Command::new("xdg-open");
+    cmd.arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -74,6 +98,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             save_file,
             print_page,
+            report_issue,
             sync::sync_folder,
             sync::sync_choose,
             sync::sync_stop,

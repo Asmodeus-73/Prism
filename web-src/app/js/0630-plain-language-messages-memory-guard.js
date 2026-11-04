@@ -36,5 +36,5 @@ const _pushHistory16=pushHistory;pushHistory=function(){const r=_pushHistory16.a
 /* an error nothing caught: it is said once in plain words (at most every 30 s) instead of failing silently */
 {let last=0;const IGN=/ResizeObserver|annulé|AbortError|Script error\.?$/i;
  const say=e=>{const m=String(e&&(e.message||e.reason&&e.reason.message||e.reason)||e||'');if(!m||IGN.test(m))return;console.error('Prism :',e.error||e.reason||e);const t=Date.now();if(t-last<30000)return;last=t;
-   try{toast('Un problème inattendu est survenu ('+m.slice(0,120)+'). Votre travail reste enregistré ; si cela se répète, rechargez Prism.',6000)}catch(_){}};
+   try{toast('Un problème inattendu est survenu ('+m.slice(0,120)+'). Votre travail reste enregistré. Pour nous l’envoyer : Aide › Signaler un problème.',6000)}catch(_){}};
  addEventListener('error',e=>{if(e.target&&e.target!==window)return;say(e)});addEventListener('unhandledrejection',e=>say(e))}

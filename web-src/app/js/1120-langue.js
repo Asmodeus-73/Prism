@@ -55,7 +55,7 @@ const ORIG=new WeakMap(),ORIGA=new WeakMap(),TRACK=new Set();let obs=null;
 const has=/[A-Za-zÀ-ÿ]{2}/;
 function doText(n){const v=n.nodeValue,core=v&&v.trim();if(!core||!has.test(core))return;const p=n.parentElement;if(p&&p.closest(SKIP))return;
   const t=tr(core);if(!t||t===core)return;ORIG.set(n,v);TRACK.add(new WeakRef(n));n.nodeValue=v.replace(core,t)}
-function doAttr(el,a){const v=el.getAttribute(a);if(!v||!has.test(v))return;if(el.closest(SKIP))return;const t=tr(v.trim());if(!t||t===v.trim())return;
+function doAttr(el,a){const v=el.getAttribute(a);if(!v||!has.test(v))return;const host=el.tagName==='TEXTAREA'?el.parentElement:el;if(host&&host.closest(SKIP))return;/* une zone de texte garde son contenu, pas son indication */const t=tr(v.trim());if(!t||t===v.trim())return;
   let o=ORIGA.get(el);if(!o){o={};ORIGA.set(el,o);TRACK.add(new WeakRef(el))}o[a]=v;el.setAttribute(a,t)}
 function walk(root){if(!root)return;if(root.nodeType===3){doText(root);return}if(root.nodeType!==1)return;if(root.closest&&root.closest('script,style'))return;
   for(const a of ATTRS)if(root.hasAttribute(a))doAttr(root,a);
