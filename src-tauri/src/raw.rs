@@ -328,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn upright() {
+    fn turned_upright() {
         // 3x2 image, value = index, each orientation against where the pixels must land
         let px: Vec<[f32; 1]> = (0..6).map(|i| [i as f32 / 65535.0]).collect();
         let turn = |o: rawler::Orientation| {
