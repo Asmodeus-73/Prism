@@ -1,0 +1,101 @@
+/* Prism website — shared styles (French pages at the root, English pages in /en/) */
+:root{--bg:#0e0e11;--bg-2:#16161a;--bg-3:#1d1d23;--line:rgba(255,255,255,.08);--line-2:rgba(255,255,255,.14);--fg:#f2f2f5;--fg-2:#a4a4ae;--fg-3:#787884;--accent:#5b67f0;--accent-2:#7b85ff;--accent-soft:rgba(91,103,240,.14);color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:80px;overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 16px/1.6 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit}
+img{max-width:100%;height:auto}
+.wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+/* header */
+header{position:sticky;top:0;z-index:10;background:rgba(14,14,17,.8);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;gap:24px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:18px;letter-spacing:-.02em;text-decoration:none}
+.brand img{width:32px;height:32px}
+.nav nav{display:flex;gap:22px;margin-left:auto;font-size:14.5px;color:var(--fg-2)}
+.nav nav a{text-decoration:none}.nav nav a:hover,.nav nav a[aria-current]{color:var(--fg)}
+.lang{font-size:13px;color:var(--fg-2);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 10px}
+.lang:hover{color:var(--fg);border-color:var(--line-2)}
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;height:46px;padding:0 22px;border-radius:999px;font:600 15.5px/1 inherit;font-family:inherit;text-decoration:none;border:1px solid var(--line);background:var(--bg-2);color:var(--fg);cursor:pointer;transition:background .15s,transform .15s;white-space:nowrap}
+.btn:hover{background:#1f1f25}
+.btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.btn.primary:hover{background:var(--accent-2)}
+.btn.sm{height:38px;padding:0 16px;font-size:14px}
+.btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+/* hero */
+.hero{text-align:center;padding:84px 24px 20px;position:relative}
+.hero:before{content:"";position:absolute;top:-80px;left:50%;width:min(100vw,1600px);transform:translateX(-50%);height:620px;background:radial-gradient(640px 320px at 50% 30%,rgba(91,103,240,.30),transparent 70%),radial-gradient(420px 220px at 72% 52%,rgba(240,120,170,.13),transparent 70%),radial-gradient(380px 200px at 28% 58%,rgba(70,179,255,.10),transparent 70%);pointer-events:none;z-index:-1}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:5px 14px 5px 6px;border:1px solid var(--line-2);border-radius:999px;font-size:13.5px;color:var(--fg-2);text-decoration:none;background:rgba(255,255,255,.03)}
+.pill b{background:var(--accent);color:#fff;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600}
+.pill:hover{color:var(--fg)}
+h1{font-size:clamp(40px,6.4vw,70px);line-height:1.03;letter-spacing:-.04em;margin:22px 0 18px;font-weight:700}
+h1 .sp{background:linear-gradient(90deg,#ff6b6b,#ffb347,#ffe66d,#5be3a0,#46b3ff,#a77bff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:clamp(17px,2vw,20px);color:var(--fg-2);max-width:660px;margin:0 auto 34px}
+.ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.meta{margin-top:14px;font-size:13.5px;color:var(--fg-2)}
+.meta a{color:var(--fg-2)}
+.shot{margin:56px auto 0;border-radius:16px;overflow:hidden;border:1px solid var(--line-2);box-shadow:0 40px 120px -30px rgba(91,103,240,.38),0 20px 60px -20px rgba(0,0,0,.8);background:var(--bg-2)}
+.shot img{display:block;width:100%;height:auto}
+/* sections */
+section{padding:104px 0 0}
+h2{font-size:clamp(28px,4vw,42px);letter-spacing:-.03em;line-height:1.1;margin:0 0 12px;text-align:center}
+.sub{color:var(--fg-2);text-align:center;max-width:640px;margin:0 auto 44px}
+.kicker{display:block;text-align:center;font-size:12.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-2);margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--bg-2);border:1px solid var(--line);border-radius:16px;padding:26px}
+.card h3{margin:14px 0 6px;font-size:17px;letter-spacing:-.01em}
+.card p{margin:0;color:var(--fg-2);font-size:15px}
+.ic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-2)}
+.ic svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+/* new in 1.0 */
+.new{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.new div{padding:18px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(91,103,240,.08),transparent 70%)}
+.new b{display:block;font-size:15px;margin-bottom:4px}
+.new span{font-size:14px;color:var(--fg-2)}
+/* showcase rows */
+.row{display:grid;grid-template-columns:1fr 1.35fr;gap:48px;align-items:center;margin-top:88px}
+.row.flip{grid-template-columns:1.35fr 1fr}.row.flip .txt{order:2}
+.row h3{font-size:clamp(24px,3vw,32px);letter-spacing:-.03em;line-height:1.15;margin:0 0 12px}
+.row p{color:var(--fg-2);margin:0 0 14px}
+.row ul{margin:0;padding:0;list-style:none;display:grid;gap:8px;color:var(--fg-2);font-size:15px}
+.row li{display:flex;gap:10px}.row li:before{content:"";flex:none;width:6px;height:6px;margin-top:9px;border-radius:50%;background:var(--accent-2)}
+.row .shot{margin:0}
+.row .phone{justify-self:center;width:min(320px,80%);border-radius:34px;border:1px solid var(--line-2);overflow:hidden;box-shadow:0 30px 90px -30px rgba(91,103,240,.4)}
+.row .phone img{display:block;width:100%}
+/* download */
+.dl{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.dl .card{display:flex;flex-direction:column;gap:10px}
+.dl .card h3{margin:4px 0 0;font-size:20px}
+.dl .card .btn{margin-top:auto}
+.dl .card.on{border-color:rgba(91,103,240,.6);box-shadow:0 0 0 1px rgba(91,103,240,.35) inset}
+.note{font-size:13.5px;color:var(--fg-2);margin:0}
+.note b{color:var(--fg)}
+/* faq */
+.faq{max-width:780px;margin:0 auto;display:grid;gap:10px}
+.faq details{background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:0 20px}
+.faq summary{cursor:pointer;list-style:none;padding:18px 0;font-weight:600;display:flex;justify-content:space-between;gap:16px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary:after{content:"+";color:var(--fg-3);font-weight:400;font-size:20px;line-height:1}
+.faq details[open] summary:after{content:"–"}
+.faq details p{margin:0 0 18px;color:var(--fg-2)}
+/* long text pages */
+.page{max-width:760px;margin:0 auto;padding:72px 24px 0}
+.page h1{font-size:clamp(34px,5vw,52px);text-align:left;margin:0 0 12px}
+.page .lead{margin:0 0 40px;text-align:left}
+.page h2{text-align:left;font-size:24px;margin:44px 0 10px}
+.page h3{font-size:17px;margin:26px 0 6px}
+.page p,.page li{color:var(--fg-2)}
+.page ul{padding-left:20px}
+.page li{margin:4px 0}
+.page b,.page strong{color:var(--fg)}
+.ver{border-left:2px solid var(--line-2);padding-left:22px;margin-top:40px}
+.ver h2{margin-top:0;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.ver h2 small{font-size:13px;font-weight:500;color:var(--fg-3);letter-spacing:0}
+.tag{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent-2);letter-spacing:0}
+/* footer */
+footer{margin-top:120px;border-top:1px solid var(--line);padding:30px 0 40px;color:var(--fg-2);font-size:14px}
+footer .wrap{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+footer a{text-decoration:none}footer a:hover{color:var(--fg)}
+footer .sp{flex:1}
+@media (max-width:960px){.new{grid-template-columns:1fr 1fr}.row,.row.flip{grid-template-columns:1fr;gap:28px;margin-top:64px}.row.flip .txt{order:0}}
+@media (max-width:760px){.grid,.dl,.new{grid-template-columns:1fr}.nav nav{display:none}.nav .lang{margin-left:auto}.hero{padding-top:52px}section{padding-top:76px}.nav .btn{display:none}}
