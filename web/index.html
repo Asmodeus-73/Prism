@@ -1059,7 +1059,7 @@ function render(){rq=false;if(vrDirty||!S.vw||view.width<2)resizeView();const c=
   if(S.contentDirty)renderContent();const d=S.doc,pr=S.pr;
   if(!checker){const t=mk(16,16),g=cx(t);g.fillStyle='#b9b9b9';g.fillRect(0,0,16,16);g.fillStyle='#8e8e8e';g.fillRect(0,0,8,8);g.fillRect(8,8,8,8);checker=c.createPattern(t,'repeat')}
   c.save();c.setTransform(...viewMatrix(0,0));c.beginPath();c.rect(0,0,d.w,d.h);c.setTransform(1,0,0,1,0,0);c.clip();c.fillStyle=checker;c.fillRect(0,0,v.width,v.height);c.restore();
-  if(S.workPos){const ws=S.workSize,lq=ws&&ws.k<1;if(lq){c.imageSmoothingEnabled=true;c.imageSmoothingQuality='low'}
+  if(S.workPos){const ws=S.workSize,lq=ws&&ws.k<1;if(lq){c.imageSmoothingEnabled=true;c.imageSmoothingQuality='medium'}
     const wz=S.workZ||1,dw=(lq?ws.w:work.width)*wz,dh=(lq?ws.h:work.height)*wz;c.drawImage(work,S.workPos.x,S.workPos.y,dw,dh);if(S.compare==='split'&&!S.holdBefore){const sx=Math.round(S.splitX*v.width);c.save();c.beginPath();c.rect(0,0,sx,v.height);c.clip();c.drawImage(workB,S.workPos.x,S.workPos.y,dw,dh);c.restore()}}
   drawOverlays(c,pr);updateStatus();positionSplit()}
 function renderContent(){const _t0=performance.now();
@@ -1069,7 +1069,11 @@ function renderContent(){const _t0=performance.now();
 /* aperçu rapide : pendant qu'un curseur bouge, si l'image complète met plus de 60 ms à se calculer (grande photo, machine modeste),
    on la calcule à une résolution réduite (jusqu'à 35 %) pour garder ~25 images/s ; la pleine résolution revient dès qu'on lâche le curseur */
 const LQ={full:0,t:0,last:0,k:1};
-function lqFactor(){if(!S.sliding||S.stroke||S.holdBefore||LQ.full<60)return 1;return Math.max(.35,Math.min(1,Math.round(Math.sqrt(40/LQ.full)*20)/20))}
+/* jamais pour les réglages de détail (netteté, texture, bruit, grain…) : en basse résolution on ne verrait pas leur effet, l'image paraîtrait floue.
+   le facteur est choisi une fois par glissé et ne bouge plus ensuite : sinon l'image change d'échelle d'une image à l'autre et tremble */
+const LQ_DETAIL=/^(sharpen|sharpRadius|texture|clarity|noise|grain|grainSize|dehaze)$/;
+function lqFactor(){if(!S.sliding||S.stroke||S.holdBefore){LQ.lock=0;return 1}const el=S.slideEl,k0=el&&(el.dataset&&el.dataset.k||el.id||'').replace(/^d-/,'');if(k0&&LQ_DETAIL.test(k0))return 1;
+  if(LQ.lock)return LQ.lock;if(LQ.full<60)return 1;LQ.lock=Math.max(.5,Math.min(1,Math.round(Math.sqrt(40/LQ.full)*10)/10));return LQ.lock}
 function lqRefine(){clearTimeout(LQ.t);LQ.t=setTimeout(()=>{if(!S.doc)return;if(S.sliding){lqRefine();return}if(S.workSize&&S.workSize.k<1)markContent()},140)}
 function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width,H=view.height,sc=S.zoom*pr;
   const M=new DOMMatrix(viewMatrix(0,0));const pts=[[0,0],[d.w,0],[0,d.h],[d.w,d.h]].map(([x,y])=>{const p=M.transformPoint(new DOMPoint(x,y));return[p.x,p.y]});
@@ -1716,7 +1720,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{S.co
 new MutationObserver(()=>{S.contentDirty=true;requestRender();setTimeout(drawCurve,30)}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 
 /* ================= sample photo ================= */
-function loadSample(){const W=1800,H=1200,c=mk(W,H),g=cx(c);let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646};const pv=[];for(let i=0;i<512;i++)pv.push(rnd());
+function loadSampleScene(){const W=1800,H=1200,c=mk(W,H),g=cx(c);let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646};const pv=[];for(let i=0;i<512;i++)pv.push(rnd());
   const noise=x=>{const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return pv[i&511]*(1-u)+pv[(i+1)&511]*u},fbm=(x,o)=>{let v=0,a=0.5,fq=1;for(let k=0;k<o;k++){v+=a*Math.abs(noise(x*fq)*2-1);a*=0.5;fq*=2.03}return v};const hy=Math.round(H*0.63);
   let sk=g.createLinearGradient(0,0,0,hy);sk.addColorStop(0,'#3a4d72');sk.addColorStop(0.45,'#8f8aa0');sk.addColorStop(0.78,'#d9a687');sk.addColorStop(1,'#efc79c');g.fillStyle=sk;g.fillRect(0,0,W,hy);
   let sun=g.createRadialGradient(W*0.66,hy*0.83,4,W*0.66,hy*0.83,W*0.45);sun.addColorStop(0,'rgba(255,236,200,.95)');sun.addColorStop(0.06,'rgba(255,214,160,.65)');sun.addColorStop(0.35,'rgba(255,190,140,.18)');sun.addColorStop(1,'rgba(255,190,140,0)');g.fillStyle=sun;g.fillRect(0,0,W,hy);
@@ -1735,6 +1739,9 @@ function loadSample(){const W=1800,H=1200,c=mk(W,H),g=cx(c);let seed=7;const rnd
   const img=g.getImageData(0,0,W,H),d=img.data;for(let i=0;i<d.length;i+=4){const n=(rnd()-0.5)*9;for(let k=0;k<3;k++)d[i+k]=clamp(28+d[i+k]*0.8+n,0,255)}g.putImageData(img,0,0);
   setDoc(c,'lac-au-crepuscule.jpg',{sample:true});toast('Photo d’exemple chargée. Ouvrez la vôtre (JPEG, HEIC ou RAW) avec Fichier > Ouvrir ou en la glissant ici.',4000)}
 
+/* the default sample is a real photo (web/sample/lac.jpg, 1800×1200); the drawn scene stays as a fallback when the file can't be read */
+async function loadSample(){try{const r=await fetch('sample/lac.jpg');if(!r.ok)throw 0;const bm=await createImageBitmap(await r.blob());const c=mk(bm.width,bm.height);cx(c).drawImage(bm,0,0);bm.close&&bm.close();
+  setDoc(c,'lac-et-roseaux.jpg',{sample:true});toast('Photo d’exemple chargée. Ouvrez la vôtre (JPEG, HEIC ou RAW) avec Fichier > Ouvrir ou en la glissant ici.',4000)}catch(e){loadSampleScene()}}
 /* ================= projects: local store (IndexedDB) ================= */
 const uid8=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 const DEVICE=(()=>{try{let d=localStorage.getItem('rv-device');if(!d){d=uid8();localStorage.setItem('rv-device',d)}return d}catch(e){return uid8()}})();
@@ -5937,7 +5944,7 @@ const all=root=>{(root.querySelectorAll?root.querySelectorAll('input[type=range]
 new MutationObserver(ms=>{for(const m of ms){m.addedNodes.forEach(n=>{if(n.nodeType===1)all(n)});if(m.type==='attributes')paint(m.target)}}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['min','max','value']});
 all(document);
 /* while a slider is being dragged the histogram is not read back (it stalls the graphics pipeline) */
-document.addEventListener('pointerdown',e=>{if(e.target&&e.target.type==='range')S.sliding=true},true);
+document.addEventListener('pointerdown',e=>{if(e.target&&e.target.type==='range'){S.sliding=true;S.slideEl=e.target;LQ.lock=0}},true);
 const up=()=>{if(S.sliding){S.sliding=false;try{markContent()}catch(e){}}};addEventListener('pointerup',up,true);addEventListener('pointercancel',up,true);
 })();
 
@@ -9819,16 +9826,20 @@ async function syAccountDialog() {
       } });
     return;
   }
-  const dl = dialog({ title: 'Compte Prism', body: `<div id="syProf" class="sy-prof"></div>${syEssai() ? '<p class="sy-note">Compte d’essai, sur cet appareil.</p>' : ''}<div id="syInfo" class="sy-info">Chargement…</div>`,
-    buttons: [{ label: 'Fermer' }, { label: 'Se déconnecter', onClick: () => { syLogout().then(() => toast('Déconnecté : cet appareil ne se synchronise plus')) } }, { label: 'Synchroniser maintenant', primary: true, onClick: () => { sySyncNow(); return false } }] });
+  const dl = dialog({ title: 'Compte Prism', body: `<div id="syProf" class="sy-prof"></div><div id="syInfo" class="sy-info"><p class="sy-u">Chargement…</p></div>`,
+    buttons: [{ label: 'Se déconnecter', onClick: () => { syLogout().then(() => toast('Déconnecté : cet appareil ne se synchronise plus')) } }, { label: 'Fermer', primary: true }] });
+  dl.classList.add('sy-dlg');
   const fill = async () => {
     const box = $('#syInfo', dl); if (!box) return;
-    let me = null, use = null; try { [me, use] = await Promise.all([syApi('/v1/me'), syApi('/v1/usage')]) } catch (e) { box.textContent = e.message; return }
+    let me = null, use = null; try { [me, use] = await Promise.all([syApi('/v1/me'), syApi('/v1/usage')]) } catch (e) { box.innerHTML = `<p class="sy-u">${esc(e.message)}</p>`; return }
     syProfFill($('#syProf', dl), me);
-    const on = new Set(SY.peers.map(p => p.device));
-    box.innerHTML = `<div class="sy-h">Appareils</div>${me.devices.map(d => `<div class="sy-dev"><span class="sy-dot${d.id === SY.cfg.device || on.has(d.id) ? ' on' : ''}"></span><b>${esc(d.name)}</b>${d.id === SY.cfg.device ? '<small>cet appareil</small>' : `<small>${on.has(d.id) ? 'allumé' : 'vu ' + esc(window.PrismHome ? PrismHome.rel(d.last) : new Date(d.last).toLocaleString('fr-FR'))}</small><button class="btn sm" data-rm="${esc(d.id)}">Retirer</button>`}</div>`).join('')}
-      ${syEssai() ? '' : `<div class="sy-h">Transit Cloudflare</div><div class="sy-bar"><i style="width:${Math.min(100, 100 * use.used / use.limit).toFixed(1)}%"></i></div><small class="sy-u">${syFmt(use.used)} sur ${syFmt(use.limit)} · effacé dès réception, ${use.hours} h au plus</small>`}
-      <div class="sy-h">Cet appareil</div><small class="sy-u">${SY.state === 'ok' ? 'À jour' : SY.state === 'busy' ? 'Synchronisation…' : esc(SY.msg || 'En attente')}${SY.out.length ? ` · ${SY.out.length} envoi${SY.out.length > 1 ? 's' : ''} en attente` : ''}</small>`;
+    const on = new Set(SY.peers.map(p => p.device)), st = SY.state === 'ok' ? 'ok' : SY.state === 'busy' ? 'busy' : 'wait';
+    const stTxt = st === 'ok' ? 'À jour' : st === 'busy' ? 'Synchronisation…' : esc(SY.msg || 'En attente'), n = SY.out.length;
+    box.innerHTML = `<section class="sy-sec"><div class="sy-h">Appareils <span>${me.devices.length}</span></div><ul class="sy-devs">${me.devices.map(d => { const self = d.id === SY.cfg.device, live = self || on.has(d.id);
+        return `<li class="sy-dev"><span class="sy-dot${live ? ' on' : ''}"></span><b>${esc(d.name)}</b><small>${self ? 'cet appareil' : live ? 'allumé' : 'vu ' + esc(window.PrismHome ? PrismHome.rel(d.last) : new Date(d.last).toLocaleString('fr-FR'))}</small>${self ? '' : `<button class="btn sm ghost" data-rm="${esc(d.id)}">Retirer</button>`}</li>` }).join('')}</ul></section>
+      <section class="sy-sec"><div class="sy-h">Synchronisation</div><div class="sy-st"><span class="sy-dot ${st}"></span><div class="sy-stt"><b>${stTxt}</b>${n ? `<small>${n} envoi${n > 1 ? 's' : ''} en attente</small>` : ''}</div><button class="btn sm" id="syNow"${st === 'busy' ? ' disabled' : ''}>Synchroniser</button></div>
+      ${syEssai() ? '<p class="sy-note">Compte d’essai : rien ne quitte cet appareil.</p>' : `<div class="sy-bar"><i style="width:${Math.min(100, 100 * use.used / use.limit).toFixed(1)}%"></i></div><small class="sy-u">Transit : ${syFmt(use.used)} sur ${syFmt(use.limit)} · effacé dès réception, ${use.hours} h au plus</small>`}</section>`;
+    $('#syNow', box).onclick = () => sySyncNow();
     box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { if (!await askConfirm('Retirer cet appareil du compte ? Il ne recevra plus rien.', { title: 'Retirer l’appareil', ok: 'Retirer', danger: true })) return syAccountDialog(); await syApi('/v1/devices/' + encodeURIComponent(b.dataset.rm), { method: 'DELETE' }).catch(e => toast(e.message)); syAccountDialog() });
   };
   fill(); const h = () => fill(); document.addEventListener('prism-sync', h); document.addEventListener('prism-peers', h);
@@ -9839,8 +9850,13 @@ async function syAccountDialog() {
 .sy-p{margin:0 0 12px;color:var(--fg-2);line-height:1.45;max-width:440px}
 .sy-form{margin:0}.sy-mode{display:inline-flex;gap:2px;padding:2px;margin:0 0 12px;border-radius:9px;background:var(--chrome-2)}.sy-mode button{height:28px;padding:0 12px;border:0;border-radius:7px;background:none;color:var(--fg-3);font:500 12.5px var(--ui);cursor:pointer}.sy-mode button[aria-selected=true]{background:var(--raise);color:var(--fg);box-shadow:var(--shadow-s)}.sy-hint{margin:-4px 0 10px;font-size:12px;color:var(--fg-3)}.sy-submit{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}.sy-f{display:grid;gap:4px;margin:0 0 10px}.sy-f span{font-size:12px;color:var(--fg-2)}.sy-f input{height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--chrome);color:var(--fg);font:inherit}
 .sy-err{min-height:18px;margin:0;color:var(--danger,#c33);font-size:12.5px}
-.sy-info{display:grid;gap:6px;min-width:min(420px,78vw)}.sy-h{margin-top:8px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-2)}
-.sy-dev{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--chrome-2)}.sy-dev b{font-weight:600}.sy-dev small{color:var(--fg-2);margin-right:auto}
+.sy-info{display:grid;gap:14px;min-width:0}.sy-h{display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)}.sy-h span{padding:0 6px;border-radius:9px;background:var(--chrome-2);color:var(--fg-2);font-size:10.5px;letter-spacing:0;line-height:17px}
+.sy-dlg{width:min(460px,calc(100vw - 16px));overflow-x:hidden}.sy-dlg .body{gap:16px;padding-top:6px}.sy-dlg *{box-sizing:border-box}
+.sy-sec{min-width:0}.sy-dlg .btn.ghost{background:none;border-color:transparent;color:var(--fg-2)}.sy-dlg .btn.ghost:hover{background:var(--chrome-2);color:var(--fg)}.sy-dlg .sy-pb{margin-left:-8px}.sy-devs{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.sy-st{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--chrome-2)}.sy-stt{flex:1;min-width:0;display:grid;gap:1px}.sy-stt b{font-weight:600;font-size:13px}.sy-stt small{color:var(--fg-2);font-size:12px}
+.sy-dot.busy{background:var(--accent);animation:syPulse 1s ease-in-out infinite alternate}.sy-dot.wait{background:#e0a43a}@keyframes syPulse{to{opacity:.35}}
+.sy-sec .sy-note{margin:8px 0 0;max-width:none}.sy-sec .sy-bar{margin-top:10px}
+.sy-dev{display:flex;align-items:center;gap:8px;min-height:38px;padding:6px 8px 6px 12px;border-radius:10px;background:var(--chrome-2)}.sy-dev b{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sy-dev small{color:var(--fg-2);margin-right:auto;white-space:nowrap}.sy-dot{flex:none}
 .sy-dot{width:8px;height:8px;border-radius:50%;background:var(--line-2,#bbb)}.sy-dot.on{background:#2fb36b}
 .sy-bar{height:6px;border-radius:3px;background:var(--chrome-2);overflow:hidden}.sy-bar i{display:block;height:100%;background:var(--accent)}
 .sy-u{color:var(--fg-2)}`; document.head.appendChild(st);
@@ -9923,11 +9939,11 @@ async function syAvatarFrom(file) {
   return url }
 function syProfFill(box, me) {
   if (!box || !me) return; const p = { name: me.name, avatar: me.avatar, email: me.email };
-  box.innerHTML = `<div class="sy-av">${syAvatarHtml(p, 64)}</div><div class="sy-pf"><label class="sy-f"><span>Nom affiché</span><input id="syName" type="text" maxlength="60" placeholder="Nom ou pseudo" value="${esc(me.name || '')}"></label>
-    <small class="sy-u">${esc(me.email || '')}</small><div class="sy-pb"><button class="btn sm" id="syPic">${me.avatar ? 'Changer la photo' : 'Ajouter une photo'}</button>${me.avatar ? '<button class="btn sm" id="syPicRm">Retirer la photo</button>' : ''}<input id="syPicIn" type="file" accept="image/*" hidden></div></div>`;
+  box.innerHTML = `<button type="button" class="sy-av" id="syPicAv" title="${me.avatar ? 'Changer la photo' : 'Ajouter une photo'}">${syAvatarHtml(p, 64)}<i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></i></button><div class="sy-pf"><label class="sy-f"><span>Nom affiché</span><input id="syName" type="text" maxlength="60" placeholder="Nom ou pseudo" value="${esc(me.name || '')}"></label>
+    <small class="sy-u sy-mail">${esc(me.email || '')}${syEssai() ? '<em>Essai</em>' : ''}</small><div class="sy-pb"><button class="btn sm ghost" id="syPic">${me.avatar ? 'Changer la photo' : 'Ajouter une photo'}</button>${me.avatar ? '<button class="btn sm ghost" id="syPicRm">Retirer</button>' : ''}<input id="syPicIn" type="file" accept="image/*" hidden></div></div>`;
   const save = async (o, ok) => { try { await syApi('/v1/me', { method: 'PATCH', json: o }); const m = await syProfile(); syProfFill(box, m); if (ok) toast(ok) } catch (e) { toast(e.message || 'Profil non enregistré') } };
   const nm = $('#syName', box); nm.onchange = () => save({ name: nm.value }, 'Nom enregistré'); nm.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); nm.blur() } };
-  const inp = $('#syPicIn', box); $('#syPic', box).onclick = () => inp.click();
+  const inp = $('#syPicIn', box); $('#syPic', box).onclick = () => inp.click(); $('#syPicAv', box).onclick = () => inp.click();
   inp.onchange = async () => { const f = inp.files && inp.files[0]; if (!f) return; try { await save({ avatar: await syAvatarFrom(f) }, 'Photo de profil enregistrée') } catch (e) { toast(e.message) } };
   const rm = $('#syPicRm', box); if (rm) rm.onclick = () => save({ avatar: null }, 'Photo retirée');
 }
@@ -9943,7 +9959,10 @@ function syBadge() {
   const st = document.createElement('style'); st.textContent = `
 .sy-note{margin:0 0 12px;padding:8px 10px;border-radius:8px;background:var(--accent-soft);color:var(--fg-2);font-size:12.5px;line-height:1.45;max-width:440px}
 .sy-prof{display:flex;gap:14px;align-items:flex-start;margin:0 0 12px}
-.sy-av{width:64px;height:64px;flex:none;border-radius:50%;overflow:hidden;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:26px;font-weight:600}
+.sy-av{position:relative;width:64px;height:64px;flex:none;padding:0;border:0;border-radius:50%;overflow:hidden;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:inherit;font-size:26px;font-weight:600;line-height:1;cursor:pointer}
+button.sy-av i{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.45);opacity:0;transition:opacity .12s}button.sy-av:hover i,button.sy-av:focus-visible i{opacity:1}button.sy-av svg{width:22px;height:22px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linejoin:round}
+.sy-mail{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sy-mail em{font-style:normal;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:9px;background:var(--accent-soft);color:var(--accent)}
+.sy-pf input{width:100%;min-width:0}
 .sy-av img{width:100%;height:100%;object-fit:cover;display:block}
 .sy-pf{flex:1;min-width:0;display:grid;gap:4px}.sy-pf .sy-f{margin:0}.sy-pb{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .sy-badge{width:30px;height:30px;padding:0;border:1px solid var(--line-2);border-radius:50%;overflow:hidden;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font:600 13px/1 inherit;cursor:pointer;margin-right:6px;flex:none}
@@ -10913,7 +10932,7 @@ body.no-doc .hm .w-tile:first-child b,body.no-doc .hm .w-tile:first-child span{c
 body.no-doc .hm #wTips{display:grid!important;gap:8px;margin:0;font-size:12.5px;color:var(--fg-2);text-align:left}
 body.no-doc .hm #wTips>div{padding:0;background:none;border:0}
 body.no-doc .hm #wTips kbd{font:11px var(--mono,monospace);padding:1px 5px;border:1px solid var(--line);border-radius:5px;background:var(--chrome-2)}
-body.no-doc .hm #w49 svg{display:none}body.no-doc .hm #w49 a{display:inline-block;margin-top:4px;font-weight:600}
+body.no-doc .hm #w49 svg{display:none}body.no-doc .hm #w49 a{display:block;width:max-content;margin-top:4px;font-weight:600}
 body.no-doc .hm #w49{display:block;margin:0;line-height:1.6;font-size:12.5px;color:var(--fg-2);text-align:left;justify-self:stretch}
 body.no-doc .hm .w-ver{margin:2px 0 0;text-align:left;justify-self:start;color:var(--fg-3);font:11px var(--mono,monospace)}
 body.no-doc .hm .w-drop,body.no-doc .hm .w-acts{display:none!important}
@@ -11042,7 +11061,7 @@ const _ol=openLibrary;openLibrary=function(){const r=_ol.apply(this,arguments);t
 home();try{lib()}catch(e){}
 })();
 
-window.PRISM_VERSION="1.0.0-beta.15";
+window.PRISM_VERSION="1.0.0-beta.16";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {

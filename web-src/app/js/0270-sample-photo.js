@@ -1,5 +1,5 @@
 /* ================= sample photo ================= */
-function loadSample(){const W=1800,H=1200,c=mk(W,H),g=cx(c);let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646};const pv=[];for(let i=0;i<512;i++)pv.push(rnd());
+function loadSampleScene(){const W=1800,H=1200,c=mk(W,H),g=cx(c);let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646};const pv=[];for(let i=0;i<512;i++)pv.push(rnd());
   const noise=x=>{const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return pv[i&511]*(1-u)+pv[(i+1)&511]*u},fbm=(x,o)=>{let v=0,a=0.5,fq=1;for(let k=0;k<o;k++){v+=a*Math.abs(noise(x*fq)*2-1);a*=0.5;fq*=2.03}return v};const hy=Math.round(H*0.63);
   let sk=g.createLinearGradient(0,0,0,hy);sk.addColorStop(0,'#3a4d72');sk.addColorStop(0.45,'#8f8aa0');sk.addColorStop(0.78,'#d9a687');sk.addColorStop(1,'#efc79c');g.fillStyle=sk;g.fillRect(0,0,W,hy);
   let sun=g.createRadialGradient(W*0.66,hy*0.83,4,W*0.66,hy*0.83,W*0.45);sun.addColorStop(0,'rgba(255,236,200,.95)');sun.addColorStop(0.06,'rgba(255,214,160,.65)');sun.addColorStop(0.35,'rgba(255,190,140,.18)');sun.addColorStop(1,'rgba(255,190,140,0)');g.fillStyle=sun;g.fillRect(0,0,W,hy);
@@ -18,3 +18,6 @@ function loadSample(){const W=1800,H=1200,c=mk(W,H),g=cx(c);let seed=7;const rnd
   const img=g.getImageData(0,0,W,H),d=img.data;for(let i=0;i<d.length;i+=4){const n=(rnd()-0.5)*9;for(let k=0;k<3;k++)d[i+k]=clamp(28+d[i+k]*0.8+n,0,255)}g.putImageData(img,0,0);
   setDoc(c,'lac-au-crepuscule.jpg',{sample:true});toast('Photo d’exemple chargée. Ouvrez la vôtre (JPEG, HEIC ou RAW) avec Fichier > Ouvrir ou en la glissant ici.',4000)}
 
+/* the default sample is a real photo (web/sample/lac.jpg, 1800×1200); the drawn scene stays as a fallback when the file can't be read */
+async function loadSample(){try{const r=await fetch('sample/lac.jpg');if(!r.ok)throw 0;const bm=await createImageBitmap(await r.blob());const c=mk(bm.width,bm.height);cx(c).drawImage(bm,0,0);bm.close&&bm.close();
+  setDoc(c,'lac-et-roseaux.jpg',{sample:true});toast('Photo d’exemple chargée. Ouvrez la vôtre (JPEG, HEIC ou RAW) avec Fichier > Ouvrir ou en la glissant ici.',4000)}catch(e){loadSampleScene()}}

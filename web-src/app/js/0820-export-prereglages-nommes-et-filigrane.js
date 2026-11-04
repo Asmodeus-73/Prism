@@ -638,7 +638,7 @@ const all=root=>{(root.querySelectorAll?root.querySelectorAll('input[type=range]
 new MutationObserver(ms=>{for(const m of ms){m.addedNodes.forEach(n=>{if(n.nodeType===1)all(n)});if(m.type==='attributes')paint(m.target)}}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['min','max','value']});
 all(document);
 /* while a slider is being dragged the histogram is not read back (it stalls the graphics pipeline) */
-document.addEventListener('pointerdown',e=>{if(e.target&&e.target.type==='range')S.sliding=true},true);
+document.addEventListener('pointerdown',e=>{if(e.target&&e.target.type==='range'){S.sliding=true;S.slideEl=e.target;LQ.lock=0}},true);
 const up=()=>{if(S.sliding){S.sliding=false;try{markContent()}catch(e){}}};addEventListener('pointerup',up,true);addEventListener('pointercancel',up,true);
 })();
 

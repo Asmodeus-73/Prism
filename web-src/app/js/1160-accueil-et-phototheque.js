@@ -75,7 +75,7 @@ body.no-doc .hm .w-tile:first-child b,body.no-doc .hm .w-tile:first-child span{c
 body.no-doc .hm #wTips{display:grid!important;gap:8px;margin:0;font-size:12.5px;color:var(--fg-2);text-align:left}
 body.no-doc .hm #wTips>div{padding:0;background:none;border:0}
 body.no-doc .hm #wTips kbd{font:11px var(--mono,monospace);padding:1px 5px;border:1px solid var(--line);border-radius:5px;background:var(--chrome-2)}
-body.no-doc .hm #w49 svg{display:none}body.no-doc .hm #w49 a{display:inline-block;margin-top:4px;font-weight:600}
+body.no-doc .hm #w49 svg{display:none}body.no-doc .hm #w49 a{display:block;width:max-content;margin-top:4px;font-weight:600}
 body.no-doc .hm #w49{display:block;margin:0;line-height:1.6;font-size:12.5px;color:var(--fg-2);text-align:left;justify-self:stretch}
 body.no-doc .hm .w-ver{margin:2px 0 0;text-align:left;justify-self:start;color:var(--fg-3);font:11px var(--mono,monospace)}
 body.no-doc .hm .w-drop,body.no-doc .hm .w-acts{display:none!important}

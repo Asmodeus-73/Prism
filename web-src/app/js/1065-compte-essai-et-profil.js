@@ -73,11 +73,11 @@ async function syAvatarFrom(file) {
   return url }
 function syProfFill(box, me) {
   if (!box || !me) return; const p = { name: me.name, avatar: me.avatar, email: me.email };
-  box.innerHTML = `<div class="sy-av">${syAvatarHtml(p, 64)}</div><div class="sy-pf"><label class="sy-f"><span>Nom affiché</span><input id="syName" type="text" maxlength="60" placeholder="Nom ou pseudo" value="${esc(me.name || '')}"></label>
-    <small class="sy-u">${esc(me.email || '')}</small><div class="sy-pb"><button class="btn sm" id="syPic">${me.avatar ? 'Changer la photo' : 'Ajouter une photo'}</button>${me.avatar ? '<button class="btn sm" id="syPicRm">Retirer la photo</button>' : ''}<input id="syPicIn" type="file" accept="image/*" hidden></div></div>`;
+  box.innerHTML = `<button type="button" class="sy-av" id="syPicAv" title="${me.avatar ? 'Changer la photo' : 'Ajouter une photo'}">${syAvatarHtml(p, 64)}<i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></i></button><div class="sy-pf"><label class="sy-f"><span>Nom affiché</span><input id="syName" type="text" maxlength="60" placeholder="Nom ou pseudo" value="${esc(me.name || '')}"></label>
+    <small class="sy-u sy-mail">${esc(me.email || '')}${syEssai() ? '<em>Essai</em>' : ''}</small><div class="sy-pb"><button class="btn sm ghost" id="syPic">${me.avatar ? 'Changer la photo' : 'Ajouter une photo'}</button>${me.avatar ? '<button class="btn sm ghost" id="syPicRm">Retirer</button>' : ''}<input id="syPicIn" type="file" accept="image/*" hidden></div></div>`;
   const save = async (o, ok) => { try { await syApi('/v1/me', { method: 'PATCH', json: o }); const m = await syProfile(); syProfFill(box, m); if (ok) toast(ok) } catch (e) { toast(e.message || 'Profil non enregistré') } };
   const nm = $('#syName', box); nm.onchange = () => save({ name: nm.value }, 'Nom enregistré'); nm.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); nm.blur() } };
-  const inp = $('#syPicIn', box); $('#syPic', box).onclick = () => inp.click();
+  const inp = $('#syPicIn', box); $('#syPic', box).onclick = () => inp.click(); $('#syPicAv', box).onclick = () => inp.click();
   inp.onchange = async () => { const f = inp.files && inp.files[0]; if (!f) return; try { await save({ avatar: await syAvatarFrom(f) }, 'Photo de profil enregistrée') } catch (e) { toast(e.message) } };
   const rm = $('#syPicRm', box); if (rm) rm.onclick = () => save({ avatar: null }, 'Photo retirée');
 }
@@ -93,7 +93,10 @@ function syBadge() {
   const st = document.createElement('style'); st.textContent = `
 .sy-note{margin:0 0 12px;padding:8px 10px;border-radius:8px;background:var(--accent-soft);color:var(--fg-2);font-size:12.5px;line-height:1.45;max-width:440px}
 .sy-prof{display:flex;gap:14px;align-items:flex-start;margin:0 0 12px}
-.sy-av{width:64px;height:64px;flex:none;border-radius:50%;overflow:hidden;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:26px;font-weight:600}
+.sy-av{position:relative;width:64px;height:64px;flex:none;padding:0;border:0;border-radius:50%;overflow:hidden;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:inherit;font-size:26px;font-weight:600;line-height:1;cursor:pointer}
+button.sy-av i{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.45);opacity:0;transition:opacity .12s}button.sy-av:hover i,button.sy-av:focus-visible i{opacity:1}button.sy-av svg{width:22px;height:22px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linejoin:round}
+.sy-mail{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sy-mail em{font-style:normal;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:9px;background:var(--accent-soft);color:var(--accent)}
+.sy-pf input{width:100%;min-width:0}
 .sy-av img{width:100%;height:100%;object-fit:cover;display:block}
 .sy-pf{flex:1;min-width:0;display:grid;gap:4px}.sy-pf .sy-f{margin:0}.sy-pb{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .sy-badge{width:30px;height:30px;padding:0;border:1px solid var(--line-2);border-radius:50%;overflow:hidden;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font:600 13px/1 inherit;cursor:pointer;margin-right:6px;flex:none}

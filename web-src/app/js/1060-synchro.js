@@ -251,16 +251,20 @@ async function syAccountDialog() {
       } });
     return;
   }
-  const dl = dialog({ title: 'Compte Prism', body: `<div id="syProf" class="sy-prof"></div>${syEssai() ? '<p class="sy-note">Compte d’essai, sur cet appareil.</p>' : ''}<div id="syInfo" class="sy-info">Chargement…</div>`,
-    buttons: [{ label: 'Fermer' }, { label: 'Se déconnecter', onClick: () => { syLogout().then(() => toast('Déconnecté : cet appareil ne se synchronise plus')) } }, { label: 'Synchroniser maintenant', primary: true, onClick: () => { sySyncNow(); return false } }] });
+  const dl = dialog({ title: 'Compte Prism', body: `<div id="syProf" class="sy-prof"></div><div id="syInfo" class="sy-info"><p class="sy-u">Chargement…</p></div>`,
+    buttons: [{ label: 'Se déconnecter', onClick: () => { syLogout().then(() => toast('Déconnecté : cet appareil ne se synchronise plus')) } }, { label: 'Fermer', primary: true }] });
+  dl.classList.add('sy-dlg');
   const fill = async () => {
     const box = $('#syInfo', dl); if (!box) return;
-    let me = null, use = null; try { [me, use] = await Promise.all([syApi('/v1/me'), syApi('/v1/usage')]) } catch (e) { box.textContent = e.message; return }
+    let me = null, use = null; try { [me, use] = await Promise.all([syApi('/v1/me'), syApi('/v1/usage')]) } catch (e) { box.innerHTML = `<p class="sy-u">${esc(e.message)}</p>`; return }
     syProfFill($('#syProf', dl), me);
-    const on = new Set(SY.peers.map(p => p.device));
-    box.innerHTML = `<div class="sy-h">Appareils</div>${me.devices.map(d => `<div class="sy-dev"><span class="sy-dot${d.id === SY.cfg.device || on.has(d.id) ? ' on' : ''}"></span><b>${esc(d.name)}</b>${d.id === SY.cfg.device ? '<small>cet appareil</small>' : `<small>${on.has(d.id) ? 'allumé' : 'vu ' + esc(window.PrismHome ? PrismHome.rel(d.last) : new Date(d.last).toLocaleString('fr-FR'))}</small><button class="btn sm" data-rm="${esc(d.id)}">Retirer</button>`}</div>`).join('')}
-      ${syEssai() ? '' : `<div class="sy-h">Transit Cloudflare</div><div class="sy-bar"><i style="width:${Math.min(100, 100 * use.used / use.limit).toFixed(1)}%"></i></div><small class="sy-u">${syFmt(use.used)} sur ${syFmt(use.limit)} · effacé dès réception, ${use.hours} h au plus</small>`}
-      <div class="sy-h">Cet appareil</div><small class="sy-u">${SY.state === 'ok' ? 'À jour' : SY.state === 'busy' ? 'Synchronisation…' : esc(SY.msg || 'En attente')}${SY.out.length ? ` · ${SY.out.length} envoi${SY.out.length > 1 ? 's' : ''} en attente` : ''}</small>`;
+    const on = new Set(SY.peers.map(p => p.device)), st = SY.state === 'ok' ? 'ok' : SY.state === 'busy' ? 'busy' : 'wait';
+    const stTxt = st === 'ok' ? 'À jour' : st === 'busy' ? 'Synchronisation…' : esc(SY.msg || 'En attente'), n = SY.out.length;
+    box.innerHTML = `<section class="sy-sec"><div class="sy-h">Appareils <span>${me.devices.length}</span></div><ul class="sy-devs">${me.devices.map(d => { const self = d.id === SY.cfg.device, live = self || on.has(d.id);
+        return `<li class="sy-dev"><span class="sy-dot${live ? ' on' : ''}"></span><b>${esc(d.name)}</b><small>${self ? 'cet appareil' : live ? 'allumé' : 'vu ' + esc(window.PrismHome ? PrismHome.rel(d.last) : new Date(d.last).toLocaleString('fr-FR'))}</small>${self ? '' : `<button class="btn sm ghost" data-rm="${esc(d.id)}">Retirer</button>`}</li>` }).join('')}</ul></section>
+      <section class="sy-sec"><div class="sy-h">Synchronisation</div><div class="sy-st"><span class="sy-dot ${st}"></span><div class="sy-stt"><b>${stTxt}</b>${n ? `<small>${n} envoi${n > 1 ? 's' : ''} en attente</small>` : ''}</div><button class="btn sm" id="syNow"${st === 'busy' ? ' disabled' : ''}>Synchroniser</button></div>
+      ${syEssai() ? '<p class="sy-note">Compte d’essai : rien ne quitte cet appareil.</p>' : `<div class="sy-bar"><i style="width:${Math.min(100, 100 * use.used / use.limit).toFixed(1)}%"></i></div><small class="sy-u">Transit : ${syFmt(use.used)} sur ${syFmt(use.limit)} · effacé dès réception, ${use.hours} h au plus</small>`}</section>`;
+    $('#syNow', box).onclick = () => sySyncNow();
     box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { if (!await askConfirm('Retirer cet appareil du compte ? Il ne recevra plus rien.', { title: 'Retirer l’appareil', ok: 'Retirer', danger: true })) return syAccountDialog(); await syApi('/v1/devices/' + encodeURIComponent(b.dataset.rm), { method: 'DELETE' }).catch(e => toast(e.message)); syAccountDialog() });
   };
   fill(); const h = () => fill(); document.addEventListener('prism-sync', h); document.addEventListener('prism-peers', h);
@@ -271,8 +275,13 @@ async function syAccountDialog() {
 .sy-p{margin:0 0 12px;color:var(--fg-2);line-height:1.45;max-width:440px}
 .sy-form{margin:0}.sy-mode{display:inline-flex;gap:2px;padding:2px;margin:0 0 12px;border-radius:9px;background:var(--chrome-2)}.sy-mode button{height:28px;padding:0 12px;border:0;border-radius:7px;background:none;color:var(--fg-3);font:500 12.5px var(--ui);cursor:pointer}.sy-mode button[aria-selected=true]{background:var(--raise);color:var(--fg);box-shadow:var(--shadow-s)}.sy-hint{margin:-4px 0 10px;font-size:12px;color:var(--fg-3)}.sy-submit{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}.sy-f{display:grid;gap:4px;margin:0 0 10px}.sy-f span{font-size:12px;color:var(--fg-2)}.sy-f input{height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--chrome);color:var(--fg);font:inherit}
 .sy-err{min-height:18px;margin:0;color:var(--danger,#c33);font-size:12.5px}
-.sy-info{display:grid;gap:6px;min-width:min(420px,78vw)}.sy-h{margin-top:8px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-2)}
-.sy-dev{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--chrome-2)}.sy-dev b{font-weight:600}.sy-dev small{color:var(--fg-2);margin-right:auto}
+.sy-info{display:grid;gap:14px;min-width:0}.sy-h{display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)}.sy-h span{padding:0 6px;border-radius:9px;background:var(--chrome-2);color:var(--fg-2);font-size:10.5px;letter-spacing:0;line-height:17px}
+.sy-dlg{width:min(460px,calc(100vw - 16px));overflow-x:hidden}.sy-dlg .body{gap:16px;padding-top:6px}.sy-dlg *{box-sizing:border-box}
+.sy-sec{min-width:0}.sy-dlg .btn.ghost{background:none;border-color:transparent;color:var(--fg-2)}.sy-dlg .btn.ghost:hover{background:var(--chrome-2);color:var(--fg)}.sy-dlg .sy-pb{margin-left:-8px}.sy-devs{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.sy-st{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--chrome-2)}.sy-stt{flex:1;min-width:0;display:grid;gap:1px}.sy-stt b{font-weight:600;font-size:13px}.sy-stt small{color:var(--fg-2);font-size:12px}
+.sy-dot.busy{background:var(--accent);animation:syPulse 1s ease-in-out infinite alternate}.sy-dot.wait{background:#e0a43a}@keyframes syPulse{to{opacity:.35}}
+.sy-sec .sy-note{margin:8px 0 0;max-width:none}.sy-sec .sy-bar{margin-top:10px}
+.sy-dev{display:flex;align-items:center;gap:8px;min-height:38px;padding:6px 8px 6px 12px;border-radius:10px;background:var(--chrome-2)}.sy-dev b{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sy-dev small{color:var(--fg-2);margin-right:auto;white-space:nowrap}.sy-dot{flex:none}
 .sy-dot{width:8px;height:8px;border-radius:50%;background:var(--line-2,#bbb)}.sy-dot.on{background:#2fb36b}
 .sy-bar{height:6px;border-radius:3px;background:var(--chrome-2);overflow:hidden}.sy-bar i{display:block;height:100%;background:var(--accent)}
 .sy-u{color:var(--fg-2)}`; document.head.appendChild(st);

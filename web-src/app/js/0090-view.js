@@ -18,7 +18,7 @@ function render(){rq=false;if(vrDirty||!S.vw||view.width<2)resizeView();const c=
   if(S.contentDirty)renderContent();const d=S.doc,pr=S.pr;
   if(!checker){const t=mk(16,16),g=cx(t);g.fillStyle='#b9b9b9';g.fillRect(0,0,16,16);g.fillStyle='#8e8e8e';g.fillRect(0,0,8,8);g.fillRect(8,8,8,8);checker=c.createPattern(t,'repeat')}
   c.save();c.setTransform(...viewMatrix(0,0));c.beginPath();c.rect(0,0,d.w,d.h);c.setTransform(1,0,0,1,0,0);c.clip();c.fillStyle=checker;c.fillRect(0,0,v.width,v.height);c.restore();
-  if(S.workPos){const ws=S.workSize,lq=ws&&ws.k<1;if(lq){c.imageSmoothingEnabled=true;c.imageSmoothingQuality='low'}
+  if(S.workPos){const ws=S.workSize,lq=ws&&ws.k<1;if(lq){c.imageSmoothingEnabled=true;c.imageSmoothingQuality='medium'}
     const wz=S.workZ||1,dw=(lq?ws.w:work.width)*wz,dh=(lq?ws.h:work.height)*wz;c.drawImage(work,S.workPos.x,S.workPos.y,dw,dh);if(S.compare==='split'&&!S.holdBefore){const sx=Math.round(S.splitX*v.width);c.save();c.beginPath();c.rect(0,0,sx,v.height);c.clip();c.drawImage(workB,S.workPos.x,S.workPos.y,dw,dh);c.restore()}}
   drawOverlays(c,pr);updateStatus();positionSplit()}
 function renderContent(){const _t0=performance.now();
@@ -28,7 +28,11 @@ function renderContent(){const _t0=performance.now();
 /* aperçu rapide : pendant qu'un curseur bouge, si l'image complète met plus de 60 ms à se calculer (grande photo, machine modeste),
    on la calcule à une résolution réduite (jusqu'à 35 %) pour garder ~25 images/s ; la pleine résolution revient dès qu'on lâche le curseur */
 const LQ={full:0,t:0,last:0,k:1};
-function lqFactor(){if(!S.sliding||S.stroke||S.holdBefore||LQ.full<60)return 1;return Math.max(.35,Math.min(1,Math.round(Math.sqrt(40/LQ.full)*20)/20))}
+/* jamais pour les réglages de détail (netteté, texture, bruit, grain…) : en basse résolution on ne verrait pas leur effet, l'image paraîtrait floue.
+   le facteur est choisi une fois par glissé et ne bouge plus ensuite : sinon l'image change d'échelle d'une image à l'autre et tremble */
+const LQ_DETAIL=/^(sharpen|sharpRadius|texture|clarity|noise|grain|grainSize|dehaze)$/;
+function lqFactor(){if(!S.sliding||S.stroke||S.holdBefore){LQ.lock=0;return 1}const el=S.slideEl,k0=el&&(el.dataset&&el.dataset.k||el.id||'').replace(/^d-/,'');if(k0&&LQ_DETAIL.test(k0))return 1;
+  if(LQ.lock)return LQ.lock;if(LQ.full<60)return 1;LQ.lock=Math.max(.5,Math.min(1,Math.round(Math.sqrt(40/LQ.full)*10)/10));return LQ.lock}
 function lqRefine(){clearTimeout(LQ.t);LQ.t=setTimeout(()=>{if(!S.doc)return;if(S.sliding){lqRefine();return}if(S.workSize&&S.workSize.k<1)markContent()},140)}
 function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width,H=view.height,sc=S.zoom*pr;
   const M=new DOMMatrix(viewMatrix(0,0));const pts=[[0,0],[d.w,0],[0,d.h],[d.w,d.h]].map(([x,y])=>{const p=M.transformPoint(new DOMPoint(x,y));return[p.x,p.y]});
