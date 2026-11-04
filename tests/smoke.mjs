@@ -528,6 +528,17 @@ await test('photothèque : le double-clic ouvre la photo même si la grille se r
   await ev(()=>{S.doc=null});const box=await page.locator(`.lb-card[data-id="${id}"]`).boundingBox();const x=box.x+box.width/2,y=box.y+box.height/3;
   await page.mouse.click(x,y);await ev(()=>{LIB._press=0;renderLibrary()});await page.mouse.click(x,y);
   await page.waitForFunction(id=>S.doc&&S.doc.pid===id&&!LIB.open,id,{timeout:15000})});
+await test('accueil et photothèque refaits : grande dernière photo, Commencer, Importer, dépôt plein écran, tablette',async()=>{await fresh();
+  await ev(async()=>{for(let i=0;i<3;i++){const c=mk(900,600),g=cx(c);g.fillStyle=`hsl(${i*120},60%,50%)`;g.fillRect(0,0,900,600);g.fillStyle='#fff';g.fillRect(100+i*200,100,150,300);const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.9));await importToLibrary([new File([b],'h'+i+'.jpg',{type:'image/jpeg'})])}});
+  await ev(()=>{if(LIB.open)closeLibrary();closeDoc()});await page.waitForTimeout(600);
+  const h=await ev(()=>{const g=document.querySelector('.hm-grid'),cards=[...document.querySelectorAll('#wGrid .w-card')],b0=cards[0]&&cards[0].getBoundingClientRect(),b1=cards[1]&&cards[1].getBoundingClientRect();
+    return {grid:!!g,side:!!document.querySelector('.hm-side #wTiles'),n:cards.length,big:b0&&b1&&b0.width>b1.width*1.8,h2:document.querySelector('#empty .w-head h2').textContent}});
+  await ev(()=>{const dt=new DataTransfer();dt.items.add(new File(['x'],'a.jpg',{type:'image/jpeg'}));window.dispatchEvent(new DragEvent('dragenter',{dataTransfer:dt}))});
+  const drop=await ev(()=>document.getElementById('hmDrop').classList.contains('on'));await ev(()=>window.dispatchEvent(new DragEvent('drop')));
+  await page.setViewportSize({width:900,height:900});await page.waitForTimeout(300);const tw=await ev(()=>document.querySelector('#empty').getBoundingClientRect().width);await page.setViewportSize({width:1440,height:900});
+  await ev(()=>openLibrary());await page.waitForSelector('#library .lb-impbtn');const l=await ev(()=>({imp:!!document.querySelector('.lb-top .lb-impbtn'),tri:!!document.querySelector('.lb-top [data-triage]'),filTri:getComputedStyle(document.querySelector('#lbFil [data-triage]')||document.body).display}));
+  await page.click('.lb-top .lb-impbtn');const menu=await ev(()=>[...document.querySelectorAll('.menu button, [role=menuitem]')].map(b=>b.textContent).join('|'));await page.keyboard.press('Escape');
+  if(!(h.grid&&h.side&&h.n===3&&h.big&&/^Bon(jour|soir)/.test(h.h2)&&drop&&tw>800&&l.imp&&l.tri&&l.filTri==='none'&&/dossier/.test(menu)))throw new Error(JSON.stringify({h,drop,tw,l,menu}))});
 await test('connexion : vrai formulaire reconnu par les gestionnaires de mots de passe (1Password…)',async()=>{
   await ev(()=>{closeDialog();if(SY.cfg)return syLogout()});await ev(()=>syAccountDialog());await page.waitForSelector('#syForm');
   const a=await ev(()=>{const f=document.querySelector('#syForm'),u=f.querySelector('input[name=email]'),p=f.querySelector('input[name=password]');return [f.tagName,u.type,u.autocomplete,p.type,p.autocomplete,!!f.querySelector('[type=submit]'),f.querySelector('#syUrl')?f.querySelector('#syUrl').hasAttribute('data-1p-ignore'):true].join('|')});
