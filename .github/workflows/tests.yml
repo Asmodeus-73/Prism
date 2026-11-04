@@ -53,6 +53,9 @@ jobs:
       - name: Tests de l'éditeur
         run: node tests/smoke.mjs
 
+      - name: Vitesse sur des photos de 24 Mpx (temps maximums)
+        run: node tests/vitesse.mjs
+
       - name: Synchronisation entre deux appareils (serveur dans Miniflare)
         run: (cd server && npm ci) && node tests/sync.mjs && node tests/collab.mjs && node tests/security.mjs
 
@@ -117,6 +120,11 @@ jobs:
         env:
           PRISM_BROWSER: webkit
         run: node tests/smoke.mjs
+
+      - name: Vitesse sous WebKit sur Mac (photos de 24 Mpx, temps maximums)
+        env:
+          PRISM_BROWSER: webkit
+        run: node tests/vitesse.mjs
 
   # Mac-only code (cfg target_os = "macos") is never compiled on Linux.
   desktop-mac:
