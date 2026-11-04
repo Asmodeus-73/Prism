@@ -571,7 +571,7 @@ await test('signaler un problème : Aide, rapport avec version et journal d’er
   await ev(()=>{console.warn('essai de journal');const sc=document.createElement('script');sc.textContent="setTimeout(function(){throw new Error('erreur volontaire')},0)";document.head.appendChild(sc);sc.remove()});await page.waitForTimeout(150);errs.length=0;await page.waitForTimeout(100);
   const r=await ev(()=>{const it=MENU2.help.items().some(x=>x&&x.label==='Signaler un problème…');PrismReport.dialog();const o=document.querySelector('#rpOut').value,u=PrismReport.issueUrl('Test',true);closeDialog();
     return{it,v:o.includes('Version : '+PRISM_VERSION),log:/erreur volontaire/.test(o)&&/essai de journal/.test(o),u:u.startsWith('https://github.com/Asmodeus-73/Prism/issues/new?')&&u.length<=7500}});
-  if(!(r.it&&r.v&&r.log&&r.u))throw new Error(JSON.stringify(r))});
+  if(!(r.it&&r.v&&r.log&&r.u))throw new Error(JSON.stringify(r)+'\n'+await ev(()=>ERRLOG.slice(-4).map(e=>e.k+' '+e.m).join('\n')))});
 await test('effets modifiables : contraste local et visages (appliquer, œil, modifier, annuler)',async()=>{
   const idle=async()=>{await page.waitForFunction(()=>!document.querySelector('#busy:not([hidden])'),null,{timeout:120000});await page.waitForTimeout(300)};
   const primary=async()=>{await page.waitForSelector('#scrim button.primary',{timeout:60000});await page.waitForTimeout(300);await page.click('#scrim button.primary');await page.waitForTimeout(300)};
