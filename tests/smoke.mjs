@@ -516,6 +516,13 @@ await test('photothèque : le double-clic ouvre la photo même si la grille se r
   await ev(()=>{S.doc=null});const box=await page.locator(`.lb-card[data-id="${id}"]`).boundingBox();const x=box.x+box.width/2,y=box.y+box.height/3;
   await page.mouse.click(x,y);await ev(()=>{LIB._press=0;renderLibrary()});await page.mouse.click(x,y);
   await page.waitForFunction(id=>S.doc&&S.doc.pid===id&&!LIB.open,id,{timeout:15000})});
+await test('connexion : vrai formulaire reconnu par les gestionnaires de mots de passe (1Password…)',async()=>{
+  await ev(()=>{closeDialog();if(SY.cfg)return syLogout()});await ev(()=>syAccountDialog());await page.waitForSelector('#syForm');
+  const a=await ev(()=>{const f=document.querySelector('#syForm'),u=f.querySelector('input[name=email]'),p=f.querySelector('input[name=password]');return [f.tagName,u.type,u.autocomplete,p.type,p.autocomplete,!!f.querySelector('[type=submit]'),f.querySelector('#syUrl')?f.querySelector('#syUrl').hasAttribute('data-1p-ignore'):true].join('|')});
+  if(a!=='FORM|email|username|password|current-password|true|true')throw new Error(a);
+  await page.click('.sy-mode [data-m=signup]');const b=await ev(()=>document.querySelector('#syPw').autocomplete+'|'+document.querySelector('.foot .btn.primary').textContent);if(b!=='new-password|Créer le compte')throw new Error(b);
+  await page.fill('#syEmail','essai-1p@example.com');await page.fill('#syPw','un-mot-de-passe');await page.press('#syPw','Enter');
+  await page.waitForFunction(()=>SY.cfg&&!document.querySelector('#syForm'),null,{timeout:15000});await ev(()=>syLogout())});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
