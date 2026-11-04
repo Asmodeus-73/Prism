@@ -98,7 +98,7 @@ jobs:
 
       - name: Tests de l'application (chemins piégés, dossier surveillé)
         working-directory: src-tauri
-        run: cargo test --locked --lib -- sync:: tether::
+        run: 'cargo test --locked --lib -- sync:: tether::'
 
   # The Mac app shows the editor in WebKit (WKWebView), not Chromium: the same tests,
   # in WebKit on a real Mac, catch what only breaks there.
