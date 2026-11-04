@@ -20,4 +20,4 @@ function loadSampleScene(){const W=1800,H=1200,c=mk(W,H),g=cx(c);let seed=7;cons
 
 /* the default sample is a real photo (web/sample/lac.jpg, 1800×1200); the drawn scene stays as a fallback when the file can't be read */
 async function loadSample(){try{const r=await fetch('sample/lac.jpg');if(!r.ok)throw 0;const bm=await createImageBitmap(await r.blob());const c=mk(bm.width,bm.height);cx(c).drawImage(bm,0,0);bm.close&&bm.close();
-  setDoc(c,'lac-et-roseaux.jpg',{sample:true});toast('Photo d’exemple chargée. Ouvrez la vôtre (JPEG, HEIC ou RAW) avec Fichier > Ouvrir ou en la glissant ici.',4000)}catch(e){loadSampleScene()}}
+  setDoc(c,PREF.get('lang','fr')==='en'?'lake-and-reeds.jpg':'lac-et-roseaux.jpg',{sample:true});toast('Photo d’exemple chargée. Ouvrez la vôtre (JPEG, HEIC ou RAW) avec Fichier > Ouvrir ou en la glissant ici.',4000)}catch(e){loadSampleScene()}}
