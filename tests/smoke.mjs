@@ -159,6 +159,18 @@ await test('panneaux détachables : Calques et une section flottent, se déplace
   const moved=await ev(()=>Math.round(document.querySelector('[data-sec=base]').getBoundingClientRect().left));
   await ev(()=>PrismFloat.dockAll());const b=await ev(()=>({f:PrismFloat.floating(),ph:document.querySelectorAll('.pf-ph').length,saved:Object.keys(PREF.get('floats',{})).length}));
   if(a.f.length!==2||a.pos!=='fixed'||a.ph!==2||a.saved.length!==2||Math.abs(moved-400)>4||b.f.length||b.ph||b.saved)throw new Error(JSON.stringify({a,moved,b}))});
+await test('panneaux détachables : s’aimantent à gauche comme à droite, à la souris',async()=>{
+  const drag=async(sel,pts)=>{const h=await page.locator(sel).boundingBox();await page.mouse.move(h.x+30,h.y+h.height/2);await page.mouse.down();for(const [x,y] of pts)await page.mouse.move(x,y,{steps:8});await page.mouse.up();await page.waitForTimeout(250)};
+  const st=()=>ev(()=>{const R=document.querySelector('#atRail').getBoundingClientRect(),b=document.querySelector('[data-sec=base]').getBoundingClientRect(),lp=document.querySelector('#layersPanel');
+    return {fl:PrismFloat.floating(),inRail:b.left>=R.left-1&&b.right<=R.right+1&&b.top>=R.top-1,lp:lp.parentElement.id||lp.parentElement.className,pin:(PREF.get('floats',{})['sec:base']||{}).pin}});
+  await ev(()=>switchTab('develop'));
+  const s0=await page.locator('#devBody [data-sec=base] > summary').boundingBox();
+  await drag('#devBody [data-sec=base] > summary',[[s0.x-200,s0.y+20],[150,640]]);const a=await st();
+  await drag('#lyHead',[[600,300],[1300,700]]);const b=await st();
+  const l0=await page.locator('#lyHead').boundingBox();await drag('#lyHead',[[l0.x-200,l0.y],[150,760]]);const c=await st();
+  await drag('[data-sec=base] > summary',[[700,300],[1300,500]]);const d=await st();
+  if(!(a.inRail&&a.pin==='left'&&a.fl.join()==='sec:base'&&b.lp.includes('insp')&&c.lp==='atRail'&&!d.fl.length))throw new Error(JSON.stringify({a,b,c,d}));
+  await ev(()=>{PrismFloat.dockAll();PREF.set('pfHome',{})})});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};

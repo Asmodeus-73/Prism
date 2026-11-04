@@ -163,3 +163,21 @@ jobs:
           includeUpdaterJson: ${{ env.BETA != '1' }}
           # Until the update key exists (setup-update-key.yml), build without the update files.
           args: ${{ matrix.args }} ${{ env.BETA && '--config src-tauri/beta.conf.json' || (secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config src-tauri/no-updater.conf.json' || '') }}
+
+  # Private beta: once the new beta is built, keep only it and the one just before;
+  # older beta drafts are deleted. Public releases are never touched (drafts only).
+  prune-betas:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Garder les deux dernières bêtas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          case "$(node -p "require('./package.json').version")" in *-beta*) ;; *) exit 0 ;; esac
+          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq '.[] | select(.draft and (.tag_name | test("-beta\\.[0-9]+$"))) | "\(.tag_name | capture("-beta\\.(?<n>[0-9]+)$").n) \(.id) \(.tag_name)"' \
+            | sort -rn | tail -n +3 | while read -r n id tag; do
+              echo "Suppression de $tag"; gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+            done

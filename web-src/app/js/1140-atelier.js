@@ -230,7 +230,7 @@ function enable(){const on=WIDE.matches&&!document.body.classList.contains('comp
   if(on===document.body.classList.contains('atelier'))return;
   const lp=$('#layersPanel'),side=$('aside.insp');
   if(on){dockEl.after(rail);rail.after(strip);
-    if(lp&&!lp.classList.contains('pf-float'))rail.append(lp);
+    if(lp&&!lp.classList.contains('pf-float')&&PREF.get('pfHome',{}).layers!=='right')rail.append(lp);
     document.body.classList.add('atelier');setFold(PREF.get('atFold',false),false)}
   else{document.body.classList.remove('atelier','at-fold');if(lp&&lp.parentElement===rail&&side)side.append(lp);rail.remove();strip.remove();railBtn.remove()}
   placeSwitch();try{if(S.doc&&S.fitted)fit();requestRender()}catch(e){}}
