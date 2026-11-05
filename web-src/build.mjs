@@ -8,10 +8,10 @@ import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'n
 const here=path.dirname(new URL(import.meta.url).pathname),root=path.join(here,'..');
 const list=d=>fs.readdirSync(path.join(here,d)).filter(f=>/\.(css|js)$/.test(f)).sort().map(f=>path.join(here,d,f));
 const read=f=>fs.readFileSync(f,'utf8');
-const version=JSON.parse(read(path.join(root,'package.json'))).version;
+const pkg=JSON.parse(read(path.join(root,'package.json'))),version=pkg.version,codename=pkg.codename||'';
 const css=list('app/css').map(read).join(''),js=list('app/js').map(read).join('');
 const feats=list('feat');
-const add='\nwindow.PRISM_VERSION='+JSON.stringify(version)+';\n'+feats.map(f=>`\n/* ===== feat: feat/${path.basename(f)} ===== */\n{\n${read(f)}\n}\n`).join('');
+const add='\nwindow.PRISM_VERSION='+JSON.stringify(version)+';window.PRISM_CODENAME='+JSON.stringify(codename)+';\n'+feats.map(f=>`\n/* ===== feat: feat/${path.basename(f)} ===== */\n{\n${read(f)}\n}\n`).join('');
 const page=read(path.join(here,'app/page.html'));
 if(page.split('@@CSS@@').length!==2||page.split('@@JS@@').length!==2)throw new Error('page.html: @@CSS@@ and @@JS@@ must appear once each');
 const out=page.replace('@@CSS@@',()=>css).replace('@@JS@@',()=>js+add);

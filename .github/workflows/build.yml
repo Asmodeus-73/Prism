@@ -101,6 +101,7 @@ jobs:
             *-beta*) echo "BETA=1" >> "$GITHUB_ENV"; echo "Bêta privée $v" ;;
             *) echo "BETA=" >> "$GITHUB_ENV"; echo "Version publique $v" ;;
           esac
+          echo "CODENAME=$(node -p 'require("./package.json").codename||""')" >> "$GITHUB_ENV"
 
       # Native AI engine (ONNX Runtime) shipped inside the app: DirectML on Windows, Core ML on Mac.
       # Windows takes the DirectML build from NuGet (one pinned version, checked); if it cannot be fetched,
@@ -156,7 +157,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
-          releaseName: Prism __VERSION__${{ env.BETA && ' (bêta privée)' || '' }}
+          releaseName: Prism __VERSION__${{ env.BETA && ' (bêta privée)' || env.CODENAME && format(' « {0} »', env.CODENAME) || '' }}
           releaseBody: ${{ env.BETA && env.BETA_NOTES || env.NOTES }}
           releaseDraft: ${{ env.BETA == '1' }}
           prerelease: ${{ env.BETA == '1' }}

@@ -1,7 +1,8 @@
 {
   "name": "prism-desktop",
   "private": true,
-  "version": "1.0.0-beta.28",
+  "version": "1.0.0",
+  "codename": "Aurore",
   "type": "module",
   "scripts": {
     "prepare-web": "node scripts/prepare.mjs",
