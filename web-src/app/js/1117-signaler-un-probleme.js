@@ -36,5 +36,5 @@ function reportDialog(){
         else{const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove()}}}]})}
 {const H=MENU2.help,_h=H.items;H.items=function(){const a=_h.apply(this,arguments);const i=a.findIndex(x=>x&&x.label==='À propos de Prism');const it=MI('Signaler un problème…',{icon:'help',fn:reportDialog});
   if(i>=0)a.splice(i,0,it);else a.push(it);return a}}
-window.PrismReport={dialog:reportDialog,report,issueUrl};
+window.PrismReport={dialog:reportDialog,report,issueUrl,gpu:gpuName};
 })();

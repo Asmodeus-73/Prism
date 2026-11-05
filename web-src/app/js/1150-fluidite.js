@@ -40,3 +40,11 @@ drawLayerThumbs=function(){const d=S.doc;if(d&&d!==seen){clearTimeout(tm);tm=set
    Pendant un glissé de curseur sur une grosse photo lente, Prism calcule l'image en plus petit (elle paraît floue) puis revient au net.
    Affichage > Aperçu rapide pendant les réglages l'arrête : l'image reste nette, le curseur peut être moins fluide. */
 {const _vi=MENU2.view.items;MENU2.view.items=()=>[..._vi(),MI('Aperçu rapide pendant les réglages',{check:PREF.get('lq',true),fn:()=>{PREF.set('lq',!PREF.get('lq',true));toast(PREF.get('lq',true)?'Aperçu rapide activé.':'Aperçu rapide arrêté : l’image reste nette.')}})]}
+
+/* ================= rendu logiciel : on le dit =================
+   Sans carte graphique utilisable (pilote absent, bloqué ou ancien), les réglages et les traits sur une grosse photo passent par le processeur : 10 à 50 fois plus lent.
+   Le message s'affiche une fois, à la première photo. */
+{const _sd=setDoc;setDoc=function(src,name,opts){const r=_sd.apply(this,arguments);
+  try{if(!navigator.webdriver&&!PREF.get('swWarn',0)){setTimeout(()=>{try{const g=window.PrismReport&&PrismReport.gpu&&String(PrismReport.gpu()),soft=!g||/swiftshader|llvmpipe|software|basic render|warp|indisponible/i.test(g)||(typeof GPU!=='undefined'&&GPU.ok===false);
+    if(soft&&S.doc){PREF.set('swWarn',Date.now());toast('Prism n’utilise pas la carte graphique ('+(g||'rendu logiciel')+'). Les grosses photos seront lentes. Mettez à jour le pilote de la carte graphique.',12000)}}catch(e){}},2500)}}catch(e){}
+  return r}}
