@@ -34,7 +34,8 @@
       const mac = find(/\.dmg$/i), win = find(/-setup\.exe$/i);
       if (mac) $('bMac').href = mac.browser_download_url;
       if (win) $('bWin').href = win.browser_download_url;
-      const v = String(j.tag_name || '').replace(/^v/, '');
+      const cn = (String(j.name || '').match(/«\s*([^»]+?)\s*»/) || [])[1];
+      const v = String(j.tag_name || '').replace(/^v/, '') + (cn ? ' « ' + cn + ' »' : '');
       if (v && $('dlSub')) $('dlSub').textContent = T.ver(v);
       if (hero && os === 'mac' && mac) hero.href = mac.browser_download_url;
       if (hero && os === 'win' && win) hero.href = win.browser_download_url;
