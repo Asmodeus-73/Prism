@@ -20,9 +20,9 @@ function renderStack(tc,W,H,T,o){const d=S.doc;tc.setTransform(1,0,0,1,0,0);tc.g
     if(L.kind==='adjust'){if(o.before||devIsId(L.dev))continue;const ms=maskSrc(L);let mc=null;if(ms){mc=scr('am',W,H);const g=cx(mc);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.imageSmoothingEnabled=true;g.setTransform(...T);drawMip(g,ms,0,0,o.scale,ms===L.mask);g.setTransform(1,0,0,1,0,0)}
       applyAdjust(tc,W,H,L,mc,o);continue}
     const src=layerSrc(L),ms=L.mask?maskSrc(L):null;tc.setTransform(...T);
-    if(ms){const t=scr('lm',W,H),g=cx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.setTransform(...T);drawMip(g,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx);g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,L.dx||0,L.dy||0,o.scale,ms===L.mask);g.globalCompositeOperation='source-over';g.setTransform(1,0,0,1,0,0);
+    if(ms){const t=scr('lm',W,H),g=cx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.setTransform(...T);drawMip(g,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx||src.__live);g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,L.dx||0,L.dy||0,o.scale,ms===L.mask);g.globalCompositeOperation='source-over';g.setTransform(1,0,0,1,0,0);
       tc.setTransform(1,0,0,1,0,0);tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;tc.drawImage(t,0,0)}
-    else{tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;drawMip(tc,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx)}
+    else{tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;drawMip(tc,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx||src.__live)}
     tc.globalAlpha=1;tc.globalCompositeOperation='source-over';tc.setTransform(1,0,0,1,0,0)}}
 function applyAdjust(tc,W,H,L,mc,o){const po={scale:o.scale,ox:o.ox,oy:o.oy,docW:S.doc.w,docH:S.doc.h};
   if(GPU.ok&&W<=GPU.max&&H<=GPU.max&&W*H<=(GPU.area||Infinity)){try{const out=GPU.develop(tc.canvas,L.dev,mc,L.opacity,po);tc.setTransform(1,0,0,1,0,0);tc.globalCompositeOperation='copy';tc.drawImage(out,0,0);tc.globalCompositeOperation='source-over';return}catch(e){console.warn(e);GPU.ok=false}}

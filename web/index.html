@@ -1031,9 +1031,9 @@ function renderStack(tc,W,H,T,o){const d=S.doc;tc.setTransform(1,0,0,1,0,0);tc.g
     if(L.kind==='adjust'){if(o.before||devIsId(L.dev))continue;const ms=maskSrc(L);let mc=null;if(ms){mc=scr('am',W,H);const g=cx(mc);g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.imageSmoothingEnabled=true;g.setTransform(...T);drawMip(g,ms,0,0,o.scale,ms===L.mask);g.setTransform(1,0,0,1,0,0)}
       applyAdjust(tc,W,H,L,mc,o);continue}
     const src=layerSrc(L),ms=L.mask?maskSrc(L):null;tc.setTransform(...T);
-    if(ms){const t=scr('lm',W,H),g=cx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.setTransform(...T);drawMip(g,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx);g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,L.dx||0,L.dy||0,o.scale,ms===L.mask);g.globalCompositeOperation='source-over';g.setTransform(1,0,0,1,0,0);
+    if(ms){const t=scr('lm',W,H),g=cx(t);g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);g.imageSmoothingEnabled=o.scale<2;g.setTransform(...T);drawMip(g,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx||src.__live);g.globalCompositeOperation='destination-in';g.imageSmoothingEnabled=true;drawMip(g,ms,L.dx||0,L.dy||0,o.scale,ms===L.mask);g.globalCompositeOperation='source-over';g.setTransform(1,0,0,1,0,0);
       tc.setTransform(1,0,0,1,0,0);tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;tc.drawImage(t,0,0)}
-    else{tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;drawMip(tc,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx)}
+    else{tc.globalAlpha=L.opacity;tc.globalCompositeOperation=L.blend;drawMip(tc,src,L.dx||0,L.dy||0,o.scale,src===lcv(L)||src.__fx||src.__live)}
     tc.globalAlpha=1;tc.globalCompositeOperation='source-over';tc.setTransform(1,0,0,1,0,0)}}
 function applyAdjust(tc,W,H,L,mc,o){const po={scale:o.scale,ox:o.ox,oy:o.oy,docW:S.doc.w,docH:S.doc.h};
   if(GPU.ok&&W<=GPU.max&&H<=GPU.max&&W*H<=(GPU.area||Infinity)){try{const out=GPU.develop(tc.canvas,L.dev,mc,L.opacity,po);tc.setTransform(1,0,0,1,0,0);tc.globalCompositeOperation='copy';tc.drawImage(out,0,0);tc.globalCompositeOperation='source-over';return}catch(e){console.warn(e);GPU.ok=false}}
@@ -1182,11 +1182,11 @@ function beginStroke(p,e){const d=S.doc,t=S.tool,A=AL();if(!A)return;const o=S.o
   else if(t==='heal'||t==='remove'){st.target='heal';st.live=false;st.stamp=stampFor(o.size,t==='remove'?0.9:o.hardness,'#ffffff');st.opacity=1}
   else st.stamp=stampFor(o.size,o.hardness,(t==='eraser'||target==='mask')?'#ffffff':S.color);
   // the layer as it will be once the stroke is applied; after the first frame only the area the new dabs touched is recomposed
-  st.liveCanvas=()=>{const base=target==='mask'?L.mask:L.canvas,full=!st.tmp;if(full)st.tmp=mk(d.w,d.h);const g=cx(st.tmp),R=full?{x0:0,y0:0,x1:d.w,y1:d.h}:st.dirty;st.dirty=null;if(!R)return st.tmp;
+  st.liveCanvas=()=>{const base=target==='mask'?L.mask:L.canvas,full=!st.tmp;if(full){st.tmp=mk(d.w,d.h);st.tmp.__live=true}const g=cx(st.tmp),R=full?{x0:0,y0:0,x1:d.w,y1:d.h}:st.dirty;st.dirty=null;if(!R)return st.tmp;
     const x=Math.max(0,Math.floor(R.x0)),y=Math.max(0,Math.floor(R.y0)),w=Math.min(d.w,Math.ceil(R.x1))-x,h=Math.min(d.h,Math.ceil(R.y1))-y;if(w<=0||h<=0)return st.tmp;
     g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(x,y,w,h);g.drawImage(base,x,y,w,h,x,y,w,h);
     let src=st.canvas,sx=x,sy=y;if(d.sel&&st.target!=='heal'){const t=scr('lstroke',w,h),tg=cx(t);tg.globalCompositeOperation='source-over';tg.clearRect(0,0,w,h);tg.drawImage(st.canvas,x,y,w,h,0,0,w,h);tg.globalCompositeOperation='destination-in';tg.drawImage(d.sel,x,y,w,h,0,0,w,h);tg.globalCompositeOperation='source-over';src=t;sx=0;sy=0}
-    g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(src,sx,sy,w,h,x,y,w,h);g.globalAlpha=1;g.globalCompositeOperation='source-over';return st.tmp};
+    g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(src,sx,sy,w,h,x,y,w,h);g.globalAlpha=1;g.globalCompositeOperation='source-over';if(!full)mipRegion(st.tmp,x,y,w,h);return st.tmp};
   S.stroke=st;if(e&&e.pointerType==='pen')st.pressure=e.pressure||1;dab(st,p);if(st.target==='heal')requestRender();else markComp()}
 function maskedStroke(st){const d=S.doc;if(!d.sel||st.target==='heal')return st.canvas;if(!st.m)st.m=mk(d.w,d.h);const g=cx(st.m);g.globalCompositeOperation='source-over';g.clearRect(0,0,d.w,d.h);g.drawImage(st.canvas,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);g.globalCompositeOperation='source-over';return st.m}
 function moveStroke(p,e){const st=S.stroke;if(!st)return;if(e&&e.pointerType==='pen')st.pressure=e.pressure||st.pressure;const o=S.opts[st.tool],sp=Math.max(1,o.size*(st.tool==='dodge'?0.2:(o.spacing||12)/100));const dx=p.x-st.last.x,dy=p.y-st.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;const n=Math.floor(dist/sp);
@@ -2131,7 +2131,16 @@ function convertSpace(cs){const d=S.doc;if(!d)return;if(cs==='display-p3'&&!P3_O
 const MIP=new WeakMap();
 function mipLevel(src,scale){if(scale>=0.5||src.width*src.height<4e6)return src;let e=MIP.get(src);if(!e){e=[];MIP.set(src,e)}
   let cur=src,k=0;while(scale<0.5/(1<<k)&&cur.width>64&&cur.height>64){let n=e[k];if(!n){n=mk(Math.max(1,cur.width>>1),Math.max(1,cur.height>>1));const g=cx(n);g.imageSmoothingQuality='high';g.drawImage(cur,0,0,n.width,n.height);e[k]=n}cur=n;k++}return cur}
-function drawMip(g,src,x,y,scale,ok){if(src.__sp){x+=src.__sx;y+=src.__sy}const s=ok?mipLevel(src,scale):src;if(s===src)g.drawImage(src,x,y);else g.drawImage(s,0,0,s.width,s.height,x,y,src.width,src.height)}
+/* pendant un trait, le calque « vivant » change à chaque image. Réduire une photo de 24 Mpx en « haute qualité » oblige le navigateur à refaire toute sa pyramide à chaque image (près de 30 ms ici).
+   On garde donc la pyramide nous-mêmes et on ne remet à jour que la zone touchée, chaque niveau étant le niveau du dessus réduit de moitié exactement (échantillonnage « low » : moyenne de 2 × 2 pixels, sans pyramide interne). */
+function mipRegion(src,x,y,w,h){const e=MIP.get(src);if(!e||!e.length)return;let cur=src,x0=x-2,y0=y-2,x1=x+w+2,y1=y+h+2;
+  for(let k=0;k<e.length;k++){const n=e[k];if(!n)break;const fx=cur.width/n.width,fy=cur.height/n.height;
+    const nx0=Math.max(0,Math.floor(x0/fx)-1),ny0=Math.max(0,Math.floor(y0/fy)-1),nx1=Math.min(n.width,Math.ceil(x1/fx)+1),ny1=Math.min(n.height,Math.ceil(y1/fy)+1);
+    if(nx1<=nx0||ny1<=ny0)break;const g=cx(n);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.imageSmoothingEnabled=true;g.imageSmoothingQuality='low';
+    g.clearRect(nx0,ny0,nx1-nx0,ny1-ny0);g.drawImage(cur,nx0*fx,ny0*fy,(nx1-nx0)*fx,(ny1-ny0)*fy,nx0,ny0,nx1-nx0,ny1-ny0);
+    cur=n;x0=nx0;y0=ny0;x1=nx1;y1=ny1}}
+function drawMip(g,src,x,y,scale,ok){if(src.__sp){x+=src.__sx;y+=src.__sy}const s=ok?mipLevel(src,scale):src,q=src.__live?g.imageSmoothingQuality:null;if(q)g.imageSmoothingQuality='low';
+  if(s===src)g.drawImage(src,x,y);else g.drawImage(s,0,0,s.width,s.height,x,y,src.width,src.height);if(q)g.imageSmoothingQuality=q}
 function mipForget(){const L=AL();if(L&&L.kind==='pixel'){lcv(L)&&MIP.delete(lcv(L));L.mask&&MIP.delete(L.mask)}const st=S.stroke;if(st&&st.layer){lcv(st.layer)&&MIP.delete(lcv(st.layer));st.layer.mask&&MIP.delete(st.layer.mask)}}
 
 /* ================= soft proofing (LittleCMS) ================= */
@@ -11266,7 +11275,7 @@ const _ol=openLibrary;openLibrary=function(){const r=_ol.apply(this,arguments);t
 home();try{lib()}catch(e){}
 })();
 
-window.PRISM_VERSION="1.0.0-beta.20";
+window.PRISM_VERSION="1.0.0-beta.21";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {

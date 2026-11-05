@@ -609,6 +609,15 @@ await test('aperçu rapide : pas de liseré à damier sur les bords de la photo'
       for(const k of [.5,.6,.7]){const n=at(k);if(n>base+2)bad.push([z,k,n,base])}}
     S.sliding=false;LQ.lock=0;return bad});
   if(r.length)throw new Error(JSON.stringify(r))});
+await test('trait sur une grosse photo : l’aperçu en cours de trait montre le trait et seulement lui (pyramide mise à jour par zones)',async()=>{await fresh();
+  const r=await ev(async()=>{const c=document.createElement('canvas');c.width=3000;c.height=2200;const g=c.getContext('2d');g.fillStyle='#808080';g.fillRect(0,0,3000,2200);setDoc(c,'g.jpg',{});await new Promise(r=>setTimeout(r,600));
+    S.doc.active=0;setTool('brush');Object.assign(S.opts.brush,{size:80,hardness:1,opacity:1,flow:1,smooth:0,scatter:0,grain:0,pressSize:false});S.color='#ff0000';S.fitted=false;S.zoom=0.2;S.panX=40;S.panY=40;markContent();render();
+    const px=(x,y)=>{const w=work,d=w.getContext('2d').getImageData(Math.round(S.panX+x*S.zoom*S.pr-S.workPos.x),Math.round(S.panY+y*S.zoom*S.pr-S.workPos.y),1,1).data;return[d[0],d[1],d[2]]};
+    beginStroke({x:400,y:500});render();const grey0=px(2000,1500);
+    for(let k=1;k<=30;k++){moveStroke({x:400+k*50,y:500+Math.sin(k/4)*120});render()}
+    const red=px(400+15*50,500+Math.sin(15/4)*120),far=px(2000,1500),before=grey0;await endStroke();render();const after=px(400+15*50,500+Math.sin(15/4)*120);
+    return{red,far,before,after}});
+  const ok=r.red[0]>200&&r.red[1]<60&&Math.abs(r.far[0]-128)<6&&Math.abs(r.after[0]-r.red[0])<12;if(!ok)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

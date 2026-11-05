@@ -13,11 +13,11 @@ function beginStroke(p,e){const d=S.doc,t=S.tool,A=AL();if(!A)return;const o=S.o
   else if(t==='heal'||t==='remove'){st.target='heal';st.live=false;st.stamp=stampFor(o.size,t==='remove'?0.9:o.hardness,'#ffffff');st.opacity=1}
   else st.stamp=stampFor(o.size,o.hardness,(t==='eraser'||target==='mask')?'#ffffff':S.color);
   // the layer as it will be once the stroke is applied; after the first frame only the area the new dabs touched is recomposed
-  st.liveCanvas=()=>{const base=target==='mask'?L.mask:L.canvas,full=!st.tmp;if(full)st.tmp=mk(d.w,d.h);const g=cx(st.tmp),R=full?{x0:0,y0:0,x1:d.w,y1:d.h}:st.dirty;st.dirty=null;if(!R)return st.tmp;
+  st.liveCanvas=()=>{const base=target==='mask'?L.mask:L.canvas,full=!st.tmp;if(full){st.tmp=mk(d.w,d.h);st.tmp.__live=true}const g=cx(st.tmp),R=full?{x0:0,y0:0,x1:d.w,y1:d.h}:st.dirty;st.dirty=null;if(!R)return st.tmp;
     const x=Math.max(0,Math.floor(R.x0)),y=Math.max(0,Math.floor(R.y0)),w=Math.min(d.w,Math.ceil(R.x1))-x,h=Math.min(d.h,Math.ceil(R.y1))-y;if(w<=0||h<=0)return st.tmp;
     g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(x,y,w,h);g.drawImage(base,x,y,w,h,x,y,w,h);
     let src=st.canvas,sx=x,sy=y;if(d.sel&&st.target!=='heal'){const t=scr('lstroke',w,h),tg=cx(t);tg.globalCompositeOperation='source-over';tg.clearRect(0,0,w,h);tg.drawImage(st.canvas,x,y,w,h,0,0,w,h);tg.globalCompositeOperation='destination-in';tg.drawImage(d.sel,x,y,w,h,0,0,w,h);tg.globalCompositeOperation='source-over';src=t;sx=0;sy=0}
-    g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(src,sx,sy,w,h,x,y,w,h);g.globalAlpha=1;g.globalCompositeOperation='source-over';return st.tmp};
+    g.globalAlpha=st.opacity;g.globalCompositeOperation=st.tool==='eraser'?'destination-out':'source-over';g.drawImage(src,sx,sy,w,h,x,y,w,h);g.globalAlpha=1;g.globalCompositeOperation='source-over';if(!full)mipRegion(st.tmp,x,y,w,h);return st.tmp};
   S.stroke=st;if(e&&e.pointerType==='pen')st.pressure=e.pressure||1;dab(st,p);if(st.target==='heal')requestRender();else markComp()}
 function maskedStroke(st){const d=S.doc;if(!d.sel||st.target==='heal')return st.canvas;if(!st.m)st.m=mk(d.w,d.h);const g=cx(st.m);g.globalCompositeOperation='source-over';g.clearRect(0,0,d.w,d.h);g.drawImage(st.canvas,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);g.globalCompositeOperation='source-over';return st.m}
 function moveStroke(p,e){const st=S.stroke;if(!st)return;if(e&&e.pointerType==='pen')st.pressure=e.pressure||st.pressure;const o=S.opts[st.tool],sp=Math.max(1,o.size*(st.tool==='dodge'?0.2:(o.spacing||12)/100));const dx=p.x-st.last.x,dy=p.y-st.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;const n=Math.floor(dist/sp);
