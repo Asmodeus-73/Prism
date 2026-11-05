@@ -68,6 +68,7 @@ svg{flex:none}
 .mark{display:flex;align-items:center;gap:8px;font:650 15px/1 var(--ui);letter-spacing:-.02em;padding:0 10px 0 2px;white-space:nowrap}
 .mark .logo{width:22px;height:22px;color:var(--fg)}
 .mark i{display:none}
+.mark .ver{font:500 11px/1 var(--ui);color:var(--fg-3,var(--fg-2));letter-spacing:0;opacity:.8}
 .vsep{width:1px;height:20px;background:var(--line-2);margin:0 4px;flex:none}
 
 /* menu bar */
@@ -576,7 +577,7 @@ details.sec.mod>summary .dot{display:block}
 .only-compact{display:none!important}
 @media (max-width:1360px){.tb#bCompare span{display:none}.tb#bCompare{padding:0 8px}}
 @media (max-width:1200px){:root{--side:296px}#bAssist span{display:none}#bAssist{padding:0 8px}.docname .tag{display:none}.st-doc span:nth-child(n+3){display:none}.row{grid-template-columns:84px minmax(0,1fr) 44px}}
-@media (max-width:1100px){.docname .dim{display:none}.menubar>button{padding:0 7px}.mark span{display:none}#bCmd,#bCmd+.vsep{display:none}}
+@media (max-width:1100px){.docname .dim{display:none}.menubar>button{padding:0 7px}.mark span,.mark .ver{display:none}#bCmd,#bCmd+.vsep{display:none}}
 @media (max-width:960px){#bExport span{display:none}#bExport{padding:0 9px}}
 
 /* compact: phones (portrait) and short landscape screens */
@@ -733,6 +734,7 @@ body.compact .scrim.light .dlg{right:8px;left:8px;top:auto;bottom:8px;width:auto
 <input type="file" id="fileLayer" accept="image/*,.tif,.tiff,.pdf,.tga,.svg,.jxl,.bmp,.ico,.avif,.heic,.heif,.dng,.cr2,.cr3,.nef,.arw,.raf,.orf,.rw2" hidden>
 
 <script>
+window.PRISM_VERSION="1.0.0";window.PRISM_CODENAME="Aurore";
 let CS='srgb';const P3_OK=(()=>{try{const c=document.createElement('canvas');c.width=c.height=1;const g=c.getContext('2d',{colorSpace:'display-p3'});return!!(g&&g.getContextAttributes&&g.getContextAttributes().colorSpace==='display-p3')}catch(e){return false}})();
 'use strict';
 /* ===== journal des erreurs : les 40 dernières, gardées en mémoire pour « Signaler un problème » (rien n'est envoyé) =====
@@ -3061,7 +3063,7 @@ requestAnimationFrame(async()=>{let opened=false;try{const last=PREF.get('last',
 const PRISM_LOGO=`<svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="pgSpec" gradientUnits="userSpaceOnUse" x1="0" y1="7.6" x2="0" y2="19.6"><stop offset="0" stop-color="#ff4d5e"/><stop offset=".2" stop-color="#ff9a3c"/><stop offset=".38" stop-color="#ffe14a"/><stop offset=".55" stop-color="#4ee38a"/><stop offset=".72" stop-color="#38c6ff"/><stop offset=".88" stop-color="#5a6bff"/><stop offset="1" stop-color="#d04bff"/></linearGradient><linearGradient id="pgGlass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#9fd8ff"/></linearGradient><linearGradient id="pgBeam" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".2"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><path d="M13.6 11.1 23.6 7.8V19.8z" fill="url(#pgSpec)"/><path d="M13.6 11.1 23.6 11.4M13.6 11.1 23.6 14.6M13.6 11.1 23.6 17.3" stroke="#fff" stroke-opacity=".28" stroke-width=".35" fill="none"/><path d="M10 2.8 17.6 18.2H2.4z" fill="#fff" fill-opacity=".07" stroke="url(#pgGlass)" stroke-width="1.15" stroke-linejoin="round"/><path d="M.4 14.6 5.9 12.2 13.6 11.1" fill="none" stroke="url(#pgBeam)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 /* chaque logo a ses propres identifiants de dégradé : deux logos dans la page ne se marchent pas dessus (un logo caché effaçait les couleurs de l'autre) */
 function prismLogo(){prismLogo.n=(prismLogo.n||0)+1;return PRISM_LOGO.replace(/pg(Spec|Glass|Beam)/g,'pg$1'+prismLogo.n)}
-$('.mark').innerHTML=prismLogo()+'<span>Prism</span>';
+$('.mark').innerHTML=prismLogo()+'<span>Prism</span>'+(window.PRISM_VERSION?'<small class="ver">'+esc(String(window.PRISM_VERSION))+(window.PRISM_CODENAME?' '+esc(window.PRISM_CODENAME):'')+'</small>':'');
 /* histogram footer: shooting info line, as in Lightroom */
 (()=>{const h=$('.histo');if(h&&!$('#hexif')){const e=document.createElement('div');e.id='hexif';e.className='hexif';h.appendChild(e)}})();
 function updateExifLine(){const e=$('#hexif');if(!e)return;const d=S.doc,m=d&&S.meta&&!S.sample?S.meta:'';e.hidden=!m;e.innerHTML=m?m.split(' · ').map(x=>`<span>${esc(x)}</span>`).join(''):''}
@@ -3254,8 +3256,8 @@ function openSheet(stack){const old=$('#msheet');if(old)old.remove();const top=s
   m.onclick=null;m.addEventListener('click',e=>{const b=e.target.closest('.mi');if(!b)return;e.stopImmediatePropagation();const it=b._it;if(it.dis){if(typeof it.dis==='string')toast(it.dis);return}if(it.sub){openSheet([...stack,{title:it.label,items:it.sub}]);return}s.remove();setTimeout(()=>it.fn&&it.fn(),0)},true);
   s.querySelector('[data-x]').onclick=()=>s.remove();const bk=s.querySelector('[data-back]');if(bk)bk.onclick=()=>openSheet(stack.slice(0,-1));focusItem(m,0)}
 function rootSheetItems(){return Object.entries(MENU2).map(([k,v])=>MI(v.label,{sub:v.items}))}
-$('#bMenu').onclick=e=>{e.stopImmediatePropagation();if($('#msheet')){$('#msheet').remove();return}openSheet([{title:'Menu',items:rootSheetItems}])};
-openMenuSheet=()=>openSheet([{title:'Menu',items:rootSheetItems}]);
+$('#bMenu').onclick=e=>{e.stopImmediatePropagation();if($('#msheet')){$('#msheet').remove();return}openSheet([{title:PRISM_TITLE(),items:rootSheetItems}])};
+openMenuSheet=()=>openSheet([{title:PRISM_TITLE(),items:rootSheetItems}]);
 /* ---- context menus (right click, Shift+F10, long press on touch) ---- */
 function layerCtx(i){const d=S.doc;if(!d)return[];if(d.active!==i)setActiveLayer(i);const L=d.layers[i];return[
   MI('Renommer…',{icon:'rename',fn:()=>renameLayerUI(i)}),MI('Dupliquer',{icon:'dup',kbd:MOD+'J',fn:dupLayer}),MI('Supprimer',{icon:'trash',kbd:'Suppr',danger:true,fn:delLayer,dis:d.layers.length<2?'Il faut garder au moins un calque':false}),SEP,
@@ -3304,6 +3306,7 @@ function shortcutsDialog(){const tools=TOOLS.filter(Boolean).map(t=>`<tr><td>${e
   const gen=[['Rechercher une commande',MOD+'K'],['Ouvrir',MOD+'O'],['Photothèque',MOD+'⇧O'],['Enregistrer',MOD+'S'],['Exporter',MOD+'⇧E'],['Annuler / rétablir',MOD+'Z  /  '+MOD+'⇧Z'],['Couper / copier / coller',MOD+'X / C / V'],['Tout sélectionner / désélectionner',MOD+'A  /  '+MOD+'D'],['Intervertir la sélection',MOD+'⇧I'],['Nouveau calque',MOD+'⌥N'],['Dupliquer le calque',MOD+'J'],['Fusionner avec le calque inférieur',MOD+'E'],['Ajuster à l’écran / 100 %',MOD+'0  /  '+MOD+'1'],['Zoom avant / arrière',MOD+'+  /  '+MOD+'−'],['Comparer avant / après','Y'],['Voir l’original (maintenir)','\\'],['Afficher le masque','⇧M'],['Réglages automatiques',MOD+'⇧L'],['Menu clic droit au clavier','⇧F10'],['Aller au menu','F10'],['Déplacer la vue','Espace + glisser'],['Masque rapide','Q'],['Inverser couleur de premier plan / arrière-plan','X'],['Taille du pinceau / dureté','[ ]  /  ⇧[ ]'],['Pinceau : ligne droite','⇧ + clic'],['Baguette : régler la tolérance en direct','Glisser après le clic'],['Lasso polygonal : fermer','Double-clic / Entrée'],['Transformation libre : valider / annuler','Entrée / Échap'],['Sélectionner plusieurs calques','Ctrl + clic  /  Maj + clic'],['Remettre un curseur à zéro','Double-clic'],['Saisir une valeur','Clic sur le chiffre'],['Aperçu rapide (photothèque)','Espace']].map(([a,b])=>`<tr><td>${esc(a)}</td><td><kbd>${esc(b)}</kbd></td></tr>`).join('');
   const dl=dialog({title:'Raccourcis clavier',body:`<div class="keys"><table><caption>Général</caption>${gen}</table><table><caption>Outils</caption>${tools}</table></div>`,buttons:[{label:'Fermer',primary:true}]});dl.classList.add('wide')}
 function formatsDialog(){dialog({title:'Formats pris en charge',body:`<table class="fmts"><tr><th>Ouvrir</th><td>JPEG, HEIC / HEIF, PNG 8 et 16 bits, TIFF 8, 16 et 32 bits (LZW, ZIP, CMJN), WebP, AVIF, JPEG XL, JPEG 2000, PSD / PSB, PDF, GIF, BMP, TGA, SVG, ICO, QOI, PPM / PGM / PAM et les RAW de tous les grands fabricants (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2…)</td></tr><tr><th>Animé</th><td>Motion Photos (Google, Samsung), Live Photos (la photo et sa vidéo ouvertes ensemble), GIF et PNG animés : Image > Photo animée…</td></tr><tr><th>Exporter</th><td>JPEG (4:4:4), PNG 8 et 16 bits, TIFF 8 et 16 bits, WebP, AVIF 8 et 10 bits, PSD avec calques, PDF, GIF, BMP, TGA, ICO</td></tr><tr><th>Projet</th><td>.zip Prism (tous les calques, masques et réglages)</td></tr></table><p class="muted">Profils couleur et données de prise de vue (EXIF) conservés. Jusqu’à 120 Mpx sur ordinateur, 16,7 Mpx sur iPhone et iPad (limite de Safari).</p>`,buttons:[{label:'Fermer',primary:true}]})}
+function PRISM_TITLE(){return window.PRISM_VERSION?'Prism '+window.PRISM_VERSION+(window.PRISM_CODENAME?' « '+window.PRISM_CODENAME+' »':''):'Menu'}
 function aboutDialog(){dialog({title:'À propos de Prism',body:`<div class="about">${prismLogo()}<div><b>Prism</b> <span class="muted">${esc(String(window.PRISM_VERSION||''))}${window.PRISM_CODENAME?' « '+esc(window.PRISM_CODENAME)+' »':''}${window.__TAURI__?'':' · web'}</span><p class="muted">Retouche photo : RAW 16 bits, calques, masques, IA sur l’appareil.</p></div></div>
   <details class="credits" style="margin-top:12px;font-size:12px"><summary style="cursor:pointer">Logiciels et modèles intégrés</summary><ul class="muted" style="margin:6px 0 0;padding-left:18px;line-height:1.55">
   <li>ONNX Runtime (MIT), TensorFlow.js (Apache 2.0)</li><li>LibRaw (LGPL 2.1 / CDDL 1.0), Little CMS (MIT), libheif (LGPL 3), pdf.js (Apache 2.0), ag-psd (MIT), encodeur AVIF libavif/aom (BSD)</li>
@@ -11297,7 +11300,6 @@ const _ol=openLibrary;openLibrary=function(){const r=_ol.apply(this,arguments);t
 home();try{lib()}catch(e){}
 })();
 
-window.PRISM_VERSION="1.0.0";window.PRISM_CODENAME="Aurore";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {

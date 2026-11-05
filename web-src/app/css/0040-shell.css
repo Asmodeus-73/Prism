@@ -6,6 +6,7 @@
 .mark{display:flex;align-items:center;gap:8px;font:650 15px/1 var(--ui);letter-spacing:-.02em;padding:0 10px 0 2px;white-space:nowrap}
 .mark .logo{width:22px;height:22px;color:var(--fg)}
 .mark i{display:none}
+.mark .ver{font:500 11px/1 var(--ui);color:var(--fg-3,var(--fg-2));letter-spacing:0;opacity:.8}
 .vsep{width:1px;height:20px;background:var(--line-2);margin:0 4px;flex:none}
 
 /* menu bar */

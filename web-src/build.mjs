@@ -11,12 +11,12 @@ const read=f=>fs.readFileSync(f,'utf8');
 const pkg=JSON.parse(read(path.join(root,'package.json'))),version=pkg.version,codename=pkg.codename||'';
 const css=list('app/css').map(read).join(''),js=list('app/js').map(read).join('');
 const feats=list('feat');
-const add='\nwindow.PRISM_VERSION='+JSON.stringify(version)+';window.PRISM_CODENAME='+JSON.stringify(codename)+';\n'+feats.map(f=>`\n/* ===== feat: feat/${path.basename(f)} ===== */\n{\n${read(f)}\n}\n`).join('');
+const head='window.PRISM_VERSION='+JSON.stringify(version)+';window.PRISM_CODENAME='+JSON.stringify(codename)+';\n',add='\n'+feats.map(f=>`\n/* ===== feat: feat/${path.basename(f)} ===== */\n{\n${read(f)}\n}\n`).join('');
 const page=read(path.join(here,'app/page.html'));
 if(page.split('@@CSS@@').length!==2||page.split('@@JS@@').length!==2)throw new Error('page.html: @@CSS@@ and @@JS@@ must appear once each');
-const out=page.replace('@@CSS@@',()=>css).replace('@@JS@@',()=>js+add);
+const out=page.replace('@@CSS@@',()=>css).replace('@@JS@@',()=>head+js+add);
 // syntax check of the whole script, as the browser will see it
-const tmp=path.join(os.tmpdir(),`prism-check-${process.pid}.js`);fs.writeFileSync(tmp,js+add);
+const tmp=path.join(os.tmpdir(),`prism-check-${process.pid}.js`);fs.writeFileSync(tmp,head+js+add);
 const r=spawnSync(process.execPath,['--check',tmp],{stdio:'inherit'});fs.rmSync(tmp);if(r.status!==0){console.error('SYNTAX_FAIL');process.exit(1)}
 const dest=path.join(root,'web','index.html');
 if(process.argv.includes('--check')){if(!fs.existsSync(dest)||read(dest)!==out){console.error('web/index.html is out of date: run node web-src/build.mjs');process.exit(1)}console.log('web/index.html is up to date');}
