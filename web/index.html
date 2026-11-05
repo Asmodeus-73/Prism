@@ -1070,6 +1070,8 @@ function render(){rq=false;if(vrDirty||!S.vw||view.width<2)resizeView();const c=
   if(S.contentDirty)renderContent();const d=S.doc,pr=S.pr;
   if(!checker){const t=mk(16,16),g=cx(t);g.fillStyle='#b9b9b9';g.fillRect(0,0,16,16);g.fillStyle='#8e8e8e';g.fillRect(0,0,8,8);g.fillRect(8,8,8,8);checker=c.createPattern(t,'repeat')}
   c.save();c.setTransform(...viewMatrix(0,0));c.beginPath();c.rect(0,0,d.w,d.h);c.setTransform(1,0,0,1,0,0);c.clip();c.fillStyle=checker;c.fillRect(0,0,v.width,v.height);c.restore();
+  /* zoom ou déplacement rapide : l'image d'avant ne couvre que la zone qu'on voyait ; une vue réduite de toute la photo remplit le reste, au lieu du damier */
+  if(S.workPos&&VOV.c&&VOV.d===d&&((S.workZ||1)!==1||S.workPos.x!==S.workPos0x||S.workPos.y!==S.workPos0y)){c.save();c.setTransform(...viewMatrix(0,0));c.imageSmoothingEnabled=true;c.imageSmoothingQuality='low';c.drawImage(VOV.c,0,0,d.w,d.h);c.restore()}
   if(S.workPos){const ws=S.workSize,lq=ws&&ws.k<1;if(lq){c.imageSmoothingEnabled=true;c.imageSmoothingQuality='medium'}
     const wz=S.workZ||1,dw=(lq?ws.w:work.width)*wz,dh=(lq?ws.h:work.height)*wz;c.drawImage(work,S.workPos.x,S.workPos.y,dw,dh);if(S.compare==='split'&&!S.holdBefore){const sx=Math.round(S.splitX*v.width);c.save();c.beginPath();c.rect(0,0,sx,v.height);c.clip();c.drawImage(workB,S.workPos.x,S.workPos.y,dw,dh);c.restore()}}
   drawOverlays(c,pr);updateStatus();positionSplit()}
@@ -1096,7 +1098,14 @@ function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.widt
   if(!before&&A&&A.kind==='adjust'&&!S.stroke){o.cacheIdx=d.active;o.cacheKey=[S.docVer,T.join(),bw,bh,d.layers.slice(0,d.active).map(L=>L.kind==='adjust'?JSON.stringify(L.dev):'').join('|')].join('#')}
   renderStack(wctx,bw,bh,T,{...o,before});if(PROOF.on)proofApply(wctx,bw,bh);
   if(S.compare==='split'&&!before){if(workB.width!==bw||workB.height!==bh){workB.width=bw;workB.height=bh}renderStack(cx(workB),bw,bh,T,{...o,before:true,cacheIdx:null,cacheKey:null});if(PROOF.on)proofApply(rx(workB),bw,bh)}
-  S.workPos={x:bx0,y:by0};S.workZ=1;const now=performance.now();S.workSize={w:bw0,h:bh0,k};histoSched(now)}
+  S.workPos={x:bx0,y:by0};S.workPos0x=bx0;S.workPos0y=by0;S.workZ=1;if(k===1&&!before&&!PROOF.on&&S.compare!=='split'){if(pts.every(q=>q[0]>=-1&&q[1]>=-1&&q[0]<=W+1&&q[1]<=H+1)&&!T0[1]&&!T0[2]){VOV.full={d,bw,bh,x:bx0,y:by0};ovSched()}else{VOV.full=null;ovSched()}}const now=performance.now();S.workSize={w:bw0,h:bh0,k};histoSched(now)}
+/* vue réduite de toute la photo (1024 px au plus), refaite au repos ; sert de fond pendant un zoom ou un déplacement rapide */
+const VOV={c:null,d:null,t:0};
+function ovRender(){const d=S.doc;if(!d)return;if(S.stroke||S.sliding||S.drag){ovSched();return}const F=VOV.full;if(F&&F.d===d&&S.workPos&&S.workPos.x===F.x&&S.workPos.y===F.y&&(S.workZ||1)===1&&work.width===F.bw&&work.height===F.bh&&!S.contentDirty){ovCopy(d,F.bw,F.bh);return}const s=Math.min(1,1024/Math.max(d.w,d.h)),w=Math.max(1,Math.round(d.w*s)),h=Math.max(1,Math.round(d.h*s));
+  if(!VOV.c||VOV.c.width!==w||VOV.c.height!==h){VOV.c=mk(w,h)}try{renderStack(cx(VOV.c),w,h,[s,0,0,s,0,0],{scale:s,ox:0,oy:0});VOV.d=d}catch(e){VOV.d=null}}
+/* photo entière visible : la vue réduite se tire de l'image qu'on vient de calculer */
+function ovCopy(d,bw,bh){const s=Math.min(1,1024/Math.max(d.w,d.h)),w=Math.max(1,Math.round(d.w*s)),h=Math.max(1,Math.round(d.h*s));if(!VOV.c||VOV.c.width!==w||VOV.c.height!==h){VOV.c=mk(w,h)}const g=cx(VOV.c);g.setTransform(1,0,0,1,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';g.clearRect(0,0,w,h);g.imageSmoothingEnabled=true;g.imageSmoothingQuality='low';g.drawImage(work,0,0,bw,bh,0,0,w,h);VOV.d=d}
+function ovSched(){clearTimeout(VOV.t);VOV.t=setTimeout(()=>{const ric=window.requestIdleCallback;ric?ric(ovRender,{timeout:600}):ovRender()},450)}
 /* histogram refresh: throttled (never debounced) so it follows a slider or a brush live, always read from the same region of the work canvas, through a small proxy so the read-back stays cheap */
 const histoP=mk(1,1);
 function histoRead(){const ws=S.workSize;if(!S.doc||!ws||work.width<2)return null;const k=Math.min(1,480/Math.max(ws.w,ws.h)),w=Math.max(1,Math.round(ws.w*k)),h=Math.max(1,Math.round(ws.h*k));if(histoP.width!==w||histoP.height!==h){histoP.width=w;histoP.height=h}const g=rx(histoP);g.clearRect(0,0,w,h);g.imageSmoothingQuality='low';g.drawImage(work,0,0,work.width,work.height,0,0,w,h);return g.getImageData(0,0,w,h)}
@@ -11285,7 +11294,7 @@ const _ol=openLibrary;openLibrary=function(){const r=_ol.apply(this,arguments);t
 home();try{lib()}catch(e){}
 })();
 
-window.PRISM_VERSION="1.0.0-beta.24";
+window.PRISM_VERSION="1.0.0-beta.25";
 
 /* ===== feat: feat/aidenoise.js ===== */
 {
@@ -12144,7 +12153,7 @@ function pickOnce(L,cb){toast('Cliquez sur la photo pour prendre la couleur',300
   addEventListener('pointerdown',h,true)}
 
 /* ---------- boîte commune : réglages, couleurs, aperçu en direct, appliquer au calque ---------- */
-function fxDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}
+function fvDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}
   if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
   const p={...o.init(L)};let tmr=null;const alive=()=>S.doc===d&&d.layers.includes(L);
   const clear=()=>{clearTimeout(tmr);delete L.preview};
@@ -12167,7 +12176,7 @@ function pickImage(){return new Promise(res=>{const i=document.createElement('in
 async function coverWith(file,w,h){const im=await loadImageFile(file),iw=im.naturalWidth||im.width,ih=im.naturalHeight||im.height,k=Math.max(w/iw,h/ih),c=mk(w,h),g=cx(c);
   g.imageSmoothingQuality='high';g.drawImage(im,(w-iw*k)/2,(h-ih*k)/2,iw*k,ih*k);return c}
 
-function greenDialog(){fxDialog({title:'Fond vert (incrustation)',
+function greenDialog(){fvDialog({title:'Fond vert (incrustation)',
   note:'Rend transparent le fond uni (vert ou bleu) et retire le reflet coloré sur les bords. La couleur du fond est devinée sur les bords de la photo.',
   colors:[['key','Couleur du fond']],
   params:[['tol','Tolérance',0,90,1,0,' %'],['soft','Douceur du bord',1,100,1,0,' %'],['spill','Retrait du reflet',0,100,1,0,' %'],['shrink','Rétrécir le bord',0,8,1,0,' px'],['feather','Adoucir le bord',0,6,0.5,0,' px']],
@@ -12176,11 +12185,11 @@ function greenDialog(){fxDialog({title:'Fond vert (incrustation)',
   run:chromaKey,
   after:async(el,p,L)=>{const m=$('#fv-bg',el).value,d=S.doc;if(m==='color'){const c=mk(d.w,d.h),g=cx(c);g.fillStyle=$('#fv-bgc',el).value;g.fillRect(0,0,d.w,d.h);layerBelow(L,c,'Fond')}
     else if(m==='image'){const f=await pickImage();if(!f||S.doc!==d)return;try{busy(true,'Pose du nouveau fond…',null);layerBelow(L,await coverWith(f,d.w,d.h),'Fond')}catch(e){console.error(e);toast('Image illisible',4000)}finally{busy(false)}}}})}
-function c2aDialog(){fxDialog({title:'Couleur vers transparence',
+function c2aDialog(){fvDialog({title:'Couleur vers transparence',
   note:'Retire une couleur en gardant les nuances : un fond blanc derrière un logo ou une signature devient transparent, les bords restent doux.',
   colors:[['color','Couleur à retirer']],params:[['th','Seuil',0,90,1,0,' %']],
   init:()=>({color:[255,255,255],th:0}),run:colorToAlpha})}
-function replaceDialog(){fxDialog({title:'Remplacer une couleur',
+function replaceDialog(){fvDialog({title:'Remplacer une couleur',
   note:'Change une couleur de la photo en une autre, en gardant les ombres et les reliefs. Prenez la couleur d’origine à la pipette.',
   colors:[['from','Couleur d’origine'],['to','Nouvelle couleur']],
   params:[['tol','Tolérance',1,80,1,0,''],['soft','Douceur',1,60,1,0,''],['light','Suivre la luminosité',0,100,1,0,' %']],
@@ -13841,7 +13850,7 @@ PSX.read=(def,el,p)=>{def.params.forEach(q=>{const k=q[0],i=$('#ps-'+k,el);if(!i
 PSX.target=()=>{const d=S.doc;if(!d)return null;if(maskTarget()){toast('Ce réglage s’applique à la photo, pas au masque : choisissez le calque de photo');return null}
   const L=pixelTarget();if(!L){toast('Aucun calque de pixels à modifier');return null}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return null}return L};
 /* calcule le filtre id sur un canvas, en arrière-plan ; résultat : canvas (null si annulé) */
-PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null,jb=F.job(PSX.img(src),p,sc,sel);if(!jb)return Promise.reject(new Error(F.needs||'rien à calculer'));const[op,args]=jb;
+PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null,jb=F.job(PSX.img(src),p,sc,sel);if(!jb){const e=new Error(F.needs||'rien à calculer');e.needs=true;return Promise.reject(e)}const[op,args]=jb;
   const j=PSX.run(op,args,{onProgress:o.onProgress});o.onJob&&o.onJob(j);return j.promise.then(r=>PSX.canvas(r&&r.image?r.image:r))};
 PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target();if(!L)return;
   const p={...(F.last||{})};F.params.forEach(q=>{if(p[q[0]]==null)p[q[0]]=q[5]});
@@ -13854,7 +13863,10 @@ PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target(
         const out=await PSX.compute(id,piece,p,{onJob:j=>job=j});if(my!==seq||closed)return;r=cloneC(orig);const g=cx(r);g.clearRect(R.x,R.y,R.w,R.h);g.drawImage(out,R.x,R.y)}
       else{if(!small)small=PSX.small(orig,F.previewSide||1400);const out=await PSX.compute(id,small.c,p,{scale:small.k,onJob:j=>job=j});if(my!==seq||closed)return;r=PSX.up(out,orig.width,orig.height)}
       job=null;if(d.sel)r=PSX.mixSel(orig,r,d.sel);L.preview=r;markComp();const st2=$('#ps-state');if(st2)st2.textContent=F.preview==='crop'&&(orig.width>(F.cropSide||900)||orig.height>(F.cropSide||900))?'Aperçu à 100 % sur la zone au centre de l’écran.':''}
-    catch(e){if(PSX.cancelled(e))return;console.error(e);const st2=$('#ps-state');if(st2)st2.textContent='';toast('Aperçu impossible : '+(e.message||e),3000)}},F.delay||160)};
+    catch(e){if(PSX.cancelled(e))return;const st2=$('#ps-state');if(st2)st2.textContent='';
+      /* condition non remplie (pas de masque…) : on le dit et on ferme, ce n'est pas une panne */
+      if(e.needs){clear();closeDialog();markComp();toast(F.name+' : '+e.message,4000);return}
+      console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},F.delay||160)};
   dialog({title:F.name,light:true,
     body:(F.note?`<p class="muted" style="margin:0 0 8px">${F.note}</p>`:'')+F.params.map(q=>psRow(F,q,p[q[0]])).join('')+(F.extraBody?F.extraBody(p):'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':'')+'<p class="muted" id="ps-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>',
     onOpen:el=>{F.params.forEach(q=>{const i=$('#ps-'+q[0],el);if(!i)return;const ev=i.tagName==='SELECT'||i.type==='checkbox'?'onchange':'oninput';
@@ -13866,7 +13878,7 @@ PSX.apply=async(id,d,L,orig,p)=>{const F=FILTERS[id];F.last={...p};busy(true,F.n
   try{const r=await PSX.compute(id,orig,p,{onProgress:f=>busy(true,F.name+'…',f),onJob:x=>PSX.track(j=x)});
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');markComp();return}
     PSX.rec(id,p);applyMasked(L,r,F.name)}
-  catch(e){if(!PSX.cancelled(e)){console.error(e);toast(F.name+' impossible : '+(e.message||e),4000)}markComp()}
+  catch(e){if(e&&e.needs)toast(F.name+' : '+e.message,4000);else if(!PSX.cancelled(e)){console.error(e);toast(F.name+' impossible : '+(e.message||e),4000)}markComp()}
   finally{PSX.untrack(j);busy(false)}};
 /* un filtre de plus : utilisable dans les actions et les effets modifiables (calcul direct), avec la fenêtre ci-dessus */
 PSX.filter=(id,def)=>{const F=Object.assign({preview:'scale'},def);

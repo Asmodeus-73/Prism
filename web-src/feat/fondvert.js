@@ -69,7 +69,7 @@ function pickOnce(L,cb){toast('Cliquez sur la photo pour prendre la couleur',300
   addEventListener('pointerdown',h,true)}
 
 /* ---------- boîte commune : réglages, couleurs, aperçu en direct, appliquer au calque ---------- */
-function fxDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}
+function fvDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}
   if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
   const p={...o.init(L)};let tmr=null;const alive=()=>S.doc===d&&d.layers.includes(L);
   const clear=()=>{clearTimeout(tmr);delete L.preview};
@@ -92,7 +92,7 @@ function pickImage(){return new Promise(res=>{const i=document.createElement('in
 async function coverWith(file,w,h){const im=await loadImageFile(file),iw=im.naturalWidth||im.width,ih=im.naturalHeight||im.height,k=Math.max(w/iw,h/ih),c=mk(w,h),g=cx(c);
   g.imageSmoothingQuality='high';g.drawImage(im,(w-iw*k)/2,(h-ih*k)/2,iw*k,ih*k);return c}
 
-function greenDialog(){fxDialog({title:'Fond vert (incrustation)',
+function greenDialog(){fvDialog({title:'Fond vert (incrustation)',
   note:'Rend transparent le fond uni (vert ou bleu) et retire le reflet coloré sur les bords. La couleur du fond est devinée sur les bords de la photo.',
   colors:[['key','Couleur du fond']],
   params:[['tol','Tolérance',0,90,1,0,' %'],['soft','Douceur du bord',1,100,1,0,' %'],['spill','Retrait du reflet',0,100,1,0,' %'],['shrink','Rétrécir le bord',0,8,1,0,' px'],['feather','Adoucir le bord',0,6,0.5,0,' px']],
@@ -101,11 +101,11 @@ function greenDialog(){fxDialog({title:'Fond vert (incrustation)',
   run:chromaKey,
   after:async(el,p,L)=>{const m=$('#fv-bg',el).value,d=S.doc;if(m==='color'){const c=mk(d.w,d.h),g=cx(c);g.fillStyle=$('#fv-bgc',el).value;g.fillRect(0,0,d.w,d.h);layerBelow(L,c,'Fond')}
     else if(m==='image'){const f=await pickImage();if(!f||S.doc!==d)return;try{busy(true,'Pose du nouveau fond…',null);layerBelow(L,await coverWith(f,d.w,d.h),'Fond')}catch(e){console.error(e);toast('Image illisible',4000)}finally{busy(false)}}}})}
-function c2aDialog(){fxDialog({title:'Couleur vers transparence',
+function c2aDialog(){fvDialog({title:'Couleur vers transparence',
   note:'Retire une couleur en gardant les nuances : un fond blanc derrière un logo ou une signature devient transparent, les bords restent doux.',
   colors:[['color','Couleur à retirer']],params:[['th','Seuil',0,90,1,0,' %']],
   init:()=>({color:[255,255,255],th:0}),run:colorToAlpha})}
-function replaceDialog(){fxDialog({title:'Remplacer une couleur',
+function replaceDialog(){fvDialog({title:'Remplacer une couleur',
   note:'Change une couleur de la photo en une autre, en gardant les ombres et les reliefs. Prenez la couleur d’origine à la pipette.',
   colors:[['from','Couleur d’origine'],['to','Nouvelle couleur']],
   params:[['tol','Tolérance',1,80,1,0,''],['soft','Douceur',1,60,1,0,''],['light','Suivre la luminosité',0,100,1,0,' %']],

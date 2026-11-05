@@ -18,6 +18,8 @@ function render(){rq=false;if(vrDirty||!S.vw||view.width<2)resizeView();const c=
   if(S.contentDirty)renderContent();const d=S.doc,pr=S.pr;
   if(!checker){const t=mk(16,16),g=cx(t);g.fillStyle='#b9b9b9';g.fillRect(0,0,16,16);g.fillStyle='#8e8e8e';g.fillRect(0,0,8,8);g.fillRect(8,8,8,8);checker=c.createPattern(t,'repeat')}
   c.save();c.setTransform(...viewMatrix(0,0));c.beginPath();c.rect(0,0,d.w,d.h);c.setTransform(1,0,0,1,0,0);c.clip();c.fillStyle=checker;c.fillRect(0,0,v.width,v.height);c.restore();
+  /* zoom ou déplacement rapide : l'image d'avant ne couvre que la zone qu'on voyait ; une vue réduite de toute la photo remplit le reste, au lieu du damier */
+  if(S.workPos&&VOV.c&&VOV.d===d&&((S.workZ||1)!==1||S.workPos.x!==S.workPos0x||S.workPos.y!==S.workPos0y)){c.save();c.setTransform(...viewMatrix(0,0));c.imageSmoothingEnabled=true;c.imageSmoothingQuality='low';c.drawImage(VOV.c,0,0,d.w,d.h);c.restore()}
   if(S.workPos){const ws=S.workSize,lq=ws&&ws.k<1;if(lq){c.imageSmoothingEnabled=true;c.imageSmoothingQuality='medium'}
     const wz=S.workZ||1,dw=(lq?ws.w:work.width)*wz,dh=(lq?ws.h:work.height)*wz;c.drawImage(work,S.workPos.x,S.workPos.y,dw,dh);if(S.compare==='split'&&!S.holdBefore){const sx=Math.round(S.splitX*v.width);c.save();c.beginPath();c.rect(0,0,sx,v.height);c.clip();c.drawImage(workB,S.workPos.x,S.workPos.y,dw,dh);c.restore()}}
   drawOverlays(c,pr);updateStatus();positionSplit()}
@@ -44,7 +46,14 @@ function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.widt
   if(!before&&A&&A.kind==='adjust'&&!S.stroke){o.cacheIdx=d.active;o.cacheKey=[S.docVer,T.join(),bw,bh,d.layers.slice(0,d.active).map(L=>L.kind==='adjust'?JSON.stringify(L.dev):'').join('|')].join('#')}
   renderStack(wctx,bw,bh,T,{...o,before});if(PROOF.on)proofApply(wctx,bw,bh);
   if(S.compare==='split'&&!before){if(workB.width!==bw||workB.height!==bh){workB.width=bw;workB.height=bh}renderStack(cx(workB),bw,bh,T,{...o,before:true,cacheIdx:null,cacheKey:null});if(PROOF.on)proofApply(rx(workB),bw,bh)}
-  S.workPos={x:bx0,y:by0};S.workZ=1;const now=performance.now();S.workSize={w:bw0,h:bh0,k};histoSched(now)}
+  S.workPos={x:bx0,y:by0};S.workPos0x=bx0;S.workPos0y=by0;S.workZ=1;if(k===1&&!before&&!PROOF.on&&S.compare!=='split'){if(pts.every(q=>q[0]>=-1&&q[1]>=-1&&q[0]<=W+1&&q[1]<=H+1)&&!T0[1]&&!T0[2]){VOV.full={d,bw,bh,x:bx0,y:by0};ovSched()}else{VOV.full=null;ovSched()}}const now=performance.now();S.workSize={w:bw0,h:bh0,k};histoSched(now)}
+/* vue réduite de toute la photo (1024 px au plus), refaite au repos ; sert de fond pendant un zoom ou un déplacement rapide */
+const VOV={c:null,d:null,t:0};
+function ovRender(){const d=S.doc;if(!d)return;if(S.stroke||S.sliding||S.drag){ovSched();return}const F=VOV.full;if(F&&F.d===d&&S.workPos&&S.workPos.x===F.x&&S.workPos.y===F.y&&(S.workZ||1)===1&&work.width===F.bw&&work.height===F.bh&&!S.contentDirty){ovCopy(d,F.bw,F.bh);return}const s=Math.min(1,1024/Math.max(d.w,d.h)),w=Math.max(1,Math.round(d.w*s)),h=Math.max(1,Math.round(d.h*s));
+  if(!VOV.c||VOV.c.width!==w||VOV.c.height!==h){VOV.c=mk(w,h)}try{renderStack(cx(VOV.c),w,h,[s,0,0,s,0,0],{scale:s,ox:0,oy:0});VOV.d=d}catch(e){VOV.d=null}}
+/* photo entière visible : la vue réduite se tire de l'image qu'on vient de calculer */
+function ovCopy(d,bw,bh){const s=Math.min(1,1024/Math.max(d.w,d.h)),w=Math.max(1,Math.round(d.w*s)),h=Math.max(1,Math.round(d.h*s));if(!VOV.c||VOV.c.width!==w||VOV.c.height!==h){VOV.c=mk(w,h)}const g=cx(VOV.c);g.setTransform(1,0,0,1,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';g.clearRect(0,0,w,h);g.imageSmoothingEnabled=true;g.imageSmoothingQuality='low';g.drawImage(work,0,0,bw,bh,0,0,w,h);VOV.d=d}
+function ovSched(){clearTimeout(VOV.t);VOV.t=setTimeout(()=>{const ric=window.requestIdleCallback;ric?ric(ovRender,{timeout:600}):ovRender()},450)}
 /* histogram refresh: throttled (never debounced) so it follows a slider or a brush live, always read from the same region of the work canvas, through a small proxy so the read-back stays cheap */
 const histoP=mk(1,1);
 function histoRead(){const ws=S.workSize;if(!S.doc||!ws||work.width<2)return null;const k=Math.min(1,480/Math.max(ws.w,ws.h)),w=Math.max(1,Math.round(ws.w*k)),h=Math.max(1,Math.round(ws.h*k));if(histoP.width!==w||histoP.height!==h){histoP.width=w;histoP.height=h}const g=rx(histoP);g.clearRect(0,0,w,h);g.imageSmoothingQuality='low';g.drawImage(work,0,0,work.width,work.height,0,0,w,h);return g.getImageData(0,0,w,h)}

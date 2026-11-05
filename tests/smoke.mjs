@@ -618,6 +618,17 @@ await test('trait sur une grosse photo : l’aperçu en cours de trait montre le
     const red=px(400+15*50,500+Math.sin(15/4)*120),far=px(2000,1500),before=grey0;await endStroke();render();const after=px(400+15*50,500+Math.sin(15/4)*120);
     return{red,far,before,after}});
   const ok=r.red[0]>200&&r.red[1]<60&&Math.abs(r.far[0]-128)<6&&Math.abs(r.after[0]-r.red[0])<12;if(!ok)throw new Error(JSON.stringify(r))});
+await test('dézoom rapide : la partie qui n’était pas affichée montre la photo, pas le damier',async()=>{await fresh();
+  const r=await ev(async()=>{const W=4000,H=3000,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');g.fillStyle='#2a6';g.fillRect(0,0,W,H);setDoc(c,'v.png',{});const w=ms=>new Promise(r=>setTimeout(r,ms));await w(600);
+    fit();render();await w(1000);zoomAt(S.zoom*6,S.vw/2,S.vh/2);render();await w(100);S.contentMs=50;S.zoomRedraw=performance.now();zoomAt(S.zoom/2,S.vw/2,S.vh/2);zoomAt(S.zoom/2,S.vw/2,S.vh/2);render();
+    const x=Math.max(S.panX+5,5),y=S.vh/2,d=vctx.getImageData(Math.round(x*S.pr),Math.round(y*S.pr),1,1).data;return{fast:S.workZ!==1,px:[d[0],d[1],d[2]]}});
+  if(!r.fast||!(r.px[1]>130&&r.px[0]<120))throw new Error(JSON.stringify(r))});
+await test('Calque > Styles de calque ouvre sa fenêtre ; un nettoyage de franges sans masque le dit sans erreur',async()=>{await fresh();await sample();
+  const r=await ev(async()=>{const w=ms=>new Promise(r=>setTimeout(r,ms));const errs=[];const ce=console.error;console.error=(...a)=>{errs.push(String(a[0]&&a[0].message||a[0]));ce.apply(console,a)};
+    S.doc.active=S.doc.layers.findIndex(l=>l.kind==='pixel');const find=(a,l)=>a.find(x=>x&&x.label===l);const it=find(MENU2.layer.items(),'Styles de calque…');it.fn();await w(200);const t1=($('#scrim h2,#scrim .dlg-title,#scrim')||{}).textContent||'';closeDialog();
+    const m=find(MENU2.layer.items(),'Masque');const fr=find(typeof m.sub==='function'?m.sub():m.sub,'Nettoyer les franges de couleur…');fr.fn();await w(900);const open=!!$('#scrim');closeDialog();console.error=ce;
+    return{styles:/Ombre|Contour|Lueur|Style/i.test(t1),open,errs}});
+  if(!r.styles||r.open||r.errs.length)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
