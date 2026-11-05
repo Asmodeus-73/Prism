@@ -39,7 +39,7 @@ drawLayerThumbs=function(){const d=S.doc;if(d&&d!==seen){clearTimeout(tm);tm=set
 /* ================= aperçu rapide : réglable =================
    Pendant un glissé de curseur sur une grosse photo lente, Prism calcule l'image en plus petit (elle paraît floue) puis revient au net.
    Affichage > Aperçu rapide pendant les réglages l'arrête : l'image reste nette, le curseur peut être moins fluide. */
-{const _vi=MENU2.view.items;MENU2.view.items=()=>[..._vi(),MI('Aperçu rapide pendant les réglages',{check:PREF.get('lq',true),fn:()=>{PREF.set('lq',!PREF.get('lq',true));toast(PREF.get('lq',true)?'Aperçu rapide activé.':'Aperçu rapide arrêté : l’image reste nette.')}})]}
+{const _vi=MENU2.view.items;MENU2.view.items=()=>[..._vi(),MI('Affichage économe (plus fluide, moins net)',{check:PREF.get('eco',false),fn:()=>{PREF.set('eco',!PREF.get('eco',false));vrDirty=true;S.contentDirty=true;requestRender();toast(PREF.get('eco',false)?'Affichage économe : la photo est calculée à la taille de l’écran, sans le double de pixels.':'Affichage net rétabli.')}}),MI('Aperçu rapide pendant les réglages',{check:PREF.get('lq',true),fn:()=>{PREF.set('lq',!PREF.get('lq',true));toast(PREF.get('lq',true)?'Aperçu rapide activé.':'Aperçu rapide arrêté : l’image reste nette.')}})]}
 
 /* ================= rendu logiciel : on le dit =================
    Sans carte graphique utilisable (pilote absent, bloqué ou ancien), les réglages et les traits sur une grosse photo passent par le processeur : 10 à 50 fois plus lent.

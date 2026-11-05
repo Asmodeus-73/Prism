@@ -9,7 +9,7 @@ const rootVarC=new Map();setInterval(()=>{stageBgC=null;rootVarC.clear()},2000);
 /* variables CSS de la page, lues une fois par thème */
 function rootStyle(){return{getPropertyValue(n){let v=rootVarC.get(n);if(v==null){v=getComputedStyle(document.documentElement).getPropertyValue(n);rootVarC.set(n,v)}return v}}}
 function stageBg(){return stageBgC||(stageBgC=getComputedStyle(stage).backgroundColor)}
-function resizeView(){vrDirty=false;const r=stage.getBoundingClientRect(),pr=Math.min(window.devicePixelRatio||1,2),w=Math.max(1,Math.round(r.width*pr)),h=Math.max(1,Math.round(r.height*pr));if(view.width!==w||view.height!==h){view.width=w;view.height=h;S.contentDirty=true}S.pr=pr;S.vw=r.width;S.vh=r.height}
+function resizeView(){vrDirty=false;const r=stage.getBoundingClientRect(),pr=PREF.get('eco',false)?1:Math.min(window.devicePixelRatio||1,2),w=Math.max(1,Math.round(r.width*pr)),h=Math.max(1,Math.round(r.height*pr));if(view.width!==w||view.height!==h){view.width=w;view.height=h;S.contentDirty=true}S.pr=pr;S.vw=r.width;S.vh=r.height}
 function cropAngle(){return S.tool==='crop'&&S.crop?S.crop.angle:0}
 function viewMatrix(dx,dy){const d=S.doc,sc=S.zoom*S.pr;let m=new DOMMatrix().translate(S.panX*S.pr-dx,S.panY*S.pr-dy).scale(sc);const a=cropAngle();if(a)m=m.translate(d.w/2,d.h/2).rotate(a).translate(-d.w/2,-d.h/2);return[m.a,m.b,m.c,m.d,m.e,m.f]}
 function toDoc(x,y){return{x:(x-S.panX)/S.zoom,y:(y-S.panY)/S.zoom}}
