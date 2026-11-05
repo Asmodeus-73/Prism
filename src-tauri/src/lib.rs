@@ -109,27 +109,6 @@ fn issue_url_ok(url: &str) -> bool {
         && url.bytes().all(|b| b.is_ascii_graphic() && b != b'"' && b != b'\\' && b != b'`')
 }
 
-#[cfg(test)]
-mod report_tests {
-    use super::issue_url_ok;
-    #[test]
-    fn only_prism_issues() {
-        assert!(issue_url_ok("https://github.com/Asmodeus-73/Prism/issues/new?title=a&body=b%20c"));
-        for bad in [
-            "https://evil.example/issues/new?x",
-            "https://github.com/Asmodeus-73/Prism/issues/new?title=a b",
-            "https://github.com/Asmodeus-73/Prism/issues/new?\"&calc",
-            "https://github.com/Asmodeus-73/Prism/issues/new?a\nb",
-            "file:///etc/passwd",
-            "https://github.com/Asmodeus-73/Prism/issues/newx",
-            "https://github.com/Asmodeus-73/Prism.evil.example/issues/new?",
-        ] {
-            assert!(!issue_url_ok(bad), "{bad}");
-        }
-        assert!(!issue_url_ok(&format!("https://github.com/Asmodeus-73/Prism/issues/new?{}", "a".repeat(9000))));
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -180,4 +159,25 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Prism");
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::issue_url_ok;
+    #[test]
+    fn only_prism_issues() {
+        assert!(issue_url_ok("https://github.com/Asmodeus-73/Prism/issues/new?title=a&body=b%20c"));
+        for bad in [
+            "https://evil.example/issues/new?x",
+            "https://github.com/Asmodeus-73/Prism/issues/new?title=a b",
+            "https://github.com/Asmodeus-73/Prism/issues/new?\"&calc",
+            "https://github.com/Asmodeus-73/Prism/issues/new?a\nb",
+            "file:///etc/passwd",
+            "https://github.com/Asmodeus-73/Prism/issues/newx",
+            "https://github.com/Asmodeus-73/Prism.evil.example/issues/new?",
+        ] {
+            assert!(!issue_url_ok(bad), "{bad}");
+        }
+        assert!(!issue_url_ok(&format!("https://github.com/Asmodeus-73/Prism/issues/new?{}", "a".repeat(9000))));
+    }
 }

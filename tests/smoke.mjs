@@ -629,6 +629,11 @@ await test('Calque > Styles de calque ouvre sa fenêtre ; un nettoyage de frange
     const m=find(MENU2.layer.items(),'Masque');const fr=find(typeof m.sub==='function'?m.sub():m.sub,'Nettoyer les franges de couleur…');fr.fn();await w(900);const open=!!$('#scrim');closeDialog();console.error=ce;
     return{styles:/Ombre|Contour|Lueur|Style/i.test(t1),open,errs}});
   if(!r.styles||r.open||r.errs.length)throw new Error(JSON.stringify(r))});
+await test('sans serveur ni compte Claude : aucun compte, synchro, partage ni assistant dans les menus et les paramètres',async()=>{await sample();
+  const r=await ev(()=>{const out=[];const walk=a=>a.forEach(x=>{if(!x||!x.label)return;out.push(x.label);let s=null;try{s=typeof x.sub==='function'?x.sub():x.sub}catch(e){}if(s)walk(s)});for(const k in MENU2)walk(MENU2[k].items());
+    const bad=out.filter(l=>/compte|Synchroniser|Partager|Avis partagés|Assistant de retouche/i.test(l));MENU2.file.items().find(x=>x&&x.label==='Paramètres…').fn();const nav=[...document.querySelectorAll('#scrim .at-set nav button')].map(b=>b.textContent.trim());try{closeDialog()}catch(e){}
+    return{bad,nav,badge:!!document.querySelector('#syBadge')}});
+  if(r.bad.length||r.nav.includes('Compte')||r.badge)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

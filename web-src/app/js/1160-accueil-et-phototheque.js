@@ -169,7 +169,7 @@ function home(){const wl=$('#empty .welcome');if(!wl||wl.classList.contains('hm'
   grid.append(main,side);const head=wl.querySelector('.w-head');(head||wl.firstChild)?head.after(grid):wl.prepend(grid);
   const rec=$('#wRecent');if(rec)main.appendChild(rec);
   const none=document.createElement('button');none.type='button';none.className='hm-none';
-  none.innerHTML='<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="9" width="30" height="22" rx="3"/><path d="M5 26l8-7 6 5 5-4 11 8"/><circle cx="27" cy="16" r="2.5"/></svg><b>Ouvrez votre première photo</b><span>Cliquez ou glissez des photos dans la fenêtre.</span>';
+  none.innerHTML='<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="9" width="30" height="22" rx="3"/><path d="M5 26l8-7 6 5 5-4 11 8"/><circle cx="27" cy="16" r="2.5"/></svg><b>Ouvrez votre première photo</b><span>'+(matchMedia('(pointer:coarse)').matches?'Touchez pour choisir des photos.':'Cliquez ou glissez des photos dans la fenêtre.')+'</span>';
   const fmt=wl.querySelector('.w-fmt');if(fmt)none.appendChild(fmt.cloneNode(true));none.onclick=()=>openFile();main.appendChild(none);
   const card=(t,...n)=>{const c=document.createElement('section');c.className='hm-card';const h=document.createElement('h3');h.textContent=t;c.appendChild(h);n.filter(Boolean).forEach(x=>c.appendChild(x));side.appendChild(c);return c};
   const tiles=$('#wTiles');if(tiles){const K=[MOD+'O',MOD+'N','',''];[...tiles.children].forEach((b,i)=>{if(K[i]&&!b.querySelector('.hm-kbd')){const k=document.createElement('span');k.className='hm-kbd';k.textContent=K[i];b.appendChild(k)}})}

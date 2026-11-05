@@ -27,7 +27,8 @@ try{
   ok(await A.p.evaluate(()=>!!PrismSync.state.cfg)&&await B.p.evaluate(()=>!!PrismSync.state.cfg),'deux comptes séparés');
   const pid=await A.p.evaluate(async()=>{await loadSample();await new Promise(r=>setTimeout(r,400));S.doc.nosave=false;S.doc.saved=false;while(SAVE.running)await new Promise(r=>setTimeout(r,50));await saveNow();return S.doc.pid});
   // Draconix partage depuis Fichier > Partager avec quelqu'un…
-  ok(await A.p.evaluate(()=>MENU2.file.items().some(x=>x&&x.label==='Partager avec quelqu’un…')),'menu Fichier : Partager avec quelqu’un…');
+  // la 1.0 sort sans serveur : le partage n’est dans le menu que lorsqu’une adresse de serveur est inscrite dans l’app (SYNC_URL_DEFAULT)
+  ok(await A.p.evaluate(()=>MENU2.file.items().some(x=>x&&x.label==='Partager avec quelqu’un…')===!!SYNC_URL_DEFAULT),'menu Fichier : Partager avec quelqu’un… seulement avec un serveur');
   await A.p.evaluate(()=>PrismShare.dialog());await A.p.waitForSelector('#shEmail');await A.p.fill('#shEmail','marie@example.com');await A.p.click('#shInv');
   ok(await until(A.p,()=>PrismShare.isShared(S.doc.pid)),'la photo est partagée');
   ok(await until(A.p,()=>PrismShare.state.held===S.doc.pid),'Draconix l’a ouverte : il la tient');

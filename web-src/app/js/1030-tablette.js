@@ -37,5 +37,5 @@ body.side-over.side-open:not(.compact) #stage>.optbar{max-width:calc(100% - var(
   /* un onglet demandé (Calques, IA…) ouvre le panneau */
   const _sw=switchTab;switchTab=function(){const r=_sw.apply(this,arguments);if(b.classList.contains('side-over')&&!open)toggle(true);return r};
   NARROW.addEventListener('change',paint);COMPACT.addEventListener('change',paint);paint();
-  const mi=MENU2.view.items;MENU2.view.items=()=>{const a=mi();if(b.classList.contains('side-over'))a.push(MI('Panneaux',{kbd:'F8',check:open,fn:()=>toggle()}));return a};
+  const mi=MENU2.view.items;MENU2.view.items=()=>{const a=mi();if(b.classList.contains('side-over'))a.push(MI('Volet latéral',{kbd:'F8',check:open,fn:()=>toggle()}));return a};
   window.PrismTablet={toggle,isOpen:()=>open}})();

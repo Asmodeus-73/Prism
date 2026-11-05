@@ -54,14 +54,14 @@ jobs:
         Le plus simple : téléchargez Prism depuis son site, https://asmodeus-73.github.io/Prism/ (le bouton choisit le bon fichier pour votre ordinateur).
 
         Sinon, dans la liste « Assets » ci-dessous, prenez un seul fichier :
-        - Mac : le fichier qui finit par .dmg. Ouvrez-le et glissez Prism dans Applications. La première fois, faites clic droit sur Prism puis Ouvrir.
+        - Mac : le fichier qui finit par .dmg. Ouvrez-le et glissez Prism dans Applications. La première fois, si macOS refuse : Réglages Système, Confidentialité et sécurité, Ouvrir quand même.
         - Windows : le fichier qui finit par -setup.exe. Lancez-le. Si Windows affiche un avertissement, cliquez sur « Informations complémentaires » puis « Exécuter quand même ».
 
         Les autres fichiers (.tar.gz, .sig, latest.json, Source code) servent aux mises à jour automatiques ou aux développeurs : inutile de les télécharger.
       BETA_NOTES: |
         Bêta privée de Prism : ce brouillon n'est visible que par toi tant qu'il n'est pas publié.
 
-        - Mac : le fichier .dmg. Ouvre-le et glisse « Prism Beta » dans Applications. La première fois, clic droit sur Prism Beta puis Ouvrir.
+        - Mac : le fichier .dmg. Ouvre-le et glisse « Prism Beta » dans Applications. La première fois, si macOS refuse : Réglages Système, Confidentialité et sécurité, Ouvrir quand même.
         - Windows : le fichier -setup.exe.
 
         Prism Beta s'installe à côté de Prism, avec ses propres projets et réglages, et ne cherche pas de mise à jour.

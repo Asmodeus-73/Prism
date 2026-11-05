@@ -246,7 +246,7 @@ window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.s
 
 /* ---- paramètres ---- */
 function settings(sec){sec=sec||'look';
-  const NAV=[['account','Compte',ICO.user],['look','Personnalisation',ICO.brush],['lang','Langue',ICO.globe],['keys','Raccourcis',ICO.keys]];
+  const NAV=[...(SY_ON?[['account','Compte',ICO.user]]:[]),['look','Personnalisation',ICO.brush],['lang','Langue',ICO.globe],['keys','Raccourcis',ICO.keys]];if(!SY_ON&&sec==='account')sec='look';
   const dl=dialog({title:'Paramètres',body:`<div class="at-set"><nav aria-label="Rubriques">${NAV.map(n=>`<button type="button" data-s="${n[0]}">${n[2]}${n[1]}</button>`).join('')}</nav><section id="atSec" aria-live="polite"></section></div>`,buttons:[{label:'Fermer',primary:true}]});
   const root=$('#scrim .at-set');if(!root)return dl;const box=root.querySelector('#atSec');
   const seg=(k,opts,cur)=>`<div class="at-seg" role="group">${opts.map((o,i)=>`<button type="button" data-${k}="${i}" aria-pressed="${i===cur}">${o}</button>`).join('')}</div>`;

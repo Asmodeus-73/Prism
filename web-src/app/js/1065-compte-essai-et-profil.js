@@ -84,7 +84,7 @@ function syProfFill(box, me) {
 /* la pastille du compte, en haut à droite */
 function syBadge() {
   const ex = $('#bExport'); if (!ex) return; let b = $('#syBadge');
-  if (!SY.cfg) { if (b) b.remove(); return }
+  if (!SY.cfg || !SY_ON) { if (b) b.remove(); return }
   if (!b) { b = document.createElement('button'); b.id = 'syBadge'; b.type = 'button'; b.className = 'sy-badge'; b.onclick = () => syAccountDialog(); ex.before(b) }
   const p = PREF.get('sync2Prof', null) || { email: SY.cfg.email };
   b.innerHTML = syAvatarHtml(p, 26); b.title = 'Compte Prism · ' + (p.name || SY.cfg.email || ''); b.setAttribute('aria-label', 'Compte Prism');

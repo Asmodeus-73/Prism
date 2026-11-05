@@ -8,7 +8,7 @@ Application de retouche photo pour Mac et Windows, construite avec [Tauri 2](htt
 
 ## Organisation
 
-- `web/` : la version web telle que publiée (page et fichiers : IA, RAW, PDF, HEIC, AVIF, PSD, gestion des couleurs). On ne la modifie pas à la main ; on la remplace par une nouvelle copie quand la version web évolue.
+- `web/` : la version web telle que publiée (page et fichiers : IA, RAW, PDF, HEIC, AVIF, PSD, gestion des couleurs). Sa page `index.html` est générée à partir de `web-src/` (`node web-src/build.mjs`) : on ne la modifie pas à la main.
 - `desktop/` : ce que l'application de bureau ajoute (pont vers les fonctions natives dans `desktop.js`, polices embarquées pour fonctionner hors ligne).
 - `scripts/prepare.mjs` : assemble `web/` et `desktop/` dans `dist/`, que Tauri embarque.
 - `src-tauri/` : la partie native (Rust) : fenêtre, boîtes de dialogue, écriture des fichiers.

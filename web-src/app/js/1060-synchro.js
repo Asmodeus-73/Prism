@@ -5,6 +5,8 @@
    l'envoi reste dans la file d'attente de l'appareil et repart tout seul.
    « Synchroniser maintenant » renvoie ce qui attend et demande aux autres appareils de renvoyer leurs projets. */
 const SYNC_URL_DEFAULT = '';   // adresse du Worker une fois en ligne (sinon on la saisit dans la fenêtre Compte)
+/* sans serveur en ligne, la 1.0 n’affiche ni compte, ni synchronisation, ni partage */
+const SY_ON = !!SYNC_URL_DEFAULT;
 const SY = {
   cfg: PREF.get('sync2', null),        // {url, token, device, email}
   out: PREF.get('sync2Out', []),       // file d'attente : [{kind, pid, at}]
@@ -292,7 +294,7 @@ async function syAccountDialog() {
 .sy-dot{width:8px;height:8px;border-radius:50%;background:var(--line-2,#bbb)}.sy-dot.on{background:#2fb36b}
 .sy-bar{height:6px;border-radius:3px;background:var(--chrome-2);overflow:hidden}.sy-bar i{display:block;height:100%;background:var(--accent)}
 .sy-u{color:var(--fg-2)}`; document.head.appendChild(st);
-  const mi = MENU2.file.items; MENU2.file.items = () => { const a = mi(); a.push(SEP, MI(SY.cfg ? 'Compte Prism…' : 'Se connecter à son compte Prism…', { fn: syAccountDialog }), MI('Synchroniser maintenant', { fn: sySyncNow, dis: !SY.cfg })); return a };
+  const mi = MENU2.file.items; MENU2.file.items = () => { const a = mi(); if (SY_ON) a.push(SEP, MI(SY.cfg ? 'Compte Prism…' : 'Se connecter à son compte Prism…', { fn: syAccountDialog }), MI('Synchroniser maintenant', { fn: sySyncNow, dis: !SY.cfg })); return a };
   window.PrismSync = { push: pid => { if (SY.cfg) syEnqueue('put', pid, true) }, api: syApi, kick: () => syKick(0), dialog: syAccountDialog, now: sySyncNow, connect: syConnect, logout: syLogout, run: syRun, signal: sySignal, get state() { return { ...SY, cfg: SY.cfg && { ...SY.cfg, token: undefined } } }, _SY: SY };
-  if (SY.cfg) { syLive(); syKick(1500) }
+  if (SY.cfg && SY_ON) { syLive(); syKick(1500) }
 })();

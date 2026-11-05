@@ -66,7 +66,7 @@ async function shareDialog(){const d=S.doc;if(!d||!d.pid){toast('Ouvrez une phot
   const b=$('#shInv',dl);if(b){b.onclick=invite;$('#shEmail',dl).onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();invite()}}}
   dl.addEventListener('click',async e=>{const r=e.target.closest('[data-rm]');if(!r)return;await api(`/v1/shares/${encodeURIComponent(pid)}/${encodeURIComponent(r.dataset.rm)}`,{method:'DELETE'}).catch(err=>{msg.textContent=err.message});await refresh();r.closest('.sh-m').remove();msg.textContent='Personne retirée du partage.'})}
 {const F=MENU2.file,_f=F.items;F.items=function(){const a=_f.apply(this,arguments),i=a.findIndex(x=>x&&/^Partager pour avis/.test(x.label||''));const it=MI('Partager avec quelqu’un…',{icon:'share',fn:shareDialog,dis:S.doc?false:NODOC});
-  if(i>=0)a.splice(i,0,it);else a.push(it);return a}}
+  if(!SY_ON)return a;if(i>=0)a.splice(i,0,it);else a.push(it);return a}}
 /* au démarrage et à la connexion : la liste des partages */
 setTimeout(()=>{if(on())refresh()},2500);
 document.addEventListener('prism-peers',()=>{if(!SH.known&&on())refresh()});
