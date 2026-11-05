@@ -6,7 +6,7 @@ const PSX={jobs:0};
 let psMainP=null;
 /* le module sur la page : pour les actions enregistrées et les effets modifiables, qui appellent les filtres sans attendre */
 PSX.load=()=>window.PSI?Promise.resolve(window.PSI):(psMainP||(psMainP=loadScript(asset('ps/ps.js')).then(()=>window.PSI,e=>{psMainP=null;throw e})));
-PSX.sync=(op,args)=>{if(!window.PSI)throw new Error('le module de calcul se charge encore : réessayez dans un instant');return PSI.run(op,args)};
+PSX.sync=(op,args)=>{if(!window.PSI)throw new Error('module de calcul en chargement : réessayez dans un instant');return PSI.run(op,args)};
 {const pre=()=>PSX.load().catch(e=>console.warn('ps.js',e));if(window.requestIdleCallback)requestIdleCallback(pre,{timeout:4000});else setTimeout(pre,1500)}
 
 /* travaux : un worker par calcul (2 gardés au repos) ; annuler = arrêter le worker, l'interface ne se fige jamais */
@@ -69,7 +69,7 @@ PSX.read=(def,el,p)=>{def.params.forEach(q=>{const k=q[0],i=$('#ps-'+k,el);if(!i
 PSX.target=()=>{const d=S.doc;if(!d)return null;if(maskTarget()){toast('Ce réglage s’applique à la photo, pas au masque : choisissez le calque de photo');return null}
   const L=pixelTarget();if(!L){toast('Aucun calque de pixels à modifier');return null}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return null}return L};
 /* calcule le filtre id sur un canvas, en arrière-plan ; résultat : canvas (null si annulé) */
-PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null,jb=F.job(PSX.img(src),p,sc,sel);if(!jb)return Promise.reject(new Error(F.needs||'rien à calculer'));const[op,args]=jb;
+PSX.compute=(id,src,p,o={})=>{const F=FILTERS[id],sc=o.scale||1,sel=o.sel||null,jb=F.job(PSX.img(src),p,sc,sel);if(!jb){const e=new Error(F.needs||'rien à calculer');e.needs=true;return Promise.reject(e)}const[op,args]=jb;
   const j=PSX.run(op,args,{onProgress:o.onProgress});o.onJob&&o.onJob(j);return j.promise.then(r=>PSX.canvas(r&&r.image?r.image:r))};
 PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target();if(!L)return;
   const p={...(F.last||{})};F.params.forEach(q=>{if(p[q[0]]==null)p[q[0]]=q[5]});
@@ -82,9 +82,12 @@ PSX.dialog=id=>{const F=FILTERS[id],d=S.doc;if(!d||!F)return;const L=PSX.target(
         const out=await PSX.compute(id,piece,p,{onJob:j=>job=j});if(my!==seq||closed)return;r=cloneC(orig);const g=cx(r);g.clearRect(R.x,R.y,R.w,R.h);g.drawImage(out,R.x,R.y)}
       else{if(!small)small=PSX.small(orig,F.previewSide||1400);const out=await PSX.compute(id,small.c,p,{scale:small.k,onJob:j=>job=j});if(my!==seq||closed)return;r=PSX.up(out,orig.width,orig.height)}
       job=null;if(d.sel)r=PSX.mixSel(orig,r,d.sel);L.preview=r;markComp();const st2=$('#ps-state');if(st2)st2.textContent=F.preview==='crop'&&(orig.width>(F.cropSide||900)||orig.height>(F.cropSide||900))?'Aperçu à 100 % sur la zone au centre de l’écran.':''}
-    catch(e){if(PSX.cancelled(e))return;console.error(e);const st2=$('#ps-state');if(st2)st2.textContent='';toast('Aperçu impossible : '+(e.message||e),3000)}},F.delay||160)};
+    catch(e){if(PSX.cancelled(e))return;const st2=$('#ps-state');if(st2)st2.textContent='';
+      /* condition non remplie (pas de masque…) : on le dit et on ferme, ce n'est pas une panne */
+      if(e.needs){clear();closeDialog();markComp();toast(F.name+' : '+e.message,4000);return}
+      console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},F.delay||160)};
   dialog({title:F.name,light:true,
-    body:(F.note?`<p class="muted" style="margin:0 0 8px">${F.note}</p>`:'')+F.params.map(q=>psRow(F,q,p[q[0]])).join('')+(F.extraBody?F.extraBody(p):'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':'')+'<p class="muted" id="ps-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>',
+    body:(F.note?`<p class="muted" style="margin:0 0 8px">${F.note}</p>`:'')+F.params.map(q=>psRow(F,q,p[q[0]])).join('')+(F.extraBody?F.extraBody(p):'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':'')+'<p class="muted" id="ps-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>',
     onOpen:el=>{F.params.forEach(q=>{const i=$('#ps-'+q[0],el);if(!i)return;const ev=i.tagName==='SELECT'||i.type==='checkbox'?'onchange':'oninput';
         i[ev]=()=>{PSX.read(F,el,p);if(F.onInput)F.onInput(q[0],p,el);const o=$('#ps-'+q[0]+'-o',el);if(o)o.textContent=fmtN(+i.value,q[4])+(q[6]||'');refresh()}});
       if(F.onOpen)F.onOpen(el,p,refresh);refresh()},
@@ -94,7 +97,7 @@ PSX.apply=async(id,d,L,orig,p)=>{const F=FILTERS[id];F.last={...p};busy(true,F.n
   try{const r=await PSX.compute(id,orig,p,{onProgress:f=>busy(true,F.name+'…',f),onJob:x=>PSX.track(j=x)});
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');markComp();return}
     PSX.rec(id,p);applyMasked(L,r,F.name)}
-  catch(e){if(!PSX.cancelled(e)){console.error(e);toast(F.name+' impossible : '+(e.message||e),4000)}markComp()}
+  catch(e){if(e&&e.needs)toast(F.name+' : '+e.message,4000);else if(!PSX.cancelled(e)){console.error(e);toast(F.name+' impossible : '+(e.message||e),4000)}markComp()}
   finally{PSX.untrack(j);busy(false)}};
 /* un filtre de plus : utilisable dans les actions et les effets modifiables (calcul direct), avec la fenêtre ci-dessus */
 PSX.filter=(id,def)=>{const F=Object.assign({preview:'scale'},def);

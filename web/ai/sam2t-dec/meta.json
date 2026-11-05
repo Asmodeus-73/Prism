@@ -1,0 +1,1 @@
+{"model": "SAM 2.1 Hiera tiny (encodeur de points + décodeur), Meta AI, Apache 2.0", "fmt": "onnx, poids float16 relus en float32 ; entrées coords [1,n,2] en pixels 1024, labels float [1,n]", "chunks": [8948108], "total": 8948108, "sha256": "a31104388b2b43afa51296e4deb89433502dc5a41a07fd5effa72dea46504c30"}

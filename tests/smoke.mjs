@@ -1,5 +1,6 @@
 // Prism smoke tests: open the built page (web/index.html) in Chromium and exercise the editor.
 // Run: node tests/smoke.mjs        (needs the "playwright" package and its Chromium)
+//      PRISM_BROWSER=webkit node tests/smoke.mjs   (WebKit, the engine of the Mac app)
 // Every test fails on any uncaught error or console error in the page.
 import http from 'node:http';import fs from 'node:fs';import path from 'node:path';import {createRequire} from 'node:module';
 const root=path.join(path.dirname(new URL(import.meta.url).pathname),'..','web');
@@ -12,12 +13,14 @@ const server=http.createServer((q,r)=>{const u=decodeURIComponent(new URL(q.url,
   r.writeHead(200,{'content-type':TYPES[path.extname(f)]||'application/octet-stream'});fs.createReadStream(f).pipe(r)});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const URL0=`http://127.0.0.1:${server.address().port}/index.html`;
 
-const browser=await pw.chromium.launch({args:['--enable-unsafe-swiftshader','--use-gl=swiftshader']});
-const results=[];let page,errs;
+const ENGINE=process.env.PRISM_BROWSER||'chromium';
+const browser=ENGINE==='chromium'?await pw.chromium.launch({args:['--enable-unsafe-swiftshader','--use-gl=swiftshader']}):await pw[ENGINE].launch();
+console.log('Navigateur : '+ENGINE+' '+browser.version());
+const results=[];let page,errs,logs=[];
 // fonts and the update check go to the internet; the tests do not depend on them
 const IGNORE=/fonts\.(googleapis|gstatic)|api\.github\.com|net::ERR_|Failed to load resource|GroupMarkerNotSet|swiftshader/i;
 async function fresh(){if(page)await page.close();page=await browser.newPage({viewport:{width:1440,height:900}});errs=[];
-  page.on('pageerror',e=>errs.push('pageerror: '+(e.stack||e)));page.on('console',m=>{if(m.type()==='error'&&!IGNORE.test(m.text()))errs.push('console: '+m.text())});
+  page.on('pageerror',e=>errs.push('pageerror: '+(e.stack||e)));page.on('console',m=>{logs.push(m.text());if(logs.length>200)logs.shift();if(m.type()==='error'&&!IGNORE.test(m.text()))errs.push('console: '+m.text())});
   await page.route(/fonts\.(googleapis|gstatic)\.com|api\.github\.com/,r=>r.abort());
   await page.goto(URL0);await page.waitForFunction(()=>typeof loadSample==='function'&&document.querySelector('#view'));await page.waitForTimeout(300)}
 const ev=(fn,arg)=>page.evaluate(fn,arg);
@@ -51,6 +54,125 @@ await test('réglages : finitions couleur (interrupteur, rendu 8 et 16 bits, ann
   const on=await ev(()=>!!(AL().dev.fx&&AL().dev.fx.bw&&AL().dev.fx.bw.on));const b8=await mean(8),b16=await mean(16);
   if(!on||Math.abs(b8)>0.6||Math.abs(b16)>0.6||Math.abs(a)<1)throw new Error(JSON.stringify({on,a,b8,b16}));
   await ev(()=>undo());const c=await mean(8);if(Math.abs(c-a)>0.01)throw new Error('annuler : '+a+' / '+c)});
+await test('interface 1.0 : calques à droite, capsule d’options, pastille de zoom, mode Focus',async()=>{await ev(()=>setTool('remove'));
+  const r=await ev(()=>({lay:!!document.querySelector('.side #layersPanel,#atRail #layersPanel'),cap:!!document.querySelector('#stage>#optbar'),fam:[...document.querySelectorAll('#optbar .cap-fam [data-ft]')].map(b=>b.dataset.ft+(b.getAttribute('aria-pressed')==='true'?'*':'')).join(),
+    zoom:!!document.querySelector('#stage .cap-zoom #zoomLbl'),rows:getComputedStyle(document.querySelector('#app')).gridTemplateRows.split(' ').length}));
+  if(!r.lay||!r.cap||!r.zoom||r.rows!==2||!/remove\*/.test(r.fam))throw new Error(JSON.stringify(r));
+  await page.click('#optbar .cap-fam [data-ft=clone]');if(await ev(()=>S.tool)!=='clone')throw new Error('famille : '+await ev(()=>S.tool));
+  await ev(()=>document.activeElement&&document.activeElement.blur());await page.keyboard.press('Tab');await page.waitForTimeout(300);
+  const f=await ev(()=>[document.body.classList.contains('focus'),getComputedStyle(document.querySelector('.side')).visibility]);
+  await page.keyboard.press('Tab');await page.waitForTimeout(300);const g=await ev(()=>document.body.classList.contains('focus'));
+  if(!f[0]||f[1]!=='hidden'||g)throw new Error('focus '+JSON.stringify([f,g]))});
+await test('atelier : panneau de gauche repliable, colonne de droite fixe, bascule photothèque, paramètres',async()=>{
+  const a=await ev(()=>[document.body.classList.contains('atelier'),!!document.querySelector('#atRail #atNav'),!!document.querySelector('#atSwitch [data-v=ed][aria-pressed=true]')].join());
+  if(a!=='true,true,true')throw new Error('atelier '+a);
+  const w0=await ev(()=>document.querySelector('#stage').getBoundingClientRect().width);
+  await page.click('#atFoldBtn');
+  /* the stage widens with a transition: wait for it to settle (slow CI machines) */
+  for(let k=0;k<20&&await ev(w=>document.querySelector('#stage').getBoundingClientRect().width<=w+150,w0);k++)await page.waitForTimeout(100);
+  const b=await ev(()=>[document.body.classList.contains('at-fold'),getComputedStyle(document.querySelector('#atStrip')).display,document.querySelector('#stage').getBoundingClientRect().width,getComputedStyle(document.querySelector('aside.insp')).display]);
+  if(!b[0]||b[1]!=='flex'||!(b[2]>w0+150)||b[3]==='none')throw new Error('repli '+JSON.stringify(b));
+  await page.click('#atStrip [data-k=layers]');await page.waitForTimeout(200);if(await ev(()=>document.body.classList.contains('at-fold')))throw new Error('réouverture');
+  await ev(()=>PrismSettings());await page.click('#scrim .at-sw [data-acc="3"]');
+  const c=await ev(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+  await page.click('#scrim #atReset');const d=await ev(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());await ev(()=>closeDialog());
+  if(c!=='rgb(34,160,107)'||c===d)throw new Error('accent '+c+' / '+d)});
+await test('téléphone : barre de modes, grand curseur, comparer au doigt',async()=>{await page.setViewportSize({width:390,height:844});await page.waitForTimeout(400);
+  try{const on=await ev(()=>document.body.classList.contains('phone'));if(!on)throw new Error('mode téléphone absent');
+    await page.click('.p-modes [data-pm=reg]');await page.click('#pRegChips [data-k=exposure]');const before=await ev(()=>ADJ()&&ADJ().dev.exposure);
+    const r=await page.locator('#pRange').boundingBox();await page.mouse.click(r.x+r.width*0.85,r.y+r.height/2);await page.waitForTimeout(200);
+    const after=await ev(()=>ADJ()&&ADJ().dev.exposure);if(!(after>before))throw new Error('exposition '+before+' → '+after);
+    const c=await page.locator('.p-cmp').boundingBox();await page.mouse.move(c.x+c.width/2,c.y+c.height/2);await page.mouse.down();const held=await ev(()=>S.holdBefore);await page.mouse.up();const rel=await ev(()=>S.holdBefore);
+    if(!held||rel)throw new Error('comparer '+held+' '+rel);
+    for(const m of ['ret','cal','ia','plus','reg'])await page.click(`.p-modes [data-pm=${m}]`);
+    await page.click('.p-modes [data-pm=ret]');await page.click('#pTools [data-tool=clone]');if(await ev(()=>S.tool)!=='clone')throw new Error('outil');
+    await ev(()=>undo())}
+  finally{await page.setViewportSize({width:1440,height:900});await page.waitForTimeout(400)}
+  if(await ev(()=>document.body.classList.contains('phone')||!document.querySelector('#stage>#optbar')))throw new Error('retour au bureau')});
+await test('tablette : organisation bureau, panneau qui glisse par-dessus la photo',async()=>{await page.setViewportSize({width:834,height:1194});await page.waitForTimeout(400);
+  try{const a=await ev(()=>[document.body.classList.contains('compact'),document.body.classList.contains('phone'),document.body.classList.contains('side-over'),!!document.querySelector('#stage>#optbar')]);
+    if(a[0]||a[1]||!a[2]||!a[3])throw new Error('mise en page '+JSON.stringify(a));
+    const w0=await ev(()=>document.querySelector('#stage').getBoundingClientRect().width);
+    await ev(()=>PrismTablet.toggle(false));await page.click('#bSide');await page.waitForTimeout(350);
+    const o=await ev(()=>[PrismTablet.isOpen(),getComputedStyle(document.querySelector('.side')).visibility,document.querySelector('#stage').getBoundingClientRect().width]);
+    if(!o[0]||o[1]!=='visible'||Math.abs(o[2]-w0)>1)throw new Error('panneau '+JSON.stringify([o,w0]));
+    await page.keyboard.press('F8');await page.waitForTimeout(350);if(await ev(()=>PrismTablet.isOpen()))throw new Error('F8')}
+  finally{await page.setViewportSize({width:1440,height:900});await page.waitForTimeout(400)}
+  if(await ev(()=>document.body.classList.contains('side-over')))throw new Error('retour au bureau')});
+await test('accueil : titre, accès rapides, Reprendre sur une rangée, zone de dépôt',async()=>{const r=await ev(()=>{const w=document.querySelector('#empty .welcome');
+    return [!!w.querySelector('.w-head h2'),w.querySelectorAll('.w-tile').length,!!w.querySelector('.w-drop .w-fmt'),!!w.querySelector('.w-rh .w-all'),PrismHome.rel(Date.now()-5*60000),PrismHome.rel(Date.now()-864e5*1.02)]});
+  if(!r[0]||r[1]!==4||!r[2]||!r[3]||r[4]!=='il y a 5 min')throw new Error(JSON.stringify(r))});
+await test('corbeille : une photo supprimée se restaure, ses tuiles restent',async()=>{const r=await ev(async()=>{S.doc.nosave=false;S.doc.saved=false;while(SAVE.running)await new Promise(r=>setTimeout(r,50));await saveNow();const id=S.doc.pid;await libLoad();
+    if(!LIB.items.some(i=>i.id===id))return 'absente de la photothèque '+id+' '+SAVE.state+' '+(await IDB.keys('projects')).join('|')+' '+LIB.items.map(i=>i.id).join('|');const pd=libDelete([id]);let bs=[];for(let i=0;i<50&&!bs.length;i++){await new Promise(r=>setTimeout(r,100));bs=document.querySelectorAll('#scrim .foot .btn')}if(!bs.length)return 'pas de confirmation';bs[bs.length-1].click();await pd;const gone=!(await IDB.get('projects',id));await gcBlobs();
+    const tr=(await PrismTrash.list()).find(e=>e.id===id);if(!tr)return 'pas dans la corbeille';const keys=manifestKeys(tr.m);let miss=0;for(const k of keys)if(!(await IDB.get('blobs',k)))miss++;
+    await PrismTrash.restore(id);const back=!!(await IDB.get('projects',id))&&LIB.items.some(i=>i.id===id)&&!(await PrismTrash.list()).some(e=>e.id===id);
+    await libOpen(id);return [gone,miss,back,S.doc&&S.doc.pid===id].join()});
+  if(r!=='true,0,true,true')throw new Error(r)});
+await test('aperçu rapide : une photo lente se calcule en plus petit pendant le glissé, en entier ensuite',async()=>{const r=await ev(async()=>{const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    S.sliding=true;LQ.full=600;LQ.last=0;markContent();await fr();const k1=S.workSize.k,small=work.width<S.workSize.w;S.sliding=false;await new Promise(r=>setTimeout(r,450));await fr();
+    return [k1<1,small,S.workSize.k===1,work.width===S.workSize.w].join()});
+  if(r!=='true,true,true,true')throw new Error(r)});
+await test('nouveaux effets : nuages, fractale, vitrail, verre dépoli, déformation, inversion polaire, croquis, peinture',async()=>{const r=await ev(()=>{const src=S.doc.layers[0].canvas,s=resample(src,320,214),bad=[];
+    for(const id of ['clouds','fractal','stained','frosted','organic','polar','pencil','oil']){const F=FILTERS[id],pp={};F.params.forEach(q=>pp[q[0]]=q[5]);const o=F.run(s,pp),a=rx(o).getImageData(0,0,o.width,o.height).data,b=rx(s).getImageData(0,0,s.width,s.height).data;let df=0;for(let i=0;i<a.length;i+=16)df+=Math.abs(a[i]-b[i]);
+      const o2=F.run(s,pp),same=rx(o2).getImageData(0,0,o.width,o.height).data.every((v,i)=>v===a[i]);if(o.width!==s.width||df<500||!same)bad.push(id+':'+df+':'+same)}
+    const G=window.__FILTER_GROUPS.flatMap(g=>g[1]);return bad.concat(['clouds','oil','polar'].filter(x=>!G.includes(x)).map(x=>'menu '+x)).join()});
+  if(r)throw new Error(r)});
+await test('raccourcis personnalisables : outil sur K, B donné à Exporter, menu à jour, tout réinitialiser',async()=>{
+  await ev(()=>{PrismKeys.set({});closeDialog();PrismKeys.dialog()});await page.waitForSelector('#scrim .kc-r[data-id="tool:brush"]');
+  await page.click('#scrim .kc-r[data-id="tool:brush"] [data-cap]');await page.keyboard.press('k');const dbg=await ev(()=>JSON.stringify(PrismKeys.get())+' '+document.querySelector('#scrim .kc-msg').textContent+' '+document.querySelectorAll('#scrim').length);
+  await page.click('#scrim .kc-r[data-id="menu:file/Exporter"] [data-cap]');await page.keyboard.press('b');
+  const r1=await ev(()=>{const K=PrismKeys.get();return [K['tool:brush'],K['menu:file/Exporter'],document.querySelector('#scrim .kc-r[data-id="tool:brush"] .kc-k').textContent.trim(),document.querySelector('#scrim .kc-msg').textContent]});
+  await ev(()=>closeDialog());await ev(()=>setTool('move'));await page.mouse.move(700,450);await page.keyboard.press('k');const t1=await ev(()=>S.tool);
+  await page.keyboard.press('b');await page.waitForSelector('#scrim',{timeout:4000}).catch(()=>{});const ex=await ev(()=>!!document.querySelector('#scrim')&&document.querySelector('#scrim').textContent.includes('Export'));await ev(()=>closeDialog());const t2=await ev(()=>S.tool);
+  const kbd=await ev(()=>{const it=MENU2.file.items().find(x=>x&&x.label==='Exporter…');return it&&it.kbd});
+  await ev(()=>{PrismKeys.set({});setTool('move')});await page.keyboard.press('b');const t3=await ev(()=>S.tool);
+  const r=[r1[0],r1[1],r1[2],/était à/.test(r1[3]),t1,ex,t2,kbd,t3].join('|');
+  if(r!=='k|b|K|false|brush|true|brush|B|brush')throw new Error(r+' '+dbg)});
+await test('versions : une à l’enregistrement, une nommée, revenir en arrière garde l’état actuel, ouvrir en copie',async()=>{const r=await ev(async()=>{const wait=async()=>{while(SAVE.running)await new Promise(r=>setTimeout(r,50))};
+    const d=S.doc;d.nosave=false;d.saved=false;await wait();await saveNow();const pid=S.doc.pid;await PrismVersions.forget(pid);
+    const v1=await PrismVersions.add(pid,{name:'Avant'});const n0=S.doc.layers.length;addLayer();S.doc.saved=false;await wait();await saveNow();await PrismVersions.add(pid);
+    const l1=(await PrismVersions.list(pid)).length;await PrismVersions.restore(v1.id);for(let i=0;i<60&&!(S.doc&&S.doc.pid===pid);i++)await new Promise(r=>setTimeout(r,100));
+    const back=S.doc&&S.doc.pid===pid&&S.doc.layers.length===n0,l2=await PrismVersions.list(pid);
+    const kept=l2.some(v=>v.m.layers.length===n0+1);
+    const nid=await PrismVersions.openCopy(v1.id);const copy=S.doc&&S.doc.pid===nid&&/version du/.test(S.doc.name);
+    await gcBlobs();let miss=0;for(const v of l2)for(const k of manifestKeys(v.m))if(!(await IDB.get('blobs',k)))miss++;
+    const menu=MENU2.file.items().some(x=>x&&x.label==='Versions de la photo…');
+    await libOpen(pid);return [l1>=2,back,kept,copy,miss,menu].join()});
+  if(r!=='true,true,true,true,0,true')throw new Error(r)});
+await test('visite guidée : étapes sur l’interface, Suivant, Échap l’arrête',async()=>{await ev(()=>PrismTour.start());await page.waitForSelector('#tour .tr-tip h3');
+  const n=await ev(()=>PrismTour.steps().length);await page.click('#tour [data-t="next"]');await page.click('#tour [data-t="next"]');await page.waitForTimeout(400);
+  const r=await ev(()=>{const h=document.querySelector('#tour .tr-hole').getBoundingClientRect(),d=document.querySelector('#dock').getBoundingClientRect();return Math.abs(h.left-d.left)<12&&Math.abs(h.height-d.height)<16});
+  await page.keyboard.press('Escape');const off=await ev(()=>!PrismTour.on&&!document.querySelector('#tour')&&PREF.get('tourDone',0)>0);const menu=await ev(()=>MENU2.help.items().some(x=>x&&x.label==='Visite guidée'));
+  if(!(n>=8&&r&&off&&menu))throw new Error([n,r,off,menu].join())});
+await test('anglais : Affichage > Langue traduit menus et panneaux, retour au français',async()=>{await ev(()=>PrismLang.set('en'));await page.waitForTimeout(300);
+  const en=await ev(()=>({bar:document.querySelector('#menubar').textContent,tab:document.body.textContent.includes('Adjustments'),lang:document.documentElement.lang,menu:MENU2.view.items().some(x=>x&&x.label==='Langue')}));
+  await ev(()=>PrismLang.set('fr'));await page.waitForTimeout(300);const fr=await ev(()=>document.querySelector('#menubar').textContent);
+  if(!/File.*Edit.*View.*Help/.test(en.bar)||!en.tab||en.lang!=='en'||!en.menu||!/Fichier.*Édition.*Affichage.*Aide/.test(fr))throw new Error(JSON.stringify({en,fr}))});
+await test('pipette : prend la couleur affichée, réglages compris',async()=>{await fresh();await sample();
+  await ev(()=>{const A=newAdjust('Test');A.dev.exposure=1.2;A.dev.saturation=60;S.doc.layers.push(A);S.docVer++;markComp();render();setTool('eyedropper')});await page.waitForTimeout(300);
+  const b=await page.locator('#view').boundingBox();const X=b.x+b.width*.4,Y=b.y+b.height*.4;await page.mouse.click(X,Y);await page.waitForTimeout(200);
+  const r=await ev(async([X,Y])=>{const R=view.getBoundingClientRect(),p=toDoc(X-R.left,Y-R.top),full=await renderDoc(1,{before:false});const q=full.getContext('2d').getImageData(Math.floor(p.x)-1,Math.floor(p.y)-1,3,3).data;let s=[0,0,0];for(let i=0;i<36;i+=4){s[0]+=q[i];s[1]+=q[i+1];s[2]+=q[i+2]}
+    const c=S.color.match(/\w\w/g).map(h=>parseInt(h,16));return {c,s:s.map(v=>v/9)}},[X,Y]);
+  if(r.c.some((v,i)=>Math.abs(v-r.s[i])>3))throw new Error('pipette '+JSON.stringify(r))});
+await test('panneaux détachables : Calques et une section flottent, se déplacent, se remettent',async()=>{
+  await ev(()=>{PrismFloat.float('layers');PrismFloat.float('sec:base',{x:300,y:200,w:300,h:400})});await page.waitForTimeout(200);
+  const a=await ev(()=>({f:PrismFloat.floating(),pos:getComputedStyle(document.querySelector('[data-sec=base]')).position,ph:document.querySelectorAll('.pf-ph').length,saved:Object.keys(PREF.get('floats',{}))}));
+  const h=await page.locator('#devBody [data-sec=base] > summary').boundingBox();await page.mouse.move(h.x+30,h.y+12);await page.mouse.down();await page.mouse.move(h.x+130,h.y+52,{steps:5});await page.mouse.up();
+  const moved=await ev(()=>Math.round(document.querySelector('[data-sec=base]').getBoundingClientRect().left));
+  await ev(()=>PrismFloat.dockAll());const b=await ev(()=>({f:PrismFloat.floating(),ph:document.querySelectorAll('.pf-ph').length,saved:Object.keys(PREF.get('floats',{})).length}));
+  if(a.f.length!==2||a.pos!=='fixed'||a.ph!==2||a.saved.length!==2||Math.abs(moved-400)>4||b.f.length||b.ph||b.saved)throw new Error(JSON.stringify({a,moved,b}))});
+await test('panneaux détachables : s’aimantent à gauche comme à droite, à la souris',async()=>{
+  const drag=async(sel,pts)=>{const h=await page.locator(sel).boundingBox();await page.mouse.move(h.x+30,h.y+h.height/2);await page.mouse.down();for(const [x,y] of pts)await page.mouse.move(x,y,{steps:8});await page.mouse.up();await page.waitForTimeout(250)};
+  const st=()=>ev(()=>{const R=document.querySelector('#atRail').getBoundingClientRect(),b=document.querySelector('[data-sec=base]').getBoundingClientRect(),lp=document.querySelector('#layersPanel');
+    return {fl:PrismFloat.floating(),inRail:b.left>=R.left-1&&b.right<=R.right+1&&b.top>=R.top-1,lp:lp.parentElement.id||lp.parentElement.className,pin:(PREF.get('floats',{})['sec:base']||{}).pin}});
+  await ev(()=>switchTab('develop'));
+  const s0=await page.locator('#devBody [data-sec=base] > summary').boundingBox();
+  await drag('#devBody [data-sec=base] > summary',[[s0.x-200,s0.y+20],[150,640]]);const a=await st();
+  await drag('#lyHead',[[600,300],[1300,700]]);const b=await st();
+  const l0=await page.locator('#lyHead').boundingBox();await drag('#lyHead',[[l0.x-200,l0.y],[150,760]]);const c=await st();
+  await drag('[data-sec=base] > summary',[[700,300],[1300,500]]);const d=await st();
+  if(!(a.inRail&&a.pin==='left'&&a.fl.join()==='sec:base'&&b.lp.includes('insp')&&c.lp==='atRail'&&!d.fl.length))throw new Error(JSON.stringify({a,b,c,d}));
+  await ev(()=>{PrismFloat.dockAll();PREF.set('pfHome',{})})});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
@@ -321,16 +443,16 @@ async function openFix(...names){await ev(()=>{window.__d0=S.doc});await page.se
 const layerPx=(x,y)=>ev(([x,y])=>{const L=S.doc.layers.find(l=>l.kind==='pixel');return Array.from(rx(L.canvas).getImageData(x,y,1,1).data)},[x,y]);
 await test('formats : QOI, JPEG 2000 et PPM s’ouvrent au bon pixel',async()=>{await fresh();const e=[],near=(a,b,t=4)=>a.every((v,i)=>Math.abs(v-b[i])<=t);
   await openFix('photo.qoi');let r=await ev(()=>[S.doc.w,S.doc.h]);if(r.join()!=='64,48')e.push('QOI taille '+r);let px=await layerPx(2,3);if(px.join()!=='8,24,90,255')e.push('QOI pixel '+px);px=await layerPx(62,3);if(px[3]!==128)e.push('QOI alpha '+px);px=await layerPx(32,24);if(px.join()!=='240,200,40,255')e.push('QOI centre '+px);
-  await openFix('photo.jp2');r=await ev(()=>[S.doc.w,S.doc.h,S.doc.name]);if(r.join()!=='64,48,photo.jp2')e.push('JP2 '+r);px=await layerPx(3,44);if(!near(px,[40,90,160,255]))e.push('JP2 pixel '+px);px=await layerPx(32,24);if(!near(px,[240,200,40,255]))e.push('JP2 centre '+px);
+  await openFix('photo.jp2');r=await ev(()=>[S.doc.w,S.doc.h,S.doc.name]);if(r.join()!=='64,48,photo.jp2')e.push('JP2 '+r);px=await layerPx(3,44);if(!near(px,[40,90,160,255]))e.push('JP2 pixel '+px);px=await layerPx(32,24);if(!near(px,[240,200,40,255]))e.push('JP2 centre '+px);if(e.some(x=>x.startsWith('JP2')))e.push(...logs.filter(t=>/warn|jpx|jpeg ?2000|openjpeg|wasm/i.test(t)).slice(-8));
   await openFix('photo.ppm');px=await layerPx(32,24);if(px.join()!=='240,200,40,255')e.push('PPM '+px);
   if(e.length)throw new Error(e.join('\n'))});
 await test('photo animée : Motion Photo lue, image choisie ouverte, PNG animé en calques',async()=>{await fresh();
-  await openFix('motion.jpg');const m=await ev(()=>S.doc.motion&&{from:S.doc.motion.from,ts:S.doc.motion.ts,size:S.doc.motion.blob.size,type:S.doc.motion.type});
+  await openFix(ENGINE==='webkit'?'motion-h264.jpg':'motion.jpg');const m=await ev(()=>S.doc.motion&&{from:S.doc.motion.from,ts:S.doc.motion.ts,size:S.doc.motion.blob.size,type:S.doc.motion.type});
   if(!m||m.from!=='Motion Photo'||m.ts!==500000||!(m.size>500))throw new Error('Motion Photo non détectée '+JSON.stringify(m));
   await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-v');await page.waitForFunction(()=>document.querySelector('#mo-v').readyState>=2,null,{timeout:15000});
   const sl=await page.locator('#mo-t').boundingBox();await page.mouse.click(sl.x+sl.width*0.2,sl.y+sl.height/2);await page.waitForTimeout(300);
   await page.locator('#scrim .foot .btn',{hasText:'Ouvrir cette image'}).click();await page.waitForTimeout(500);
-  const o=await ev(()=>[S.doc.name,S.doc.w,S.doc.h]);if(o.join()!=='motion-image.png,64,48')throw new Error('image choisie '+o);
+  const o=await ev(()=>[S.doc.name,S.doc.w,S.doc.h]);if(o.join()!==(ENGINE==='webkit'?'motion-h264-image.png':'motion-image.png')+',64,48')throw new Error('image choisie '+o);
   await openFix('anim.png');const ak=await ev(()=>S.doc.anim&&S.doc.anim.kind);if(ak!=='apng')throw new Error('PNG animé non détecté : '+ak);
   await ev(()=>PSX.motionDialog());await page.waitForSelector('#mo-all');await page.locator('#mo-all').click();await page.waitForTimeout(300);
   const L=await ev(()=>{const A=S.doc.layers,g=A.filter(l=>l.grp&&/Animation/.test(l.grp.name));return{n:g.length,vis:g.filter(l=>l.visible!==false).length,top:A.slice(A.indexOf(g[g.length-1])+1).every(l=>l.kind==='adjust')}});
@@ -396,6 +518,122 @@ await test('rendu film : pellicule couleur, diapositive, noir et blanc, négatif
   await page.selectOption('#lm-film','20');await page.waitForTimeout(400);await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();
   await page.waitForFunction(()=>S.history[S.hi].label==='Simulation de pellicule',null,{timeout:120000});
   const bw=await ev(()=>{const d=rx(pixelTarget().canvas).getImageData(900,300,1,1).data;return Math.abs(d[0]-d[1])<=2&&Math.abs(d[1]-d[2])<=2});if(!bw)throw new Error('Double-X pas en noir et blanc')});
+await test('photothèque : une photo importée est gardée telle quelle (pas de ré-encodage), se rouvre au pixel près',async()=>{await fresh();
+  const r=await ev(async()=>{const c=mk(1200,800),g=cx(c);const gr=g.createLinearGradient(0,0,1200,800);gr.addColorStop(0,'#c0392b');gr.addColorStop(1,'#2e86de');g.fillStyle=gr;g.fillRect(0,0,1200,800);for(let i=0;i<400;i++){g.fillStyle=`hsl(${i*7},70%,${30+i%40}%)`;g.fillRect((i*37)%1180,(i*53)%780,18,14)}
+    const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9));const f=new File([b],'essai.jpg',{type:'image/jpeg'});
+    await importToLibrary([f]);const d=S.doc,pid=d.pid;const m=await IDB.get('projects',pid);const t=m.layers[0].canvas,blob=await IDB.get('blobs',t[0].key);
+    const ref=rx(d.layers[0].canvas).getImageData(0,0,1200,800).data;S.doc=null;await openLocalProject(pid);const L=S.doc.layers[0],cv=L.canvas;const got=rx(cv).getImageData(0,0,1200,800).data;let diff=0;for(let i=0;i<ref.length;i++)diff=Math.max(diff,Math.abs(ref[i]-got[i]));
+    return [d.name,t.length,blob&&blob.type,!LIB.open,diff].join('|')});
+  if(r!=='essai.jpg|1|image/jpeg|true|0')throw new Error(r)});
+await test('photothèque : le double-clic ouvre la photo même si la grille se redessine entre les deux clics',async()=>{
+  await ev(()=>openLibrary());await page.waitForSelector('.lb-card');const id=await page.$eval('.lb-card',e=>e.dataset.id);
+  await ev(()=>{S.doc=null});const box=await page.locator(`.lb-card[data-id="${id}"]`).boundingBox();const x=box.x+box.width/2,y=box.y+box.height/3;
+  await page.mouse.click(x,y);await ev(()=>{LIB._press=0;renderLibrary()});await page.mouse.click(x,y);
+  await page.waitForFunction(id=>S.doc&&S.doc.pid===id&&!LIB.open,id,{timeout:15000})});
+await test('accueil et photothèque refaits : grande dernière photo, Commencer, Importer, dépôt plein écran, tablette',async()=>{await fresh();
+  await ev(async()=>{for(let i=0;i<3;i++){const c=mk(900,600),g=cx(c);g.fillStyle=`hsl(${i*120},60%,50%)`;g.fillRect(0,0,900,600);g.fillStyle='#fff';g.fillRect(100+i*200,100,150,300);const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.9));await importToLibrary([new File([b],'h'+i+'.jpg',{type:'image/jpeg'})])}});
+  await ev(()=>{if(LIB.open)closeLibrary();closeDoc()});await page.waitForTimeout(600);
+  const h=await ev(()=>{const g=document.querySelector('.hm-grid'),cards=[...document.querySelectorAll('#wGrid .w-card')],b0=cards[0]&&cards[0].getBoundingClientRect(),b1=cards[1]&&cards[1].getBoundingClientRect();
+    return {grid:!!g,side:!!document.querySelector('.hm-side #wTiles'),n:cards.length,big:b0&&b1&&b0.width>b1.width*1.8,h2:document.querySelector('#empty .w-head h2').textContent}});
+  await ev(()=>{const dt=new DataTransfer();dt.items.add(new File(['x'],'a.jpg',{type:'image/jpeg'}));window.dispatchEvent(new DragEvent('dragenter',{dataTransfer:dt}))});
+  const drop=await ev(()=>document.getElementById('hmDrop').classList.contains('on'));await ev(()=>window.dispatchEvent(new DragEvent('drop')));
+  await page.setViewportSize({width:900,height:900});await page.waitForTimeout(300);const tw=await ev(()=>document.querySelector('#empty').getBoundingClientRect().width);await page.setViewportSize({width:1440,height:900});
+  await ev(()=>openLibrary());await page.waitForSelector('#library .lb-impbtn');const l=await ev(()=>({imp:!!document.querySelector('.lb-top .lb-impbtn'),tri:!!document.querySelector('.lb-top [data-triage]'),filTri:getComputedStyle(document.querySelector('#lbFil [data-triage]')||document.body).display}));
+  await page.click('.lb-top .lb-impbtn');const menu=await ev(()=>[...document.querySelectorAll('.menu button, [role=menuitem]')].map(b=>b.textContent).join('|'));await page.keyboard.press('Escape');
+  if(!(h.grid&&h.side&&h.n===3&&h.big&&/^Bon(jour|soir)/.test(h.h2)&&drop&&tw>800&&l.imp&&l.tri&&l.filTri==='none'&&/dossier/.test(menu)))throw new Error(JSON.stringify({h,drop,tw,l,menu}))});
+await test('connexion : vrai formulaire reconnu par les gestionnaires de mots de passe (1Password…)',async()=>{
+  await ev(()=>{closeDialog();if(SY.cfg)return syLogout()});await ev(()=>syAccountDialog());await page.waitForSelector('#syForm');
+  const a=await ev(()=>{const f=document.querySelector('#syForm'),u=f.querySelector('input[name=email]'),p=f.querySelector('input[name=password]');return [f.tagName,u.type,u.autocomplete,p.type,p.autocomplete,!!f.querySelector('[type=submit]'),f.querySelector('#syUrl')?f.querySelector('#syUrl').hasAttribute('data-1p-ignore'):true].join('|')});
+  if(a!=='FORM|email|username|password|current-password|true|true')throw new Error(a);
+  await page.click('.sy-mode [data-m=signup]');const b=await ev(()=>document.querySelector('#syPw').autocomplete+'|'+document.querySelector('.foot .btn.primary').textContent);if(b!=='new-password|Créer le compte')throw new Error(b);
+  await page.fill('#syEmail','essai-1p@example.com');await page.fill('#syPw','un-mot-de-passe');await page.press('#syPw','Enter');
+  await page.waitForFunction(()=>SY.cfg&&!document.querySelector('#syForm'),null,{timeout:15000});await ev(()=>syLogout())});
+await test('effets modifiables : filtre sur une sélection, liste dans Calques, œil, modifier, réouverture, peindre fusionne',async()=>{await fresh();await sample();
+  await ev(()=>{setTool('marquee');switchTab('layers')});await drag(.3,.3,.6,.6);
+  await ev(()=>filterDialog('blur'));await page.waitForSelector('#scrim');await page.click('#scrim button.primary');await page.waitForTimeout(200);
+  const r1=await ev(()=>{const L=S.doc.layers.find(l=>l.filters),w=L.canvas.width,h=L.canvas.height,at=(c,x,y)=>[...c.getContext('2d').getImageData(w*x|0,h*y|0,1,1).data].join();
+    return{ok:PrismEffects.valid(L)&&!!L.filters[0].m,rows:document.querySelectorAll('#pane-layers li.lfx .lfx-r').length,out:at(L.canvas,.1,.1)===at(L.fbase,.1,.1),inn:at(L.canvas,.45,.45)!==at(L.fbase,.45,.45)}});
+  await page.click('#pane-layers [data-fxt]');await page.waitForTimeout(300);
+  const r2=await ev(()=>{const L=S.doc.layers.find(l=>l.filters);return L.filters[0].off===true&&L.canvas===L.fout&&!!document.querySelector('#pane-layers .lfx-r.off')});
+  await page.click('#pane-layers [data-fxt]');await page.waitForTimeout(300);
+  await page.click('#pane-layers [data-fxe]');await page.waitForSelector('#scrim input[type=range]');
+  await ev(()=>{const i=document.querySelector('#scrim input[type=range]');i.value=i.max;i.dispatchEvent(new Event('input',{bubbles:true}))});await page.click('#scrim button.primary');await page.waitForTimeout(300);
+  const r3=await ev(async()=>{const L0=S.doc.layers.find(l=>l.filters),edited=!L0.filters[0].off&&L0.filters[0].p.r>50;const before=L0.canvas.getContext('2d').getImageData(0,0,S.doc.w,S.doc.h).data;
+    S.doc.nosave=false;S.doc.saved=false;while(SAVE.running)await new Promise(r=>setTimeout(r,50));await saveNow();await openLocalProject(S.doc.pid);await new Promise(r=>setTimeout(r,300));
+    const L=S.doc.layers.find(l=>l.filters);if(!L)return 'perdu à la réouverture';const str=typeof L.filters[0].m==='string';
+    await PrismEffects.setList(L,L.filters.map(f=>({...f,off:true})),'a');await PrismEffects.setList(L,L.filters.map(f=>({...f,off:false})),'b');
+    const after=L.canvas.getContext('2d').getImageData(0,0,S.doc.w,S.doc.h).data;let diff=0;for(let i=0;i<after.length;i+=97)diff=Math.max(diff,Math.abs(after[i]-before[i]));return edited&&str&&diff<=1});
+  await ev(()=>{S.doc.sel=null;selChanged();setTool('brush');S.color='#ff0000'});await drag(.1,.8,.2,.85);await page.waitForTimeout(300);
+  const r4=await ev(()=>!S.doc.layers.some(l=>l.filters)&&!document.querySelector('#pane-layers li.lfx'));
+  await ev(()=>undo());await page.waitForTimeout(200);const r5=await ev(()=>S.doc.layers.some(l=>PrismEffects.valid(l)));
+  if(!(r1.ok&&r1.rows===1&&r1.out&&r1.inn&&r2&&r3===true&&r4&&r5))throw new Error(JSON.stringify({r1,r2,r3,r4,r5}))});
+await test('signaler un problème : Aide, rapport avec version et journal d’erreurs, ticket GitHub court',async()=>{
+  await ev(()=>{console.warn('essai de journal');const sc=document.createElement('script');sc.textContent="setTimeout(function(){throw new Error('erreur volontaire')},0)";document.head.appendChild(sc);sc.remove()});await page.waitForTimeout(150);errs.length=0;await page.waitForTimeout(100);
+  const r=await ev(()=>{const it=MENU2.help.items().some(x=>x&&x.label==='Signaler un problème…');PrismReport.dialog();const o=document.querySelector('#rpOut').value,u=PrismReport.issueUrl('Test',true);closeDialog();
+    return{it,v:o.includes('Version : '+PRISM_VERSION),log:/erreur volontaire/.test(o)&&/essai de journal/.test(o),u:u.startsWith('https://github.com/Asmodeus-73/Prism/issues/new?')&&u.length<=7500}});
+  if(!(r.it&&r.v&&r.log&&r.u))throw new Error(JSON.stringify(r)+'\n'+await ev(()=>ERRLOG.slice(-4).map(e=>e.k+' '+e.m).join('\n')))});
+await test('effets modifiables : contraste local et visages (appliquer, œil, modifier, annuler)',async()=>{
+  const idle=async()=>{await page.waitForFunction(()=>!document.querySelector('#busy:not([hidden])'),null,{timeout:120000});await page.waitForTimeout(300)};
+  const primary=async()=>{await page.waitForSelector('#scrim button.primary',{timeout:60000});await page.waitForTimeout(300);await page.click('#scrim button.primary');await page.waitForTimeout(300)};
+  const sum=()=>ev(()=>{const L=S.doc.layers.find(l=>l.filters),d=L.canvas.getContext('2d').getImageData(0,0,L.canvas.width,L.canvas.height).data;let s=0;for(let i=0;i<d.length;i+=31)s+=d[i];return s});
+  for(const k of ['llap','faces']){await fresh();await sample();await ev(()=>{switchTab('layers');S.doc.active=S.doc.layers.findIndex(l=>l.kind==='pixel');syncAll()});
+    await ev(k==='llap'?()=>PrismFilm.llap():()=>PrismDepth.faces());await idle();await page.waitForSelector('#scrim');
+    if(k==='faces'){const b=await page.locator('#view').boundingBox();await page.mouse.click(b.x+b.width*.5,b.y+b.height*.5);await page.waitForTimeout(400)}
+    await primary();await idle();
+    const x=await ev(()=>{const L=S.doc.layers.find(l=>l.filters);return L&&L.filters[0].x});const s1=await sum();
+    await page.click('#pane-layers [data-fxt]');await idle();const s0=await sum();await page.click('#pane-layers [data-fxt]');await idle();const s1b=await sum();
+    await page.click('#pane-layers [data-fxe]');await idle();await page.waitForSelector('#scrim');await page.waitForTimeout(400);await page.click('#scrim button:text-is("Annuler")');await page.waitForTimeout(1500);await idle();const sc=await sum();
+    await page.click('#pane-layers [data-fxe]');await idle();await page.waitForSelector('#scrim');await page.waitForTimeout(400);
+    await ev(()=>{const i=[...document.querySelectorAll('#scrim input[type=range]')].pop();i.value=String(+i.min+(+i.max-+i.min)*.3);i.dispatchEvent(new Event('input',{bubbles:true}))});await page.waitForTimeout(500);await primary();await idle();await page.waitForTimeout(500);
+    const s2=await sum(),n=await ev(()=>{const L=S.doc.layers.find(l=>l.filters);return L&&PrismEffects.valid(L)?L.filters.length:0});
+    if(x!==k||s0===s1||s1b!==s1||sc!==s1||s2===s1||n!==1)throw new Error(JSON.stringify({k,x,s0,s1,s1b,sc,s2,n}))}});
+await test('visite : proposée à la première photo importée, jamais sur la photo d’exemple, pas de photo d’exemple pour la lancer',async()=>{await fresh();
+  const r=await ev(async()=>{PREF.set('tourDone',0);Object.defineProperty(navigator,'webdriver',{get:()=>false,configurable:true});const c=document.createElement('canvas');c.width=c.height=64;
+    setDoc(c,'a.jpg',{sample:true});await new Promise(r=>setTimeout(r,1800));const s=!!document.querySelector('#scrim');
+    closeDoc();setDoc(c,'b.jpg',{});await new Promise(r=>setTimeout(r,1800));const t=!!document.querySelector('#scrim')&&/Visite|visite/.test(document.querySelector('#scrim').textContent);
+    [...document.querySelectorAll('#scrim button')].find(b=>/Plus tard/.test(b.textContent)).click();await new Promise(r=>setTimeout(r,300));closeDoc();await new Promise(r=>setTimeout(r,600));PrismTour.start();await new Promise(r=>setTimeout(r,300));return{s,t,noTour:!PrismTour.on,noDoc:!S.doc}});
+  if(r.s||!r.t||!r.noTour||!r.noDoc)throw new Error(JSON.stringify(r))});
+await test('trait : tous les points d’un même mouvement du navigateur sont tracés ; Ctrl+4 (AZERTY) n’allume pas la grille',async()=>{await fresh();await sample();
+  const r=await ev(async()=>{setTool('brush');Object.assign(S.opts.brush,{size:20,hardness:1,opacity:1,flow:1,smooth:0,scatter:0,grain:0,pressSize:false});S.color='#ff0000';S.doc.active=0;
+    const v=document.getElementById('view'),b=v.getBoundingClientRect(),X=b.x+b.width*.3,Y=b.y+b.height*.5,mk=(t,x,y,o={})=>{const e=new PointerEvent(t,{clientX:x,clientY:y,pointerId:1,pointerType:'mouse',button:0,buttons:1,bubbles:true,...o});return e};
+    v.dispatchEvent(mk('pointerdown',X,Y));const last=mk('pointermove',X+160,Y);last.getCoalescedEvents=()=>[40,80,120,160].map(d=>mk('pointermove',X+d,Y));v.dispatchEvent(last);
+    const L=S.doc.layers[0],st=S.stroke,sc=st?st.canvas:null,p=toDoc(X+80-b.x,Y-b.y);let hit=0;if(sc){hit=sc.getContext('2d').getImageData(Math.round(p.x),Math.round(p.y),1,1).data[3]}
+    v.dispatchEvent(mk('pointerup',X+160,Y,{buttons:0}));
+    const g0=PrismGuides.st.grid;document.dispatchEvent(new KeyboardEvent('keydown',{key:"'",code:'Digit4',ctrlKey:true,bubbles:true}));const g1=PrismGuides.st.grid;
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:"'",code:'Quote',ctrlKey:true,bubbles:true}));const g2=PrismGuides.st.grid;document.dispatchEvent(new KeyboardEvent('keydown',{key:"'",code:'Quote',ctrlKey:true,bubbles:true}));
+    return{hit,g0,g1,g2}});
+  if(!(r.hit>200&&r.g1===r.g0&&r.g2!==r.g0))throw new Error(JSON.stringify(r))});
+await test('aperçu rapide : pas de liseré à damier sur les bords de la photo',async()=>{await fresh();await sample();
+  const r=await ev(()=>{const edge=()=>{const w=work,d=w.getContext('2d').getImageData(0,0,w.width,w.height).data,W=w.width,H=w.height;let n=0;for(let y=2;y<H-2;y++)if(d[(y*W+W-1)*4+3]<250)n++;for(let x=2;x<W-2;x++)if(d[((H-1)*W+x)*4+3]<250)n++;return n},bad=[];
+    for(const z of [0.31,0.337,0.5]){const at=k=>{S.fitted=false;S.zoom=z;S.panX=100.4;S.panY=60.7;S.sliding=k<1;S.slideEl=null;LQ.full=k<1?250:0;LQ.lock=k<1?k:0;markContent();render();return edge()};const base=at(1);
+      for(const k of [.5,.6,.7]){const n=at(k);if(n>base+2)bad.push([z,k,n,base])}}
+    S.sliding=false;LQ.lock=0;return bad});
+  if(r.length)throw new Error(JSON.stringify(r))});
+await test('trait sur une grosse photo : l’aperçu en cours de trait montre le trait et seulement lui (pyramide mise à jour par zones)',async()=>{await fresh();
+  const r=await ev(async()=>{const c=document.createElement('canvas');c.width=3000;c.height=2200;const g=c.getContext('2d');g.fillStyle='#808080';g.fillRect(0,0,3000,2200);setDoc(c,'g.jpg',{});await new Promise(r=>setTimeout(r,600));
+    S.doc.active=0;setTool('brush');Object.assign(S.opts.brush,{size:80,hardness:1,opacity:1,flow:1,smooth:0,scatter:0,grain:0,pressSize:false});S.color='#ff0000';S.fitted=false;S.zoom=0.2;S.panX=40;S.panY=40;markContent();render();
+    const px=(x,y)=>{const w=work,d=w.getContext('2d').getImageData(Math.round(S.panX+x*S.zoom*S.pr-S.workPos.x),Math.round(S.panY+y*S.zoom*S.pr-S.workPos.y),1,1).data;return[d[0],d[1],d[2]]};
+    beginStroke({x:400,y:500});render();const grey0=px(2000,1500);
+    for(let k=1;k<=30;k++){moveStroke({x:400+k*50,y:500+Math.sin(k/4)*120});render()}
+    const red=px(400+15*50,500+Math.sin(15/4)*120),far=px(2000,1500),before=grey0;await endStroke();render();const after=px(400+15*50,500+Math.sin(15/4)*120);
+    return{red,far,before,after}});
+  const ok=r.red[0]>200&&r.red[1]<60&&Math.abs(r.far[0]-128)<6&&Math.abs(r.after[0]-r.red[0])<12;if(!ok)throw new Error(JSON.stringify(r))});
+await test('dézoom rapide : la partie qui n’était pas affichée montre la photo, pas le damier',async()=>{await fresh();
+  const r=await ev(async()=>{const W=4000,H=3000,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');g.fillStyle='#2a6';g.fillRect(0,0,W,H);setDoc(c,'v.png',{});const w=ms=>new Promise(r=>setTimeout(r,ms));await w(600);
+    fit();render();await w(1000);zoomAt(S.zoom*6,S.vw/2,S.vh/2);render();await w(100);S.contentMs=50;S.zoomRedraw=performance.now();zoomAt(S.zoom/2,S.vw/2,S.vh/2);zoomAt(S.zoom/2,S.vw/2,S.vh/2);render();
+    const x=Math.max(S.panX+5,5),y=S.vh/2,d=vctx.getImageData(Math.round(x*S.pr),Math.round(y*S.pr),1,1).data;return{fast:S.workZ!==1,px:[d[0],d[1],d[2]]}});
+  if(!r.fast||!(r.px[1]>130&&r.px[0]<120))throw new Error(JSON.stringify(r))});
+await test('Calque > Styles de calque ouvre sa fenêtre ; un nettoyage de franges sans masque le dit sans erreur',async()=>{await fresh();await sample();
+  const r=await ev(async()=>{const w=ms=>new Promise(r=>setTimeout(r,ms));const errs=[];const ce=console.error;console.error=(...a)=>{errs.push(String(a[0]&&a[0].message||a[0]));ce.apply(console,a)};
+    S.doc.active=S.doc.layers.findIndex(l=>l.kind==='pixel');const find=(a,l)=>a.find(x=>x&&x.label===l);const it=find(MENU2.layer.items(),'Styles de calque…');it.fn();await w(200);const t1=($('#scrim h2,#scrim .dlg-title,#scrim')||{}).textContent||'';closeDialog();
+    const m=find(MENU2.layer.items(),'Masque');const fr=find(typeof m.sub==='function'?m.sub():m.sub,'Nettoyer les franges de couleur…');fr.fn();await w(900);const open=!!$('#scrim');closeDialog();console.error=ce;
+    return{styles:/Ombre|Contour|Lueur|Style/i.test(t1),open,errs}});
+  if(!r.styles||r.open||r.errs.length)throw new Error(JSON.stringify(r))});
+await test('sans serveur ni compte Claude : aucun compte, synchro, partage ni assistant dans les menus et les paramètres',async()=>{await sample();
+  const r=await ev(()=>{const out=[];const walk=a=>a.forEach(x=>{if(!x||!x.label)return;out.push(x.label);let s=null;try{s=typeof x.sub==='function'?x.sub():x.sub}catch(e){}if(s)walk(s)});for(const k in MENU2)walk(MENU2[k].items());
+    const bad=out.filter(l=>/compte|Synchroniser|Partager|Avis partagés|Assistant de retouche/i.test(l));MENU2.file.items().find(x=>x&&x.label==='Paramètres…').fn();const nav=[...document.querySelectorAll('#scrim .at-set nav button')].map(b=>b.textContent.trim());try{closeDialog()}catch(e){}
+    return{bad,nav,badge:!!document.querySelector('#syBadge')}});
+  if(r.bad.length||r.nav.includes('Compte')||r.badge)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

@@ -25,7 +25,7 @@ const home=document.getElementById('empty');
 function homeBack(){
   const wl=home.querySelector('.welcome');if(!wl)return;let b=wl.querySelector('.w-back');
   if(!S.doc||home.hidden){if(b)b.remove();return}
-  if(!b){b=document.createElement('button');b.className='w-back';b.type='button';b.onclick=leaveHome;const t=wl.querySelector('.w-tiles');wl.insertBefore(b,t||null)}
+  if(!b){b=document.createElement('button');b.className='w-back';b.type='button';b.onclick=leaveHome;const t=wl.querySelector('.hm-grid')||wl.querySelector('.w-tiles');(t?t.parentElement:wl).insertBefore(b,t||null)}
   b.innerHTML=`<svg viewBox="0 0 20 20"><path d="M12 5l-5 5 5 5"/></svg><b>Revenir à « ${esc(S.doc.name||'photo')} »</b><span>Échap</span>`}
 function leaveHome(){if(!S.doc)return;home.hidden=true;try{updateDocName()}catch(e){}requestRender()}
 window.showHome=function(){if(typeof LIB!=='undefined'&&LIB.open)closeLibrary();home.hidden=false;homeBack();try{updateDocName()}catch(e){}};

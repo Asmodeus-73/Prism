@@ -15,7 +15,7 @@ addEventListener('pagehide',()=>{for(const pid of active.keys())release(pid)});
 async function elsewhere(pid){const c=col();if(!c)return null;try{const s=await c.doc(lockId(pid)).get(),p=s&&s.exists?s.data():null;if(p&&p.device!==DEVICE&&Date.now()-(p.at||0)<TTL)return p}catch(e){}return null}
 const ago=t=>{const m=Math.round((Date.now()-t)/60000);return m<1?'à l’instant':`il y a ${m} min`};
 function ask(p){return new Promise(res=>{dialog({title:'Projet ouvert sur un autre appareil',
-  body:`<p>Ce projet est ouvert sur <b>${esc(p.deviceName||'un autre appareil')}</b> (actif ${ago(p.at)}).</p><p class="muted">Si vous le modifiez des deux côtés, Prism garde les deux versions séparément, sans rien perdre. Pour l’éviter, ouvrez-le en lecture seule ou travaillez sur une copie.</p>`,
+  body:`<p>Ce projet est ouvert sur <b>${esc(p.deviceName||'un autre appareil')}</b> (actif ${ago(p.at)}).</p><p class="muted">Si vous le modifiez des deux côtés, Prism garde les deux versions. Pour l’éviter, ouvrez-le en lecture seule ou travaillez sur une copie.</p>`,
   buttons:[{label:'Annuler',onClick:()=>res('cancel')},{label:'Lecture seule',onClick:()=>res('ro')},{label:'Ouvrir quand même',onClick:()=>res('open')},{label:'Travailler sur une copie',primary:true,onClick:()=>res('copy')}]})})}
 async function makeCopy(){const d=S.doc;if(!d)return;d.pid=uid8();d.name=d.name.replace(/ \(copie\)$/,'')+' (copie)';d.updatedAt=0;d.saved=false;d.nosave=false;d.readonly=false;updateDocName();await saveNow();toast(`Copie enregistrée : « ${d.name} »`,4000)}
 function after(choice){const d=S.doc;if(!d)return;

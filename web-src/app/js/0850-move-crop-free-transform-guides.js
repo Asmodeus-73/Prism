@@ -203,7 +203,7 @@ function canvasSizeDialog(){const d=S.doc;if(!d)return;let ax=1,ay=1,rel=false;
     buttons:[{label:'Annuler'},{label:'Appliquer',primary:true,onClick:el=>{let w=Math.round(+$('#czW',el).value||0),h=Math.round(+$('#czH',el).value||0);if(rel){w+=d.w;h+=d.h}
       if(!(w>=1&&h>=1&&w<=30000&&h<=30000)){toast('Entrez une largeur et une hauteur entre 1 et 30 000 px');return false}if(w*h>MAX_PX){toast('Taille trop grande pour ce navigateur');return false}
       if(w===d.w&&h===d.h)return;canvasResize(w,h,ax,ay,$('#czF',el).value)}}]})}
-function trimDoc(){const d=S.doc;if(!d)return;tfOff(true);const b=maskBBox(flatSync());if(!b){toast('L’image est entièrement transparente');return}
+function trimDoc(){const d=S.doc;if(!d)return;tfOff(true);const b=maskBBox(flatSync());if(!b){toast('L’image est transparente');return}
   if(b.x0===0&&b.y0===0&&b.x1===d.w&&b.y1===d.h){toast('Aucun bord transparent à rogner');return}
   transformDoc(b.x1-b.x0,b.y1-b.y0,g=>g.translate(-b.x0,-b.y0),'Rogner les bords transparents')}
 const _imi=MENU2.image.items;

@@ -2,6 +2,12 @@ name: Construire Prism
 
 # A new version tag (v0.2.0, ...) builds the Mac and Windows apps and
 # publishes them on the repository's Releases page.
+#
+# Private beta: when package.json carries a beta version (1.0.0-beta.1, ...), the same run
+# builds "Prism Beta" (src-tauri/beta.conf.json: its own identifier, so its own projects and
+# settings, and no update check) and leaves it in a DRAFT release. A draft is visible only to
+# the repository's owner and collaborators, creates no tag, and is never seen by the site's
+# download button nor by the installed apps' updater (both read the latest published release).
 on:
   push:
     tags: ['v*']
@@ -42,6 +48,23 @@ jobs:
 
   build:
     needs: models
+    # Release notes: the public one, and the one of the private beta.
+    env:
+      NOTES: |
+        Le plus simple : téléchargez Prism depuis son site, https://asmodeus-73.github.io/Prism/ (le bouton choisit le bon fichier pour votre ordinateur).
+
+        Sinon, dans la liste « Assets » ci-dessous, prenez un seul fichier :
+        - Mac : le fichier qui finit par .dmg. Ouvrez-le et glissez Prism dans Applications. La première fois, si macOS refuse : Réglages Système, Confidentialité et sécurité, Ouvrir quand même.
+        - Windows : le fichier qui finit par -setup.exe. Lancez-le. Si Windows affiche un avertissement, cliquez sur « Informations complémentaires » puis « Exécuter quand même ».
+
+        Les autres fichiers (.tar.gz, .sig, latest.json, Source code) servent aux mises à jour automatiques ou aux développeurs : inutile de les télécharger.
+      BETA_NOTES: |
+        Bêta privée de Prism : ce brouillon n'est visible que par toi tant qu'il n'est pas publié.
+
+        - Mac : le fichier .dmg. Ouvre-le et glisse « Prism Beta » dans Applications. La première fois, si macOS refuse : Réglages Système, Confidentialité et sécurité, Ouvrir quand même.
+        - Windows : le fichier -setup.exe.
+
+        Prism Beta s'installe à côté de Prism, avec ses propres projets et réglages, et ne cherche pas de mise à jour.
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +92,16 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
+
+      - name: Version publique ou bêta privée
+        shell: bash
+        run: |
+          v=$(node -p 'require("./package.json").version')
+          case "$v" in
+            *-beta*) echo "BETA=1" >> "$GITHUB_ENV"; echo "Bêta privée $v" ;;
+            *) echo "BETA=" >> "$GITHUB_ENV"; echo "Version publique $v" ;;
+          esac
+          echo "CODENAME=$(node -p 'require("./package.json").codename||""')" >> "$GITHUB_ENV"
 
       # Native AI engine (ONNX Runtime) shipped inside the app: DirectML on Windows, Core ML on Mac.
       # Windows takes the DirectML build from NuGet (one pinned version, checked); if it cannot be fetched,
@@ -124,17 +157,28 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
-          releaseName: Prism __VERSION__
-          releaseBody: |
-            Le plus simple : téléchargez Prism depuis son site, https://asmodeus-73.github.io/Prism/ (le bouton choisit le bon fichier pour votre ordinateur).
-
-            Sinon, dans la liste « Assets » ci-dessous, prenez un seul fichier :
-            - Mac : le fichier qui finit par .dmg. Ouvrez-le et glissez Prism dans Applications. La première fois, faites clic droit sur Prism puis Ouvrir.
-            - Windows : le fichier qui finit par -setup.exe. Lancez-le. Si Windows affiche un avertissement, cliquez sur « Informations complémentaires » puis « Exécuter quand même ».
-
-            Les autres fichiers (.tar.gz, .sig, latest.json, Source code) servent aux mises à jour automatiques ou aux développeurs : inutile de les télécharger.
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: true
+          releaseName: Prism __VERSION__${{ env.BETA && ' (bêta privée)' || env.CODENAME && format(' « {0} »', env.CODENAME) || '' }}
+          releaseBody: ${{ env.BETA && env.BETA_NOTES || env.NOTES }}
+          releaseDraft: ${{ env.BETA == '1' }}
+          prerelease: ${{ env.BETA == '1' }}
+          includeUpdaterJson: ${{ env.BETA != '1' }}
           # Until the update key exists (setup-update-key.yml), build without the update files.
-          args: ${{ matrix.args }} ${{ secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config src-tauri/no-updater.conf.json' || '' }}
+          args: ${{ matrix.args }} ${{ env.BETA && '--config src-tauri/beta.conf.json' || (secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config src-tauri/no-updater.conf.json' || '') }}
+
+  # Private beta: once the new beta is built, keep only it and the one just before;
+  # older beta drafts are deleted. Public releases are never touched (drafts only).
+  prune-betas:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Garder les deux dernières bêtas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          case "$(node -p "require('./package.json').version")" in *-beta*) ;; *) exit 0 ;; esac
+          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq '.[] | select(.draft and (.tag_name | test("-beta\\.[0-9]+$"))) | "\(.tag_name | capture("-beta\\.(?<n>[0-9]+)$").n) \(.id) \(.tag_name)"' \
+            | sort -rn | tail -n +3 | while read -r n id tag; do
+              echo "Suppression de $tag"; gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+            done

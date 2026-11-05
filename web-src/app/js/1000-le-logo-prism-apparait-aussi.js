@@ -10,7 +10,7 @@ const _o=openLibrary;openLibrary=async function(...a){const r=await _o.apply(thi
   return r};
 })();
 
-/* ---------- AI upscale: Real-ESRGAN general x4 v3 (compact) in tf.js; x2 = x4 result brought down; old ESRGAN stays as fallback ---------- */
+/* ---------- AI upscale: Real-ESRGAN general x4 v3 (compact) in tf.js; x2 = x4 result brought down ---------- */
 {
 const RG={m:null};
 const loadRG=async()=>{
@@ -43,7 +43,7 @@ AI.ensureUp=scale=>AI._rgFail?_ens.call(AI,scale):RG.m?Promise.resolve(RG.m):(RG
   for(let a=0;a<2;a++){
     try{busy(true,'Chargement du modèle Real-ESRGAN…',0.5);const m=await loadRG();AI.setState('up','ready');busy(false);return m}
     catch(e){console.error(e);RG.m=null}}
-  AI._rgFail=true;toast('Real-ESRGAN indisponible : ancien modèle utilisé',4000);return _ens.call(AI,scale)})().finally(()=>{RG.P=null})));
+  AI._rgFail=true;return _ens.call(AI,scale)})().finally(()=>{RG.P=null})));
 upscaleCanvas=async function(src,scale,model,onP){
   const tf=window.tf,W=src.width,H=src.height,N=model.native||scale,T=N===4?64:96,P=N===4?10:8,out=mk(W*scale,H*scale),og=cx(out);
   og.imageSmoothingEnabled=true;og.imageSmoothingQuality='high';

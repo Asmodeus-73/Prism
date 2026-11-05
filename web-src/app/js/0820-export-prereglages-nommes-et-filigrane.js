@@ -73,7 +73,7 @@ async function restoreLibrary(file){
       if(have.has(id)){skipped++;continue}
       const m=JSON.parse(new TextDecoder().decode(await z.get('p/'+id+'/revelateur.json')));
       const take=async t=>{const ext=t.key===m.thumb?'.jpg':'.png';const data=await z.get('p/'+id+'/tiles/'+t.key+ext);if(!data)throw new Error('tuile manquante');await IDB.put('blobs',t.key,new Blob([data],{type:ext==='.jpg'?'image/jpeg':'image/png'}));return t};
-      for(const L of m.layers){for(const f of ['canvas','mask','hi','fbase']){if(L[f])try{await Promise.all(L[f].map(take))}catch(e){if(f==='hi'||f==='fbase')L[f]=null;else throw e}}}
+      for(const L of m.layers){for(const f of ['canvas','mask','hi','fbase']){if(L[f])try{await Promise.all(L[f].map(take))}catch(e){if(f==='hi'||f==='fbase')L[f]=null;else throw e}}for(const f of L.filters||[]){if(f&&Array.isArray(f.den))try{await Promise.all(f.den.map(take))}catch(e){f.den=null}}}
       if(m.raw&&m.raw.key){try{await take({key:m.raw.key})}catch(e){m.raw=null}}
       if(m.thumb)await take({key:m.thumb});
       m.sync=false;await IDB.put('projects',id,m);added++;await tick()}
@@ -391,7 +391,7 @@ function warpMesh(img,pins,cell,out,scale){const W=img.width,H=img.height,g=cx(o
     drawTri(g,img,sa,sb,sc,D_(a),D_(b),D_(c));drawTri(g,img,sa,sc,sd,D_(a),D_(c),D_(d))}}
 function puppetDialog(){const d=S.doc,L=AL();if(!d||!L||L.kind!=='pixel'||L.editMask){toast('Choisissez un calque de pixels');return}
   const ov=document.createElement('div');ov.id='puppet';ov.style.cssText='position:fixed;inset:0;z-index:9000;background:rgba(10,10,14,.92);display:grid;grid-template-rows:auto 1fr;color:#eee;font:13px Geist,system-ui,sans-serif';
-  ov.innerHTML=`<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid #333"><b>Déformation marionnette</b><span style="opacity:.7;flex:1">Cliquez pour poser une épingle, glissez-la pour déformer. Clic droit ou Alt+clic pour la retirer. Posez aussi des épingles sur les zones à garder fixes.</span><button class="btn sm" id="pwReset">Réinitialiser</button><button class="btn sm" id="pwCancel">Annuler</button><button class="btn primary sm" id="pwOk">Appliquer</button></div><div style="position:relative;overflow:hidden"><canvas id="pwC" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none"></canvas></div>`;
+  ov.innerHTML=`<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid #333"><b>Déformation marionnette</b><span style="opacity:.7;flex:1">Cliquez pour poser une épingle, glissez-la pour déformer. Clic droit ou Alt+clic pour la retirer. Épinglez les zones à garder fixes.</span><button class="btn sm" id="pwReset">Réinitialiser</button><button class="btn sm" id="pwCancel">Annuler</button><button class="btn primary sm" id="pwOk">Appliquer</button></div><div style="position:relative;overflow:hidden"><canvas id="pwC" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none"></canvas></div>`;
   document.body.appendChild(ov);const cv=ov.querySelector('#pwC'),area=cv.parentElement;
   const pins=[];let drag=null,view={s:1,ox:0,oy:0};const W=d.w,H=d.h,selM=(d.sel&&maskBBox(d.sel))?d.sel:null,base=selM?(()=>{const c=cloneC(L.canvas),g=cx(c);g.globalCompositeOperation='destination-out';g.drawImage(selM,0,0);return c})():null,src=selM?(()=>{const c=cloneC(L.canvas),g=cx(c);g.globalCompositeOperation='destination-in';g.drawImage(selM,0,0);return c})():L.canvas;
   const pv=mk(Math.min(W,1200),Math.round(H*Math.min(W,1200)/W)),ps=pv.width/W;const small=mk(pv.width,pv.height);cx(small).drawImage(src,0,0,pv.width,pv.height);
@@ -478,7 +478,7 @@ const _enc=encodeCanvas;
 encodeCanvas=async function(c){const hit=encCache.get(c);if(hit){try{let ok=true;for(const t of hit)if(!await tileOK(t)){ok=false;break}if(!ok)encCache.delete(c)}catch(e){encCache.delete(c)}}return _enc.call(this,c)};
 
 const HK=id=>'hist_'+id;
-const canv=L=>[lcv(L),L.mask,L.fbase,L.so&&L.so.src];
+const canv=L=>[lcv(L),L.mask,L.fbase,L.so&&L.so.src,...(L.filters||[]).map(f=>f&&f.den&&f.den.c)];
 /* keys that must survive garbage collection: tiles of every canvas still reachable from undo history or snapshots, plus saved history records */
 async function keep(keepSet,projects){
   const add=s=>{if(!s||!s.layers)return;for(const L of s.layers)for(const c of canv(L)){const t=c&&encCache.get(c);t&&t.forEach(x=>keepSet.add(x.key))}};
@@ -638,7 +638,7 @@ const all=root=>{(root.querySelectorAll?root.querySelectorAll('input[type=range]
 new MutationObserver(ms=>{for(const m of ms){m.addedNodes.forEach(n=>{if(n.nodeType===1)all(n)});if(m.type==='attributes')paint(m.target)}}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['min','max','value']});
 all(document);
 /* while a slider is being dragged the histogram is not read back (it stalls the graphics pipeline) */
-document.addEventListener('pointerdown',e=>{if(e.target&&e.target.type==='range')S.sliding=true},true);
+document.addEventListener('pointerdown',e=>{if(e.target&&e.target.type==='range'){S.sliding=true;S.slideEl=e.target;LQ.lock=0}},true);
 const up=()=>{if(S.sliding){S.sliding=false;try{markContent()}catch(e){}}};addEventListener('pointerup',up,true);addEventListener('pointercancel',up,true);
 })();
 

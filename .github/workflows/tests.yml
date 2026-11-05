@@ -1,7 +1,8 @@
 name: Vérifier Prism
 
 # On every push and pull request: the web page is up to date with its sources,
-# the editor passes its tests in Chromium, and the desktop code compiles.
+# the editor passes its tests in Chromium and in WebKit on a Mac, and the desktop code
+# compiles on Linux and on Mac.
 on:
   push:
     branches: [main]
@@ -12,6 +13,20 @@ permissions:
   contents: read
 
 jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Serveur de synchronisation (Miniflare)
+        run: node test.mjs
+
   web:
     runs-on: ubuntu-latest
     steps:
@@ -37,6 +52,12 @@ jobs:
 
       - name: Tests de l'éditeur
         run: node tests/smoke.mjs
+
+      - name: Vitesse sur des photos de 24 Mpx (temps maximums)
+        run: node tests/vitesse.mjs
+
+      - name: Synchronisation entre deux appareils (serveur dans Miniflare)
+        run: (cd server && npm ci) && node tests/sync.mjs && node tests/collab.mjs && node tests/security.mjs
 
   desktop:
     runs-on: ubuntu-latest
@@ -72,5 +93,69 @@ jobs:
           cp -L onnxruntime-linux-x64-1.23.2/lib/libonnxruntime.so src-tauri/onnxruntime/
 
       - name: Le code de l'application compile
+        working-directory: src-tauri
+        run: cargo clippy --locked -- -D warnings
+
+      - name: Tests de l'application (chemins piégés, dossier surveillé)
+        working-directory: src-tauri
+        run: 'cargo test --locked --lib -- sync:: tether::'
+
+  # The Mac app shows the editor in WebKit (WKWebView), not Chromium: the same tests,
+  # in WebKit on a real Mac, catch what only breaks there.
+  web-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install webkit
+
+      - name: Tests de l'éditeur sous WebKit (Mac)
+        env:
+          PRISM_BROWSER: webkit
+        run: node tests/smoke.mjs
+
+      - name: Vitesse sous WebKit sur Mac (photos de 24 Mpx, temps maximums)
+        env:
+          PRISM_BROWSER: webkit
+        run: node tests/vitesse.mjs
+
+  # Mac-only code (cfg target_os = "macos") is never compiled on Linux.
+  desktop-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci && node scripts/prepare.mjs
+
+      - name: Moteur IA natif
+        run: |
+          mkdir -p src-tauri/onnxruntime
+          curl -fsSL -o ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-osx-universal2-1.23.2.tgz
+          echo "49ae8e3a66ccb18d98ad3fe7f5906b6d7887df8a5edd40f49eb2b14e20885809  ort.tgz" | shasum -a 256 -c
+          tar xzf ort.tgz
+          cp -L onnxruntime-osx-universal2-1.23.2/lib/libonnxruntime.dylib src-tauri/onnxruntime/
+
+      - name: Le code de l'application compile sur Mac
         working-directory: src-tauri
         run: cargo clippy --locked -- -D warnings

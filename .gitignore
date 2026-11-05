@@ -4,3 +4,5 @@ src-tauri/target/
 src-tauri/gen/
 .DS_Store
 src-tauri/onnxruntime/
+# stray screenshots at the root
+/*.png

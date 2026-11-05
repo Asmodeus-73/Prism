@@ -88,7 +88,7 @@ MENU2.view.items=()=>[..._vi(),SEP,
   MI('Effacer les repères',{dis:S.doc?false:NODOC,fn:clearGuides})];
 document.addEventListener('keydown',e=>{const m=e.metaKey||e.ctrlKey;if(!m||e.altKey||$('#scrim')||(e.target.closest&&e.target.closest('input,textarea,select')))return;
   if(e.shiftKey&&(e.code==='KeyR')){e.preventDefault();e.stopPropagation();tog('rulers')}
-  else if(!e.shiftKey&&(e.code==='Quote'||e.key==="'")){e.preventDefault();e.stopPropagation();tog('grid')}},true);
+  else if(!e.shiftKey&&e.code==='Quote'){e.preventDefault();e.stopPropagation();tog('grid')}},true);
 window.PrismGuides={st,G,tog,clearGuides};
 })();
 

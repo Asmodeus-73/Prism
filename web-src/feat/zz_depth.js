@@ -84,33 +84,35 @@ function onPhoto(fn){/* pointer on the photo while a light dialog is open: fn('d
 async function fxDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}
   if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
   const dm=o.depth?await depthMap():null;if(o.depth&&!dm)return;if(S.doc!==d||!d.layers.includes(L))return;
-  const p={...o.init(L,dm)};let tmr=null,off=null;const alive=()=>S.doc===d&&d.layers.includes(L);
+  const p={...o.init(L,dm),...(o.p0||{})};let tmr=null,off=null;const alive=()=>S.doc===d&&d.layers.includes(L);
   const clear=()=>{clearTimeout(tmr);delete L.preview;off&&off();off=null};
   const run=()=>{let r=o.run(L,dm,p);if(d.sel)r=mixSel(L.canvas,r,d.sel);return r};
   const prev=(ms=120)=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!alive())return;try{L.preview=run();o.mark&&o.mark(L.preview,p,L);markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},ms)};
   dialog({title:o.title,light:true,
     body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+(o.colors||[]).map(c=>`<div class="row"><label for="dp-${c[0]}">${c[1]}</label><input type="color" id="dp-${c[0]}" value="${toHex(p[c[0]])}" ${COL}></div>`).join('')
-      +o.params.map(q=>rangeRow('dp-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join('')+(o.extra||'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+      +o.params.map(q=>rangeRow('dp-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6])).join('')+(o.extra||'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),
     onOpen:el=>{o.params.forEach(q=>{const i=$('#dp-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#dp-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});
       (o.colors||[]).forEach(c=>{const i=$('#dp-'+c[0],el);i.oninput=()=>{p[c[0]]=hex(i.value);prev()}});
       if(o.onPhoto)off=onPhoto((k,pt)=>{o.onPhoto(k,pt,p,el);prev(k==='move'?60:0)});o.onOpen&&o.onOpen(el,p,prev);prev(0)},
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();if(!alive()){toast('Le calque n’existe plus');return}
-        try{applyMasked(L,run(),o.title);syncAll()}catch(e){console.error(e);markComp();toast(o.title+' impossible : '+(e.message||e),4000);return false}}}]})}
+        try{const r=o.run(L,dm,p);if(window.PrismEffects){const q={...p};delete q.N;PrismEffects.note(o.key,q)}applyMasked(L,r,o.title);syncAll()}catch(e){console.error(e);markComp();toast(o.title+' impossible : '+(e.message||e),4000);return false}}}]})}
 
-function fogDialog(){fxDialog({title:'Brume selon la distance',depth:true,
+const fogSpec=()=>({key:'fog',title:'Brume selon la distance',depth:true,
   note:'Ajoute de la brume qui s’épaissit avec l’éloignement, d’après la profondeur estimée par l’IA. La couleur vient du lointain de la photo.',
   colors:[['color','Couleur de la brume']],
   params:[['density','Densité',0,100,1,0,' %'],['start','Début',0,95,1,0,' %']],
-  init:(L,dm)=>({density:60,start:20,color:farColor(dm,L)}),run:fogRun})}
-function relightDialog(){const d=S.doc;if(!d)return;fxDialog({title:'Rééclairage 3D',depth:true,
+  init:(L,dm)=>({density:60,start:20,color:farColor(dm,L)}),run:fogRun});
+function fogDialog(p0){fxDialog({...fogSpec(),p0})}
+function relightSpec(){const d=S.doc;return {key:'relight',title:'Rééclairage 3D',depth:true,
   note:'Cliquez ou glissez sur la photo pour placer la lumière. Le relief vient de la profondeur estimée par l’IA.',
   colors:[['color','Couleur de la lumière']],
   params:[['power','Intensité',0,100,1,0,' %'],['darken','Assombrir le reste',0,90,1,0,' %'],['reach','Portée',5,100,1,0,' %'],['height','Hauteur de la lumière',2,100,1,0,' %'],['relief','Relief',0,100,1,0,' %']],
   init:()=>({power:80,darken:55,reach:40,height:25,relief:60,color:[255,236,210],lx:d.w*0.3,ly:d.h*0.3}),
   onPhoto:(k,pt,p)=>{p.lx=pt.x;p.ly=pt.y},run:relightRun,
   // where the light is: a ring on the preview only, never in the result
-  mark:(c,p,L)=>{const g=cx(c),r=Math.max(8,Math.max(d.w,d.h)/90),x=p.lx-(L.x|0),y=p.ly-(L.y|0);g.save();g.lineWidth=r/4;g.strokeStyle='rgba(0,0,0,.55)';g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.lineWidth=r/8;g.strokeStyle='#fff';g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.restore()}})}
+  mark:(c,p,L)=>{const g=cx(c),r=Math.max(8,Math.max(d.w,d.h)/90),x=p.lx-(L.x|0),y=p.ly-(L.y|0);g.save();g.lineWidth=r/4;g.strokeStyle='rgba(0,0,0,.55)';g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.lineWidth=r/8;g.strokeStyle='#fff';g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.restore()}}}
+function relightDialog(p0){if(S.doc)fxDialog({...relightSpec(),p0})}
 
 /* ---------- sélection selon la distance ---------- */
 async function depthSelDialog(){const d=S.doc;if(!d)return;const dm=await depthMap();if(!dm||S.doc!==d)return;const old=d.sel,p={near:100,far:55,soft:8};let tmr=null;
@@ -154,8 +156,8 @@ function hideFaces(L,faces,p){const d=S.doc,out=cloneC(L.canvas),g=cx(out),src=L
     const mask=mk(cw,ch),mg=cx(mask),fe=p.style==='fill'?1:Math.max(1,Math.max(w,h)*0.08);mg.filter=`blur(${fe}px)`;mg.fillStyle='#fff';mg.beginPath();mg.ellipse(x-X+w/2,y-Y+h/2,w/2,h/2,0,0,Math.PI*2);mg.fill();mg.filter='none';
     const fg=cx(fx);fg.globalCompositeOperation='destination-in';fg.drawImage(mask,0,0);g.drawImage(fx,X,Y)}
   return out}
-async function facesDialog(){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
-  const F0=await detectFaces();if(!F0||S.doc!==d||!d.layers.includes(L))return;const faces=F0.map(f=>({...f,off:false})),p={style:'blur',strength:60,margin:20,fill:'#202020'};let tmr=null,off=null;
+async function facesDialog(p0){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
+  const F0=p0&&p0.faces?p0.faces:await detectFaces();if(!F0||S.doc!==d||!d.layers.includes(L))return;const faces=F0.map(f=>({off:false,...f})),p={style:'blur',strength:60,margin:20,fill:'#202020',...(p0||{})};delete p.faces;let tmr=null,off=null;
   const med=()=>{const s=faces.map(f=>f.w).sort((a,b)=>a-b);return s.length?s[s.length>>1]:Math.max(d.w,d.h)/10};
   const count=el=>{const n=faces.filter(f=>!f.off).length;$('#fa-n',el).textContent=n?`${n} visage${n>1?'s':''} masqué${n>1?'s':''}`+(faces.length>n?` (${faces.length-n} laissé${faces.length-n>1?'s':''} visible${faces.length-n>1?'s':''})`:''):'Aucun visage masqué : cliquez sur un visage pour l’ajouter'};
   const run=()=>{let r=hideFaces(L,faces,p);if(d.sel)r=mixSel(L.canvas,r,d.sel);return r};
@@ -166,21 +168,26 @@ async function facesDialog(){const d=S.doc;if(!d)return;const L=pixelTarget();if
       <p id="fa-n" style="margin:0 0 8px;font-weight:600"></p>
       <div class="row"><label for="fa-style">Style</label><select id="fa-style"><option value="blur">Flou</option><option value="pixel">Pixellisation</option><option value="fill">Couleur unie</option></select><input type="color" id="fa-fill" value="${p.fill}" ${COL}></div>`
       +rangeRow('fa-strength','Force',10,100,1,p.strength,' %')+rangeRow('fa-margin','Marge autour',0,80,1,p.margin,' %'),
-    onOpen:el=>{count(el);const st=$('#fa-style',el),fl=$('#fa-fill',el);fl.hidden=true;st.onchange=()=>{p.style=st.value;fl.hidden=p.style!=='fill';prev(0)};fl.oninput=()=>{p.fill=fl.value;prev()};
+    onOpen:el=>{count(el);const st=$('#fa-style',el),fl=$('#fa-fill',el);st.value=p.style;fl.value=p.fill;fl.hidden=p.style!=='fill';st.onchange=()=>{p.style=st.value;fl.hidden=p.style!=='fill';prev(0)};fl.oninput=()=>{p.fill=fl.value;prev()};
       [['strength','fa-strength'],['margin','fa-margin']].forEach(([k,id])=>{const i=$('#'+id,el);i.oninput=()=>{p[k]=+i.value;$('#'+id+'-o',el).textContent=i.value+' %';prev()}});
       off=onPhoto((k,pt)=>{if(k!=='down')return;const hit=faces.find(f=>pt.x>=f.x&&pt.x<=f.x+f.w&&pt.y>=f.y-f.h*0.1&&pt.y<=f.y+f.h*1.1);
         if(hit)hit.off=!hit.off;else{const w=med();faces.push({x:pt.x-w/2,y:pt.y-w*0.6,w,h:w*1.2,s:1,off:false,manual:true})}count(el);prev(0)});
       if(!faces.length)toast('Aucun visage trouvé : cliquez sur la photo pour masquer une zone',4500);prev(0)},
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();if(S.doc!==d||!d.layers.includes(L)){toast('Le calque n’existe plus');return}if(!faces.some(f=>!f.off)){toast('Aucun visage à masquer');markComp();return}
-        applyMasked(L,run(),'Anonymiser les visages');syncAll()}}]})}
+        const r=hideFaces(L,faces,p);window.PrismEffects&&PrismEffects.note('faces',{...p,faces:faces.map(f=>({x:f.x,y:f.y,w:f.w,h:f.h,off:!!f.off}))});applyMasked(L,r,'Anonymiser les visages');syncAll()}}]})}
 
 /* ---------- menus ---------- */
 {const st=document.createElement('style');st.textContent='body.dp-on #view{cursor:crosshair!important}';document.head.appendChild(st)}
 const _fi=MENU2.filter.items;
-MENU2.filter.items=function(){const a=_fi.apply(this,arguments),dis=S.doc?false:NODOC,it=MI('Profondeur et visages (IA)',{icon:'filter',dis,sub:()=>[MI('Rééclairage 3D…',{fn:relightDialog,dis}),MI('Brume selon la distance…',{fn:fogDialog,dis}),MI('Anonymiser les visages…',{fn:facesDialog,dis})]});
+MENU2.filter.items=function(){const a=_fi.apply(this,arguments),dis=S.doc?false:NODOC,it=MI('Profondeur et visages (IA)',{icon:'filter',dis,sub:()=>[MI('Rééclairage 3D…',{fn:()=>relightDialog(),dis}),MI('Brume selon la distance…',{fn:()=>fogDialog(),dis}),MI('Anonymiser les visages…',{fn:()=>facesDialog(),dis})]});
   const k=a.findIndex(x=>x&&x.label==='Portrait et restauration…');a.splice(k<0?a.length:k+1,0,it);return a};
 const _si=MENU2.select.items;
 MENU2.select.items=function(){const a=_si.apply(this,arguments),it=MI('Sélectionner selon la distance (IA)…',{fn:depthSelDialog,dis:S.doc?false:NODOC});
   const k=a.findIndex(x=>x&&x.label==='Sélectionner par catégorie (IA)');a.splice(k<0?a.length:k+1,0,it);return a};
+/* effets modifiables : recalcul sans fenêtre, et réouverture avec les réglages de l'effet */
+if(window.PrismEffects){
+  [['fog',fogSpec,fogDialog],['relight',relightSpec,relightDialog]].forEach(([k,spec,dlg])=>PrismEffects.defineX(k,{name:spec().title,
+    run:async(Lt,p)=>{const dm=await depthMap();if(!dm)throw new Error('profondeur indisponible');return spec().run(Lt,dm,p)},edit:p=>dlg(p)}));
+  PrismEffects.defineX('faces',{name:'Anonymiser les visages',run:async(Lt,p)=>hideFaces(Lt,p.faces||[],p),edit:p=>facesDialog(p)})}
 window.PrismDepth={depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};

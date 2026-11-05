@@ -12,10 +12,10 @@ async function renderProjects(){const g=$('#projGrid'),sy=$('#pjSync');if(!g)ret
   locals.forEach(m=>map.set(m.id,{id:m.id,name:m.name,w:m.w,h:m.h,updatedAt:m.updatedAt,local:m,cloud:null}));
   Cloud.list.forEach(c=>{const e=map.get(c.id)||{id:c.id,name:c.name,w:c.w,h:c.h,updatedAt:c.updatedAt,local:null};e.cloud=c;if(c.updatedAt>e.updatedAt){e.updatedAt=c.updatedAt;e.name=c.name}map.set(c.id,e)});
   const items=[...map.values()].sort((a,b)=>b.updatedAt-a.updatedAt);
-  if(sy)sy.innerHTML=Cloud.ok?`<label class="inline"><input type="checkbox" id="pjAuto" ${PREF.get('autoSync',true)?'checked':''}> Synchroniser automatiquement les nouveaux projets sur mon compte</label>${Cloud.usage?`<span class="muted">Espace utilisé : ${fmtMo(Cloud.usage.bytes)} sur ${fmtMo(Cloud.usage.maxBytes)}</span>`:''}`
+  if(sy)sy.innerHTML=Cloud.ok?`<label class="inline"><input type="checkbox" id="pjAuto" ${PREF.get('autoSync',true)?'checked':''}> Synchroniser les nouveaux projets sur mon compte</label>${Cloud.usage?`<span class="muted">Espace utilisé : ${fmtMo(Cloud.usage.bytes)} sur ${fmtMo(Cloud.usage.maxBytes)}</span>`:''}`
     :`<span class="muted">Projets enregistrés sur cet appareil. La synchronisation entre appareils fonctionne quand Prism est ouvert depuis votre compte Claude par son propriétaire.</span>`;
   const au=$('#pjAuto');if(au)au.onchange=()=>PREF.set('autoSync',au.checked);
-  if(!items.length){g.innerHTML='<p class="muted">Aucun projet pour l’instant. Ouvrez une photo : elle sera enregistrée automatiquement, avec ses calques.</p>';return}
+  if(!items.length){g.innerHTML='<p class="muted">Aucun projet. Ouvrez une photo : elle s’enregistre avec ses calques.</p>';return}
   g.innerHTML=items.map(p=>{const cur=S.doc&&S.doc.pid===p.id;const where=p.local&&p.cloud?'Synchronisé':p.cloud?'Sur votre compte':p.local&&p.local.sync&&Cloud.ok?'À synchroniser':'Cet appareil';
     return`<div class="pj${cur?' on':''}" data-id="${esc(p.id)}"><button class="pj-th" data-act="open" aria-label="Ouvrir ${esc(p.name)}"><img alt="" data-thumb="${esc(p.id)}"></button><div class="pj-meta"><b title="${esc(p.name)}">${esc(p.name)}</b><span>${fmtDate(p.updatedAt)} · ${p.w|0} × ${p.h|0}</span><span class="pj-where">${cur?'Ouvert · ':''}${where}</span></div>
       <div class="pj-acts">${Cloud.ok?`<button class="btn sm" data-act="sync">${p.cloud||(p.local&&p.local.sync)?'Arrêter la synchro':'Synchroniser'}</button>`:''}<button class="btn sm" data-act="rename">Renommer</button><button class="btn sm" data-act="del">Supprimer</button></div></div>`}).join('');

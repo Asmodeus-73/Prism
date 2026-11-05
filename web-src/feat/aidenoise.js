@@ -78,29 +78,39 @@ DN.start=async()=>{const d=S.doc;if(!d)return;const mt=maskTarget();if(mt){toast
   dialog({title:'Débruitage IA',light:true,body:`<p class="muted">Un réseau de neurones (SCUNet) réduit le bruit numérique en gardant les détails. Le calcul se fait sur votre appareil.${DN.sess?'':' Le premier usage télécharge le modèle (43 Mo).'}</p>
       <p class="muted">${reg[2]-reg[0]} × ${reg[3]-reg[1]} px${d.sel?' (sélection)':''} · ${nt} tuile${nt>1?'s':''} · durée estimée ${DN.tms?'':'(prudente) '}${DN.fmtT(est)}.${est>600000?' C’est long : pensez à sélectionner la zone utile.':''}</p>`,
     buttons:[{label:'Annuler'},{label:'Lancer',primary:true,onClick:()=>{setTimeout(()=>DN.run(d,L,reg),30)}}]})};
-DN.run=async(d,L,reg)=>{const W=L.canvas.width,H=L.canvas.height;if(DN.busyNow)return;DN.busyNow=true;DN.abort=false;document.addEventListener('keydown',DN.onKey,true);
+DN.run=async(d,L,reg,k0)=>{const W=L.canvas.width,H=L.canvas.height;if(DN.busyNow)return;DN.busyNow=true;DN.abort=false;document.addEventListener('keydown',DN.onKey,true);
   try{const sess=await DN.load();if(!sess){busy(false);if(DN.abort)toast('Débruitage annulé');return}
     busy(true,'Débruitage IA…',0);DN.busyCancel(true);await tick();
     const img=rx(L.canvas).getImageData(0,0,W,H),t0=performance.now();
     const den=await DN.process(img,reg,(k,n)=>{const el=(performance.now()-t0),left=el/k*(n-k);busy(true,`Débruitage IA : tuile ${k} sur ${n} · reste environ ${DN.fmtT(left)} (Échap pour annuler)`,k/n);DN.busyCancel(true)});
     if(!den){busy(false);toast(DN.abort?'Débruitage annulé':'Débruitage impossible');return}
     if(S.doc!==d||!d.layers.includes(L)){busy(false);toast('Débruitage annulé : le calque a changé');return}
-    busy(false);DN.ask(d,L,img,den)}
+    busy(false);DN.ask(d,L,img,den,k0)}
   catch(e){console.error(e);busy(false);toast('Débruitage impossible : '+(e.message||e),5000)}
   finally{DN.busyNow=false;document.removeEventListener('keydown',DN.onKey,true);DN.busyCancel(false)}};
-DN.ask=(d,L,img,den)=>{const W=img.width,H=img.height,orig=L.canvas;let k=1,tmr=null;
+DN.ask=(d,L,img,den,k0)=>{const W=img.width,H=img.height,orig=L.canvas;let k=k0==null?1:k0,tmr=null;
   const mixSel=(o,r,sel)=>{const out=cloneC(o),g=cx(out);g.globalCompositeOperation='destination-out';g.drawImage(sel,0,0);const t=cloneC(r),tg=cx(t);tg.globalCompositeOperation='destination-in';tg.drawImage(sel,0,0);g.globalCompositeOperation='lighter';g.drawImage(t,0,0);return out};
   const make=()=>{let r=DN.blend(img,den,k,W,H);if(d.sel)r=mixSel(orig,r,d.sel);return r};
   const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!(S.doc===d&&d.layers.includes(L)))return;L.preview=make();markComp()},90)};
   const clear=()=>{clearTimeout(tmr);delete L.preview};
   DN.lastUI={set:v=>{k=v/100;prev()}};
-  dialog({title:'Débruitage IA',light:true,body:rangeRow('dn-k','Force',0,100,1,100,' %')+'<p class="muted">Mélange entre l’original (0) et la version débruitée (100).'+(d.sel?' Appliqué uniquement à la sélection.':'')+'</p>',
+  dialog({title:'Débruitage IA',light:true,body:rangeRow('dn-k','Force',0,100,1,Math.round(k*100),' %')+'<p class="muted">Mélange entre l’original (0) et la version débruitée (100).'+(d.sel?' Appliqué à la sélection.':'')+'</p>',
     onOpen:el=>{const i=$('#dn-k',el);i.oninput=()=>{k=+i.value/100;$('#dn-k-o',el).textContent=fmtN(+i.value,1)+' %';prev()};prev()},
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();if(!(S.doc===d&&d.layers.includes(L))){toast('Le calque n’existe plus');return}
-        try{const r=DN.blend(img,den,k,W,H);applyMasked(L,r,'Débruitage IA');toast('Débruitage IA appliqué')}catch(e){console.error(e);markComp();toast('Débruitage impossible : '+(e.message||e),4000);return false}}}]})};
+        try{const r=DN.blend(img,den,k,W,H);window.PrismEffects&&PrismEffects.note('aidenoise',{k},{den:DN.blend(img,den,1,W,H)});applyMasked(L,r,'Débruitage IA');toast('Débruitage IA appliqué')}catch(e){console.error(e);markComp();toast('Débruitage impossible : '+(e.message||e),4000);return false}}}]})};
 /* menu Filtre > Netteté et bruit, et palette Ctrl+K (la palette reprend les entrées de menu) */
 {const _fi=MENU2.filter.items;
  MENU2.filter.items=function(){const a=_fi.apply(this,arguments),it=MI('Débruitage IA…',{icon:'filter',dis:S.doc?false:NODOC,fn:DN.start});
   return a.map(x=>x&&x.label==='Netteté et bruit'&&typeof x.sub==='function'?{...x,sub:()=>[...x.sub(),it]}:x)}}
 window.PrismDN=DN;
+/* effet modifiable : la version débruitée est gardée avec l'effet ; changer la force ne relance pas l'IA */
+if(window.PrismEffects)PrismEffects.defineX('aidenoise',{name:'Débruitage IA',
+  edit:(p,ctx)=>{const d=S.doc,L=pixelTarget();if(!d||!L)return;const W=L.canvas.width,H=L.canvas.height,img=rx(L.canvas).getImageData(0,0,W,H);
+    if(ctx&&ctx.snap&&ctx.snap.width===W&&ctx.snap.height===H){DN.ask(d,L,img,rx(ctx.snap).getImageData(0,0,W,H).data,p.k);return}
+    const reg=DN.region(d,W,H);if(!reg){toast('La sélection est vide');return}setTimeout(()=>DN.run(d,L,reg,p.k),30)},
+  run:async(Lt,p,ctx,onP)=>{const c=Lt.canvas,W=c.width,H=c.height,img=rx(c).getImageData(0,0,W,H);let den;
+    if(ctx.snap&&ctx.snap.width===W&&ctx.snap.height===H)den=rx(ctx.snap).getImageData(0,0,W,H).data;
+    else{const reg=DN.region({sel:ctx.mask||null},W,H);if(!reg)return c;const sess=await DN.load();if(!sess)throw new Error('modèle indisponible');
+      den=await DN.process(img,reg,(k,n)=>onP&&onP(k/n));if(!den)throw new Error('débruitage interrompu');ctx.keep(DN.blend(img,den,1,W,H))}
+    return DN.blend(img,den,p.k??1,W,H)}});

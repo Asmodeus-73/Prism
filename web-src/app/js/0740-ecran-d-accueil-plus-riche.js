@@ -42,6 +42,6 @@ const box=$('#wTiles');
 if(box){box.innerHTML=tiles.map((t,i)=>`<button class="w-tile" data-i="${i}">${svg(t[0])}<b>${t[1]}</b><span>${t[2]}</span></button>`).join('');
  box.onclick=e=>{const b=e.target.closest('.w-tile');if(b)try{tiles[+b.dataset.i][3]()}catch(err){console.warn(err)}}}
 const tips=$('#wTips');
-if(tips)tips.innerHTML=`<div><kbd>Ctrl/⌘ K</kbd> cherche n'importe quelle commande, outil ou réglage.</div><div>Double-cliquez une photo de la Photothèque pour l'ouvrir en retouche.</div><div>Glissez des photos n'importe où dans la fenêtre pour les ouvrir.</div>`;
+if(tips)tips.innerHTML=`<div><kbd>Ctrl/⌘ K</kbd> : commandes, outils et réglages.</div><div>Double-clic sur une photo pour la retoucher.</div><div>Glissez des photos dans la fenêtre pour les ouvrir.</div>`;
 })();
 

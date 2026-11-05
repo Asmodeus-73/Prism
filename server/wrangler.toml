@@ -1,0 +1,30 @@
+# Prism : serveur de synchronisation (Cloudflare Workers)
+# Cloudflare ne garde rien : les photos passent en transit (24 h au plus) d'un appareil à l'autre.
+name = "prism-sync"
+main = "src/index.js"
+compatibility_date = "2026-07-30"
+
+[vars]
+TRANSIT_LIMIT = "9500000000"   # 9,5 Go : on reste sous les 10 Go gratuits de R2
+USER_LIMIT = "6000000000"     # 6 Go au plus pour un même compte : les autres comptes gardent de la place
+TRANSIT_HOURS = "24"
+EVENTS_DAYS = "30"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "prism-sync"
+database_id = "REMPLACE_PAR_L_ID_D1"
+
+[[r2_buckets]]
+binding = "TRANSIT"
+bucket_name = "prism-transit"
+
+[durable_objects]
+bindings = [{ name = "LIVE", class_name = "Live" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Live"]
+
+[triggers]
+crons = ["17 * * * *"]

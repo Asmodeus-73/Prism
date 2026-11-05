@@ -54,6 +54,61 @@ fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
     window.print().map_err(|e| e.to_string())
 }
 
+/// Opens a new GitHub issue for Prism in the default browser ("Signaler un problème").
+/// Only that page is allowed, and no shell is involved (the URL reaches the opener as one argument).
+#[tauri::command]
+fn report_issue(url: String) -> Result<(), String> {
+    if !issue_url_ok(&url) {
+        return Err("adresse refusée".into());
+    }
+    open_url(&url)
+}
+
+/// macOS and Linux: the system opener, the URL passed as one argument.
+#[cfg(not(target_os = "windows"))]
+fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(not(target_os = "macos"))]
+    let mut cmd = std::process::Command::new("xdg-open");
+    cmd.arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Windows: ShellExecuteW from shell32, called directly. No child process (no rundll32 or cmd), which some antivirus
+/// heuristics flag in an unsigned program.
+#[cfg(target_os = "windows")]
+fn open_url(url: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    let wide = |s: &str| -> Vec<u16> { std::ffi::OsStr::new(s).encode_wide().chain(Some(0)).collect() };
+    type ShellExecuteW = unsafe extern "system" fn(
+        *mut std::ffi::c_void,
+        *const u16,
+        *const u16,
+        *const u16,
+        *const u16,
+        i32,
+    ) -> isize;
+    unsafe {
+        let lib = libloading::Library::new("shell32.dll").map_err(|e| e.to_string())?;
+        let f: libloading::Symbol<ShellExecuteW> = lib.get(b"ShellExecuteW\0").map_err(|e| e.to_string())?;
+        let (verb, target) = (wide("open"), wide(url));
+        let r = f(std::ptr::null_mut(), verb.as_ptr(), target.as_ptr(), std::ptr::null(), std::ptr::null(), 1);
+        if r > 32 {
+            Ok(())
+        } else {
+            Err(format!("ShellExecuteW : code {r}"))
+        }
+    }
+}
+
+/// Only a new-issue page of the Prism repository, already percent-encoded (no space, quote or control character).
+fn issue_url_ok(url: &str) -> bool {
+    const BASE: &str = "https://github.com/Asmodeus-73/Prism/issues/new?";
+    url.starts_with(BASE)
+        && url.len() <= 8000
+        && url.bytes().all(|b| b.is_ascii_graphic() && b != b'"' && b != b'\\' && b != b'`')
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -74,6 +129,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             save_file,
             print_page,
+            report_issue,
             sync::sync_folder,
             sync::sync_choose,
             sync::sync_stop,
@@ -103,4 +159,25 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Prism");
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::issue_url_ok;
+    #[test]
+    fn only_prism_issues() {
+        assert!(issue_url_ok("https://github.com/Asmodeus-73/Prism/issues/new?title=a&body=b%20c"));
+        for bad in [
+            "https://evil.example/issues/new?x",
+            "https://github.com/Asmodeus-73/Prism/issues/new?title=a b",
+            "https://github.com/Asmodeus-73/Prism/issues/new?\"&calc",
+            "https://github.com/Asmodeus-73/Prism/issues/new?a\nb",
+            "file:///etc/passwd",
+            "https://github.com/Asmodeus-73/Prism/issues/newx",
+            "https://github.com/Asmodeus-73/Prism.evil.example/issues/new?",
+        ] {
+            assert!(!issue_url_ok(bad), "{bad}");
+        }
+        assert!(!issue_url_ok(&format!("https://github.com/Asmodeus-73/Prism/issues/new?{}", "a".repeat(9000))));
+    }
 }

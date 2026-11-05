@@ -43,7 +43,7 @@ GF.prepare=async()=>{const st=await GF.inv('sd_status');
 /* cœur : génère la fenêtre ; renvoie {res(canvas rw×rh), plan} ou null (annulé / échec) */
 GF.generate=async(sel,opts)=>{const d=S.doc,bx=maskBBox(sel);if(!bx)return null;
   const P=GF.plan(bx,d.w,d.h,opts.work),{x0,y0,w,h,rw,rh}=P,n=rw*rh;
-  if(P.f<0.4)toast('Zone très grande : le résultat sera moins détaillé. Une sélection plus petite donne plus de précision.',5000);
+  if(P.f<0.4)toast('Zone grande : résultat moins détaillé. Une sélection plus petite est plus précise.',5000);
   const flat=flatSync(),src=mk(rw,rh),sg=rx(src);sg.fillStyle='#808080';sg.fillRect(0,0,rw,rh);sg.imageSmoothingQuality='high';sg.drawImage(flat,x0,y0,w,h,0,0,rw,rh);
   const mc=mk(rw,rh),mg=rx(mc);mg.imageSmoothingQuality='high';mg.drawImage(sel,x0,y0,w,h,0,0,rw,rh);
   const sd=sg.getImageData(0,0,rw,rh).data,md=mg.getImageData(0,0,rw,rh).data;let hole=new Uint8Array(n),hc=0;

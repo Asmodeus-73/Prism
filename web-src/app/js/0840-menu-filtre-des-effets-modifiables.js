@@ -104,7 +104,7 @@ filterDialog=function(id){const d=S.doc,F=FILTERS[id];if(!d||!F)return;
   const clear=()=>{clearTimeout(tmr);delete L.preview;delete L.maskPreview};
   const prev=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(!alive(d,L))return;try{const r=runOn(T,F,p,d.sel);if(T.mask)L.maskPreview=r;else L.preview=r;markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},120)};
   dialog({title:F.name,light:true,
-    body:P.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(T.mask?'<p class="muted">Appliqué au masque du calque.</p>':'')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+    body:P.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(T.mask?'<p class="muted">Appliqué au masque du calque.</p>':'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),
     onOpen:el=>{P.forEach(q=>{const i=$('#f-'+q[0],el);i.oninput=()=>{p[q[0]]=+i.value;$('#f-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});prev()},
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();if(!alive(d,L)){toast('Le calque n’existe plus');return}

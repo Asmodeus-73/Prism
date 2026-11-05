@@ -37,8 +37,8 @@ const rowHTML=(fid,q,v)=>{const id=`rs-${fid}-${pk(q)}`;
 const SK={key:null,m:null};
 async function aiSkin(d,L){const key=L.canvas;if(SK.key===key)return SK.m;let m=null;try{m=await AI.categoryMask('skin')}catch(e){console.warn(e)}SK.key=key;SK.m=m;return m}
 
-function restoreDialog(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;
-  const st=LAST?JSON.parse(JSON.stringify(LAST)):defaults();st.hints=st.hints||[];st.ref=st.ref||null;st.refName=st.refName||'';st.hintColor=st.hintColor||'#c8875a';st.newLayer=!!st.newLayer;
+function restoreDialog(p0){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)return;
+  const st=p0&&p0.skin?JSON.parse(JSON.stringify(p0)):LAST?JSON.parse(JSON.stringify(LAST)):defaults();if(window.PrismEffects&&PrismEffects.editing(L))st.newLayer=false;st.hints=st.hints||[];st.ref=st.ref||null;st.refName=st.refName||'';st.hintColor=st.hintColor||'#c8875a';st.newLayer=!!st.newLayer;
   const orig=L.canvas,small=PSX.small(orig,1200);let tmr=null,job=null,seq=0,closed=false,skinSmall=null;
   const stop=()=>{clearTimeout(tmr);seq++;if(job){job.cancel();job=null}};
   const clear=()=>{closed=true;stop();delete L.preview;view.removeEventListener('pointerdown',onPick,true);markComp()};
@@ -60,7 +60,7 @@ function restoreDialog(){const d=S.doc;if(!d)return;const L=PSX.target();if(!L)r
   const extra={colorize:()=>`<div class="row"><label for="rs-hc">Couleur à poser</label><input type="color" id="rs-hc" value="${esc(st.hintColor)}"><output></output></div><div class="row"><span class="muted" id="rs-hints"></span><button class="btn sm" id="rs-hclear" type="button">Effacer les points</button><output></output></div>`,
     transfer:()=>`<div class="row"><span class="muted" id="rs-refn">${st.refName?esc('Référence : '+st.refName):'Aucune photo de référence'}</span><button class="btn sm" id="rs-ref" type="button">Choisir…</button><output></output></div>`};
   const body=`<p class="muted" style="margin:0 0 8px">Cochez les retouches voulues ; l’aperçu se met à jour sur la photo.</p>`+RF.map((f,i)=>`<details class="rs-f" ${i===RF.findIndex(g=>st[g.id].enabled)?'open':''}><summary><label><input type="checkbox" id="rs-on-${f.id}" ${st[f.id].enabled?'checked':''}> <b>${f.label}</b></label></summary><p class="muted" style="margin:4px 0">${f.help}</p>${f.params.map(q=>rowHTML(f.id,q,st[f.id].params[pk(q)])).join('')}${extra[f.id]?extra[f.id]():''}</details>`).join('')+
-    `<div class="row"><label for="rs-new">Sur un nouveau calque</label><input type="checkbox" id="rs-new" ${st.newLayer?'checked':''} style="justify-self:start"><output></output></div>`+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':'')+'<p class="muted" id="rs-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>';
+    `<div class="row"><label for="rs-new">Sur un nouveau calque</label><input type="checkbox" id="rs-new" ${st.newLayer?'checked':''} style="justify-self:start"><output></output></div>`+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':'')+'<p class="muted" id="rs-state" aria-live="polite" style="min-height:1.2em;margin:6px 0 0"></p>';
   dialog({title:NAME,light:true,body,
     onOpen:el=>{const dl=el.closest('.dlg');if(dl){dl.style.maxHeight='calc(100dvh - 120px)';dl.style.overflow='auto'}
       /* une seule retouche dépliée à la fois : la fenêtre reste petite et la photo visible */
@@ -85,10 +85,14 @@ async function apply(d,L,orig,st){if(!RF.some(f=>st[f.id].enabled)){toast('Aucun
     j=PSX.track(PSX.run('restore',{img:PSX.img(orig),params:toParams(st),scale:1,skin},{onProgress:f=>busy(true,NAME+'…',f)}));const r=await j.promise;
     if(!PSX.alive(d,L)||L.canvas!==orig){toast('Le calque a changé pendant le calcul : rien n’a été modifié');return}
     let c=PSX.canvas(r.image);
-    if(st.newLayer){if(d.sel){const t=mk(c.width,c.height),g=cx(t);g.drawImage(c,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);c=t}
+    if(st.newLayer&&!(window.PrismEffects&&PrismEffects.editing(L))){if(d.sel){const t=mk(c.width,c.height),g=cx(t);g.drawImage(c,0,0);g.globalCompositeOperation='destination-in';g.drawImage(d.sel,0,0);c=t}
       const i=d.layers.indexOf(L);d.active=i;insertLayer(newPixel(NAME,c),NAME)}
-    else applyMasked(L,c,NAME)}
+    else{window.PrismEffects&&PrismEffects.note('restore',st);applyMasked(L,c,NAME)}}
   catch(e){if(!PSX.cancelled(e)){console.error(e);toast(NAME+' impossible : '+(e.message||e),4000)}markComp()}
   finally{PSX.untrack(j);busy(false)}}
+/* effet modifiable : recalcul sans fenêtre, réouverture avec ses réglages */
+if(window.PrismEffects)PrismEffects.defineX('restore',{name:NAME,edit:p=>restoreDialog(p),
+  run:async(Lt,st,ctx,onP)=>{const d=S.doc,src=Lt.canvas;let skin;if(st.skin&&st.skin.enabled&&st.skin.params.area==='mask'){const m=await aiSkin(d,Lt);if(m)skin=PSX.mask(m,src.width,src.height)}
+    const j=PSX.track(PSX.run('restore',{img:PSX.img(src),params:toParams(st),scale:1,skin},{onProgress:f=>onP&&onP(f)}));try{const r=await j.promise;return PSX.canvas(r.image)}finally{PSX.untrack(j)}}});
 PSX.restoreDialog=restoreDialog;PSX.restoreApply=apply;PSX.restoreDefaults=defaults;
-PSX.addToMenu('filter',null,()=>[MI(NAME+'…',{icon:'filter',dis:S.doc?false:NODOC,fn:restoreDialog})],/^Correction de l’objectif/);
+PSX.addToMenu('filter',null,()=>[MI(NAME+'…',{icon:'filter',dis:S.doc?false:NODOC,fn:()=>restoreDialog()})],/^Correction de l’objectif/);

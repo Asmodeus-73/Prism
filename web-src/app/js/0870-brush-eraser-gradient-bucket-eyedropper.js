@@ -111,10 +111,16 @@ const _omP=onMove;onMove=function(e,p){const dr=S.drag;
 /* ---------- eyedropper: sample size, active layer or all layers; Alt+click also in gradient and bucket ---------- */
 // a Display-P3 document hands back P3 numbers: ask for sRGB ones, which is what the swatch and the brush colour mean
 const sRGBData=(g,x,y,w,h)=>{try{return g.getImageData(x,y,w,h,{colorSpace:'srgb'}).data}catch(e){return g.getImageData(x,y,w,h).data}};
+function pickPatch(x0,y0,w,h){const d=S.doc;let pad=0;d.layers.forEach(L=>{if(L.kind==='adjust'&&L.visible)pad=Math.max(pad,maxSigma(L.dev,d.w,d.h,1))});pad=Math.ceil(pad*3)+(pad?4:0);
+ const X=Math.max(0,x0-pad),Y=Math.max(0,y0-pad),W=Math.min(d.w,x0+w+pad)-X,H=Math.min(d.h,y0+h+pad)-Y,key=S.docVer+'|'+X+','+Y+','+W+','+H;
+ if(pickPatch.k===key)return pickPatch.v;const c=mk(W,H);renderStack(cx(c),W,H,[1,0,0,1,-X,-Y],{scale:1,ox:-X,oy:-Y});pickPatch.k=key;pickPatch.v={c,dx:x0-X,dy:y0-Y};return pickPatch.v}
 pickColor=function(p){const d=S.doc;if(!d)return;const x=Math.floor(p.x),y=Math.floor(p.y);if(x<0||y<0||x>=d.w||y>=d.h)return;
  const o=S.opts.eyedropper,n=Math.max(1,parseInt(o.sample,10)||1),h=n>>1;let src;
- if(o.all!==false)src=flatSync();else{const L=pixelTarget();if(!L)return;src=L.canvas}
- const x0=Math.max(0,x-h),y0=Math.max(0,y-h),x1=Math.min(d.w,x+h+1),y1=Math.min(d.h,y+h+1),a=sRGBData(rx(src),x0,y0,x1-x0,y1-y0);
+ const x0=Math.max(0,x-h),y0=Math.max(0,y-h),x1=Math.min(d.w,x+h+1),y1=Math.min(d.h,y+h+1);let a;
+ // « Tous les calques » : la couleur telle qu'on la voit, réglages (Développer, calques de réglage) compris.
+ // flatSync() saute les réglages : la pipette prenait la couleur d'avant retouche. On rend seulement la zone prélevée.
+ if(o.all!==false){const t=pickPatch(x0,y0,x1-x0,y1-y0);a=sRGBData(rx(t.c),t.dx,t.dy,x1-x0,y1-y0)}
+ else{const L=pixelTarget();if(!L)return;src=L.canvas;a=sRGBData(rx(src),x0,y0,x1-x0,y1-y0)}
  let r=0,g=0,b=0,w=0;for(let i=0;i<a.length;i+=4){const al=a[i+3];r+=a[i]*al;g+=a[i+1]*al;b+=a[i+2]*al;w+=al}if(!w)return;
  S.color='#'+[r,g,b].map(v=>clamp(Math.round(v/w),0,255).toString(16).padStart(2,'0')).join('');const f=$('#fg');if(f)f.value=S.color;const oc=$('#optColor');if(oc)oc.value=S.color};
 const _odP=onDown;onDown=function(e,p){const t=S.tool,d=S.doc;
@@ -129,7 +135,7 @@ const _odP=onDown;onDown=function(e,p){const t=S.tool,d=S.doc;
 
 /* ---------- options bar: what matters stays visible on laptop screens ---------- */
 const _pxP=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pxP.apply(this,arguments)||'';
- if(t==='eyedropper'){const e=S.opts.eyedropper;h+=`<label title="Moyenne des pixels autour du clic">Échantillon<select data-sel="eyedropper.sample">${[['1','1 pixel'],['3','3 × 3'],['5','5 × 5'],['11','11 × 11'],['31','31 × 31']].map(([v,l])=>`<option value="${v}" ${String(e.sample)===v?'selected':''}>${l}</option>`).join('')}</select></label><label title="Décoché : prélève seulement le calque actif"><input type="checkbox" data-chk="eyedropper.all" ${e.all!==false?'checked':''}>Tous les calques</label>`}
+ if(t==='eyedropper'){const e=S.opts.eyedropper;h+=`<label title="Moyenne des pixels autour du clic">Échantillon<select data-sel="eyedropper.sample">${[['1','1 pixel'],['3','3 × 3'],['5','5 × 5'],['11','11 × 11'],['31','31 × 31']].map(([v,l])=>`<option value="${v}" ${String(e.sample)===v?'selected':''}>${l}</option>`).join('')}</select></label><label title="Décoché : calque actif seul"><input type="checkbox" data-chk="eyedropper.all" ${e.all!==false?'checked':''}>Tous les calques</label>`}
  return h};
 // the colour swatch was squeezed to a 6 px sliver as soon as the options overflowed
 (()=>{const st=document.createElement('style');st.textContent='#pill .swatch{flex:none}';document.body.appendChild(st)})();

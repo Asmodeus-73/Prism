@@ -206,44 +206,50 @@ function finalC(L,res,amt){const c=mk(L.canvas.width,L.canvas.height),g=cx(c);g.
   // keep the layer's own transparency
   g.globalCompositeOperation='destination-in';g.drawImage(L.canvas,0,0);return c}
 /* a dialog with a live preview on a reduced copy and the full computation on Appliquer */
-function liveDialog(o){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
-  const p={...o.init};let tmr=null,job=0;const alive=()=>S.doc===d&&d.layers.includes(L),src=proxy(L.canvas,1100);
+function liveDialog(o,p0){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}
+  const p={...o.init,...(p0||{})};let tmr=null,job=0;const alive=()=>S.doc===d&&d.layers.includes(L),src=proxy(L.canvas,1100);
   const clear=()=>{clearTimeout(tmr);job++;delete L.preview};
   const prev=()=>{clearTimeout(tmr);tmr=setTimeout(async()=>{const my=++job;try{const r=await o.run(src.c,src.k,p,null,L);if(my!==job||!alive())return;let c=finalC(L,toCanvas(r),p.amount/100);if(d.sel)c=mixSel(L.canvas,c,d.sel);L.preview=c;markComp()}catch(e){console.error(e);toast('Aperçu impossible : '+(e.message||e),3000)}},180)};
   const row=q=>q[1]==='select'?`<div class="row"><label for="lm-${q[0]}">${q[2]}</label><select id="lm-${q[0]}">${q[3].map((t,i)=>`<option value="${i}"${i===p[q[0]]?' selected':''}>${t}</option>`).join('')}</select></div>`:rangeRow('lm-'+q[0],q[1],q[2],q[3],q[4],p[q[0]],q[6]);
-  dialog({title:o.title,light:true,body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+o.params.map(row).join('')+(d.sel?'<p class="muted">Appliqué uniquement à la sélection.</p>':''),
+  dialog({title:o.title,light:true,body:(o.note?`<p class="muted" style="margin:0 0 8px">${o.note}</p>`:'')+o.params.map(row).join('')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),
     onOpen:el=>{o.params.forEach(q=>{const i=$('#lm-'+q[0],el);if(q[1]==='select')i.onchange=()=>{p[q[0]]=+i.value;o.sync&&o.sync(el,p);prev()};else i.oninput=()=>{p[q[0]]=+i.value;$('#lm-'+q[0]+'-o',el).textContent=fmtN(+i.value,q[4])+q[6];prev()}});o.sync&&o.sync(el,p);prev()},
     buttons:[{label:'Annuler',onClick:()=>{clear();markComp()}},
       {label:'Appliquer',primary:true,onClick:()=>{clear();markComp();if(!alive()){toast('Le calque n’existe plus');return}
-        (async()=>{busy(true,o.title+'…',0);try{const r=await o.run(L.canvas,1,p,v=>busy(true,o.title+'…',v),L);if(!alive())return;let c=finalC(L,toCanvas(r),p.amount/100);applyMasked(L,c,o.title);syncAll()}
+        (async()=>{busy(true,o.title+'…',0);try{const r=await o.run(L.canvas,1,p,v=>busy(true,o.title+'…',v),L);if(!alive())return;let c=finalC(L,toCanvas(r),p.amount/100);window.PrismEffects&&PrismEffects.note(o.key,p);applyMasked(L,c,o.title);syncAll()}
           catch(e){console.error(e);toast(o.title+' impossible : '+(e.message||e),5000)}finally{busy(false)}})()}}]})}
 /* film settings -> engine state, cached while only the grain or the strength change */
 let stC=null;
 async function filmState(p,proc,fullW,fullH){const D=await loadData(),o={film:p.film,paper:p.paper,proc,evFilm:p.ev,gFilm:p.contrast/100,couplers:p.couplers/100,halation:p.halation/100,grain:p.grain/100,tuneY:p.warm/100,tuneM:p.tint/100,evPaper:p.evPaper||0,fullW,fullH};
   const key=JSON.stringify(o);if(stC&&stC.key===key)return stC.S;const S=tables(D,setup(D,o));stC={key,S};return S}
 const POS=new Set([16,17,18,19,21]);
-function filmDialog(){const d=S.doc;if(!d)return;
-  liveDialog({title:'Simulation de pellicule',note:'Rendu de vraies pellicules et papiers de tirage, simulés à partir de leurs courbes spectrales : couleurs, grain et halo. Les diapositives sont rendues comme scannées, sans tirage.',
+function filmSpec(){const d=S.doc;
+  return {key:'film',title:'Simulation de pellicule',note:'Rendu de vraies pellicules et papiers de tirage, simulés à partir de leurs courbes spectrales : couleurs, grain et halo. Les diapositives sont rendues comme scannées, sans tirage.',
     init:{film:4,paper:3,ev:0,contrast:100,couplers:50,halation:100,grain:100,warm:0,tint:0,amount:100},
     params:[['film','select','Pellicule',FILMS],['paper','select','Papier de tirage',PAPERS],['ev','Exposition',-2,2,0.1,0,' IL'],['contrast','Contraste',60,140,1,0,' %'],['couplers','Couleurs',0,100,1,0,' %'],
       ['halation','Halo',0,300,1,0,' %'],['grain','Grain',0,250,1,0,' %'],['warm','Chaleur',-100,100,1,0,''],['tint','Teinte',-100,100,1,0,''],['amount','Intensité',0,100,1,0,' %']],
     sync:(el,p)=>{$('#lm-paper',el).closest('.row').hidden=POS.has(p.film)},
-    run:async(c,k,p,onP)=>{const S=await filmState(p,POS.has(p.film)?1:0,d.w,d.h);return render(FM.data,S,imOf(c),k,onP)}})}
-function negDialog(){const d=S.doc;if(!d)return;
-  liveDialog({title:'Tirer un négatif scanné',note:'Pour la photo ou le scan d’un négatif couleur : il est tiré sur un papier photo virtuel, ce qui retire le masque orange et donne des couleurs de vrai tirage. Choisissez la pellicule du négatif si vous la connaissez.',
+    run:async(c,k,p,onP)=>{const S=await filmState(p,POS.has(p.film)?1:0,d.w,d.h);return render(FM.data,S,imOf(c),k,onP)}}}
+function filmDialog(p0){if(S.doc)liveDialog(filmSpec(),p0)}
+function negSpec(){const d=S.doc;
+  return {key:'neg',title:'Tirer un négatif scanné',note:'Pour la photo ou le scan d’un négatif couleur : il est tiré sur un papier photo virtuel, ce qui retire le masque orange et donne des couleurs de vrai tirage. Choisissez la pellicule du négatif si vous la connaissez.',
     init:{film:4,paper:3,evPaper:0,warm:0,tint:0,amount:100},
     params:[['film','select','Pellicule du négatif',FILMS.slice(0,16)],['paper','select','Papier de tirage',PAPERS],['evPaper','Exposition du tirage',-3,3,0.1,0,' IL'],['warm','Chaleur',-100,100,1,0,''],['tint','Teinte',-100,100,1,0,''],['amount','Intensité',0,100,1,0,' %']],
     run:async(c,k,p,onP)=>{const D=await loadData(),o={film:p.film,paper:p.paper,proc:2,evPaper:-p.evPaper,tuneY:p.warm/100,tuneM:p.tint/100,fullW:d.w,fullH:d.h};
-      const key='neg'+JSON.stringify(o);let S;if(stC&&stC.key===key)S=stC.S;else{S=tables(D,setup(D,o));stC={key,S}}return render(D,S,imOf(c),k,onP)}})}
-function llapDialog(){liveDialog({title:'Contraste local',note:'Renforce ou adoucit le relief des détails sans halo, et règle ombres et hautes lumières localement.',
+      const key='neg'+JSON.stringify(o);let S;if(stC&&stC.key===key)S=stC.S;else{S=tables(D,setup(D,o));stC={key,S}}return render(D,S,imOf(c),k,onP)}}}
+function negDialog(p0){if(S.doc)liveDialog(negSpec(),p0)}
+const llapSpec=()=>({key:'llap',title:'Contraste local',note:'Renforce ou adoucit le relief des détails sans halo, et règle ombres et hautes lumières localement.',
   init:{clarity:30,shadows:100,highlights:100,sigma:12,amount:100},
   params:[['clarity','Clarté',-100,200,1,0,' %'],['shadows','Ombres',30,170,1,0,' %'],['highlights','Hautes lumières',30,170,1,0,' %'],['sigma','Étendue des tons moyens',4,30,1,0,' %'],['amount','Intensité',0,100,1,0,' %']],
-  run:(c,k,p,onP)=>localContrast(imOf(c),{clarity:p.clarity/100,shadows:p.shadows/100,highlights:p.highlights/100,sigma:p.sigma/100},onP)})}
+  run:(c,k,p,onP)=>localContrast(imOf(c),{clarity:p.clarity/100,shadows:p.shadows/100,highlights:p.highlights/100,sigma:p.sigma/100},onP)});
+function llapDialog(p0){liveDialog(llapSpec(),p0)}
+/* effets modifiables : recalcul sans fenêtre, et réouverture de la fenêtre avec les réglages de l'effet */
+if(window.PrismEffects)[['film',filmSpec,filmDialog],['neg',negSpec,negDialog],['llap',llapSpec,llapDialog]].forEach(([k,spec,dlg])=>PrismEffects.defineX(k,{name:spec().title,
+  run:async(Lt,p,ctx,onP)=>{const o=spec();return finalC(Lt,toCanvas(await o.run(Lt.canvas,1,{...o.init,...p},onP,Lt)),(p.amount??100)/100)},edit:p=>dlg(p)}));
 
 /* ---------- menus ---------- */
 const _fiF=MENU2.filter.items;
-MENU2.filter.items=function(){const a=_fiF.apply(this,arguments),dis=S.doc?false:NODOC,it=MI('Rendu film',{icon:'filter',dis,sub:()=>[MI('Simulation de pellicule…',{fn:filmDialog,dis}),MI('Tirer un négatif scanné…',{fn:negDialog,dis})]});
+MENU2.filter.items=function(){const a=_fiF.apply(this,arguments),dis=S.doc?false:NODOC,it=MI('Rendu film',{icon:'filter',dis,sub:()=>[MI('Simulation de pellicule…',{fn:()=>filmDialog(),dis}),MI('Tirer un négatif scanné…',{fn:()=>negDialog(),dis})]});
   const k=a.findIndex(x=>x&&x.label==='Portrait et restauration…');a.splice(k<0?a.length:k+1,0,it);
   // local contrast sits with the other detail filters
-  const ns=a.find(x=>x&&x.label==='Netteté et bruit'&&x.sub);if(ns){const sub=ns.sub;ns.sub=()=>{const s=typeof sub==='function'?sub():sub.slice();s.push(MI('Contraste local…',{fn:llapDialog,dis}));return s}}else a.push(MI('Contraste local…',{fn:llapDialog,dis}));return a};
+  const ns=a.find(x=>x&&x.label==='Netteté et bruit'&&x.sub);if(ns){const sub=ns.sub;ns.sub=()=>{const s=typeof sub==='function'?sub():sub.slice();s.push(MI('Contraste local…',{fn:()=>llapDialog(),dis}));return s}}else a.push(MI('Contraste local…',{fn:()=>llapDialog(),dis}));return a};
 window.PrismFilm={loadData,setup,tables,render,localContrast,film:filmDialog,neg:negDialog,llap:llapDialog,FILMS,PAPERS};

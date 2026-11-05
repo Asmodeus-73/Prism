@@ -1,0 +1,7 @@
+{
+  "name": "prism-sync",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node test.mjs" },
+  "devDependencies": { "miniflare": "4.20260730.0" }
+}
