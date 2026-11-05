@@ -14,12 +14,10 @@ cpSync(join(root, 'desktop'), join(dist, 'desktop'), { recursive: true });
 
 // AI model files (about 460 MB) stay out of the app: it fetches each one the first
 // time it is needed (src-tauri/src/models.rs), checked against the hash listed here.
-// The TensorFlow.js models (esrgan-x2, esrgan-x4) stay in: their weights are found
-// next to model.json, and they are small.
 const models = {};
 for (const dir of readdirSync(join(dist, 'ai'))) {
   const full = join(dist, 'ai', dir);
-  if (!statSync(full).isDirectory() || /^esrgan-x\d$/.test(dir)) continue;
+  if (!statSync(full).isDirectory()) continue;
   for (const f of readdirSync(full)) {
     if (!f.endsWith('.wasm')) continue;
     const rel = `ai/${dir}/${f}`;
