@@ -587,6 +587,22 @@ await test('effets modifiables : contraste local et visages (appliquer, œil, mo
     await ev(()=>{const i=[...document.querySelectorAll('#scrim input[type=range]')].pop();i.value=String(+i.min+(+i.max-+i.min)*.3);i.dispatchEvent(new Event('input',{bubbles:true}))});await page.waitForTimeout(500);await primary();await idle();await page.waitForTimeout(500);
     const s2=await sum(),n=await ev(()=>{const L=S.doc.layers.find(l=>l.filters);return L&&PrismEffects.valid(L)?L.filters.length:0});
     if(x!==k||s0===s1||s1b!==s1||sc!==s1||s2===s1||n!==1)throw new Error(JSON.stringify({k,x,s0,s1,s1b,sc,s2,n}))}});
+await test('visite : proposée à la première photo importée, jamais sur la photo d’exemple, pas de photo d’exemple pour la lancer',async()=>{await fresh();
+  const r=await ev(async()=>{PREF.set('tourDone',0);Object.defineProperty(navigator,'webdriver',{get:()=>false,configurable:true});const c=document.createElement('canvas');c.width=c.height=64;
+    setDoc(c,'a.jpg',{sample:true});await new Promise(r=>setTimeout(r,1800));const s=!!document.querySelector('#scrim');
+    closeDoc();setDoc(c,'b.jpg',{});await new Promise(r=>setTimeout(r,1800));const t=!!document.querySelector('#scrim')&&/Visite|visite/.test(document.querySelector('#scrim').textContent);
+    [...document.querySelectorAll('#scrim button')].find(b=>/Plus tard/.test(b.textContent)).click();await new Promise(r=>setTimeout(r,300));closeDoc();await new Promise(r=>setTimeout(r,600));PrismTour.start();await new Promise(r=>setTimeout(r,300));return{s,t,noTour:!PrismTour.on,noDoc:!S.doc}});
+  if(r.s||!r.t||!r.noTour||!r.noDoc)throw new Error(JSON.stringify(r))});
+await test('trait : tous les points d’un même mouvement du navigateur sont tracés ; Ctrl+4 (AZERTY) n’allume pas la grille',async()=>{await fresh();await sample();
+  const r=await ev(async()=>{setTool('brush');Object.assign(S.opts.brush,{size:20,hardness:1,opacity:1,flow:1,smooth:0,scatter:0,grain:0,pressSize:false});S.color='#ff0000';S.doc.active=0;
+    const v=document.getElementById('view'),b=v.getBoundingClientRect(),X=b.x+b.width*.3,Y=b.y+b.height*.5,mk=(t,x,y,o={})=>{const e=new PointerEvent(t,{clientX:x,clientY:y,pointerId:1,pointerType:'mouse',button:0,buttons:1,bubbles:true,...o});return e};
+    v.dispatchEvent(mk('pointerdown',X,Y));const last=mk('pointermove',X+160,Y);last.getCoalescedEvents=()=>[40,80,120,160].map(d=>mk('pointermove',X+d,Y));v.dispatchEvent(last);
+    const L=S.doc.layers[0],st=S.stroke,sc=st?st.canvas:null,p=toDoc(X+80-b.x,Y-b.y);let hit=0;if(sc){hit=sc.getContext('2d').getImageData(Math.round(p.x),Math.round(p.y),1,1).data[3]}
+    v.dispatchEvent(mk('pointerup',X+160,Y,{buttons:0}));
+    const g0=PrismGuides.st.grid;document.dispatchEvent(new KeyboardEvent('keydown',{key:"'",code:'Digit4',ctrlKey:true,bubbles:true}));const g1=PrismGuides.st.grid;
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:"'",code:'Quote',ctrlKey:true,bubbles:true}));const g2=PrismGuides.st.grid;document.dispatchEvent(new KeyboardEvent('keydown',{key:"'",code:'Quote',ctrlKey:true,bubbles:true}));
+    return{hit,g0,g1,g2}});
+  if(!(r.hit>200&&r.g1===r.g0&&r.g2!==r.g0))throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

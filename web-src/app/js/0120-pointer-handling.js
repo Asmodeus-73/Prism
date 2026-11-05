@@ -5,6 +5,8 @@ view.addEventListener('pointerdown',e=>{if(!S.doc)return;view.setPointerCapture(
   if(pointers.size===2){cancelStroke();cancelDrag();const[a,b]=[...pointers.values()];pinch={d:Math.hypot(a.cx-b.cx,a.cy-b.cy),z:S.zoom,mx:(a.cx+b.cx)/2,my:(a.cy+b.cy)/2,px:S.panX,py:S.panY};return}if(pointers.size>2)return;onDown(e,evPos(e))});
 view.addEventListener('pointermove',e=>{const p=evPos(e);S.pointer={cx:p.cx,cy:p.cy,dx:p.x,dy:p.y,inside:true};if(pointers.has(e.pointerId))pointers.set(e.pointerId,p);
   if(pinch&&pointers.size===2){const[a,b]=[...pointers.values()],dd=Math.hypot(a.cx-b.cx,a.cy-b.cy),mx=(a.cx+b.cx)/2,my=(a.cy+b.cy)/2,z=clamp(pinch.z*dd/pinch.d,0.02,32),ddx=(pinch.mx-pinch.px)/pinch.z,ddy=(pinch.my-pinch.py)/pinch.z;S.fitted=false;S.zoom=z;S.panX=mx-ddx*z;S.panY=my-ddy*z;markContent();return}
+  /* pendant un trait, le navigateur regroupe les mouvements d'une même image : on rejoue tous les points, sinon le trait devient une ligne brisée quand l'écran se redessine lentement */
+  if(S.stroke&&e.getCoalescedEvents){const cs=e.getCoalescedEvents();if(cs&&cs.length>1){for(const c of cs){if(!S.stroke)break;onMove(c,evPos(c))}requestRender();return}}
   onMove(e,p);requestRender()});
 view.addEventListener('pointerup',e=>{pointers.delete(e.pointerId);if(pinch){if(pointers.size<2)pinch=null;return}onUp(e)});
 view.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);pinch=null;cancelStroke();cancelDrag();requestRender()});

@@ -35,3 +35,8 @@ const _ec=encodeCanvas;encodeCanvas=async function(c){const p=SRC.get(c);if(p)aw
 const _d=drawLayerThumbs;let seen=null,tm=0;
 drawLayerThumbs=function(){const d=S.doc;if(d&&d!==seen){clearTimeout(tm);tm=setTimeout(()=>requestAnimationFrame(()=>{seen=S.doc;try{_d()}catch(e){console.warn(e)}}),120);return}return _d.apply(this,arguments)};
 })();
+
+/* ================= aperçu rapide : réglable =================
+   Pendant un glissé de curseur sur une grosse photo lente, Prism calcule l'image en plus petit (elle paraît floue) puis revient au net.
+   Affichage > Aperçu rapide pendant les réglages l'arrête : l'image reste nette, le curseur peut être moins fluide. */
+{const _vi=MENU2.view.items;MENU2.view.items=()=>[..._vi(),MI('Aperçu rapide pendant les réglages',{check:PREF.get('lq',true),fn:()=>{PREF.set('lq',!PREF.get('lq',true));toast(PREF.get('lq',true)?'Aperçu rapide activé.':'Aperçu rapide arrêté : l’image reste nette.')}})]}

@@ -1,5 +1,5 @@
 /* ================= 1.0 : visite guidée =================
-   Au premier lancement, Prism propose une visite de 30 secondes sur la photo d'exemple : chaque étape éclaire une zone
+   Quand l'utilisateur crée ou importe sa première photo, Prism propose une visite de 30 secondes sur cette photo : chaque étape éclaire une zone
    de l'interface avec une bulle. Aide > Visite guidée la relance. Échap ou « Passer » l'arrête.
    Les étapes dont la zone n'est pas à l'écran (téléphone, panneau replié) sont sautées. */
 (()=>{
@@ -36,7 +36,7 @@ function show(){const s=T.list[T.i],tip=$('.tr-tip',T.el),last=T.i===T.list.leng
   requestAnimationFrame(place);$('[data-t="next"]',tip).focus()}
 function end(){if(!T)return;T.el.remove();removeEventListener('resize',place);document.removeEventListener('keydown',T.kd,true);T=null;PREF.set('tourDone',Date.now())}
 async function start(){if(T)return;closeDialog&&closeDialog();if(LIB&&LIB.open)try{closeLibrary()}catch(e){}
-  if(!S.doc){await loadSample();await new Promise(r=>setTimeout(r,500))}
+  if(!S.doc){toast('Ouvrez ou créez une photo pour lancer la visite.');return}
   if(window.PrismTablet&&!PrismTablet.isOpen()&&document.body.classList.contains('side-over'))try{PrismTablet.toggle()}catch(e){}
   try{switchTab('develop')}catch(e){}
   css();const el=document.createElement('div');el.id='tour';el.setAttribute('role','dialog');el.setAttribute('aria-label','Visite guidée');el.innerHTML='<div class="tr-d"></div><div class="tr-d"></div><div class="tr-d"></div><div class="tr-d"></div><div class="tr-hole none"></div><div class="tr-tip"></div>';document.body.appendChild(el);
@@ -45,9 +45,13 @@ async function start(){if(T)return;closeDialog&&closeDialog();if(LIB&&LIB.open)t
   T.kd=e=>{if(!T)return;if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();end()}else if(e.key==='ArrowRight'||e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();if(T.i<T.list.length-1){T.i++;show()}else end()}else if(e.key==='ArrowLeft'){e.preventDefault();e.stopImmediatePropagation();if(T.i){T.i--;show()}}else if(e.key!=='Tab'){e.stopImmediatePropagation()}};
   document.addEventListener('keydown',T.kd,true);addEventListener('resize',place);show()}
 {const H=MENU2.help,_h=H.items;H.items=function(){const a=_h.apply(this,arguments);a.unshift(MI('Visite guidée',{icon:'help',fn:start}));return a}}
-/* premier lancement : on propose la visite (jamais pendant les tests automatiques) */
-setTimeout(()=>{if(PREF.get('tourDone',0)||navigator.webdriver||S.doc||$('#scrim'))return;
-  dialog({title:'Bienvenue dans Prism 1.0',body:'<p>Une visite de 30 secondes ?</p>',
-    buttons:[{label:'Plus tard',onClick:()=>PREF.set('tourDone',Date.now())},{label:'Faire la visite',primary:true,onClick:()=>setTimeout(start,0)}]})},1800);
+/* première photo créée ou importée : on propose la visite (jamais pendant les tests automatiques, jamais sur la photo d'exemple) */
+{const _sd=setDoc;let offered=false;
+ setDoc=function(src,name,opts={}){const r=_sd.apply(this,arguments);
+  if(!offered&&!opts.sample&&!PREF.get('tourDone',0)&&!navigator.webdriver){offered=true;
+   setTimeout(()=>{if(PREF.get('tourDone',0)||!S.doc||$('#scrim'))return;
+    dialog({title:'Bienvenue dans Prism 1.0',body:'<p>Une visite de 30 secondes ?</p>',
+     buttons:[{label:'Plus tard',onClick:()=>PREF.set('tourDone',Date.now())},{label:'Faire la visite',primary:true,onClick:()=>setTimeout(start,0)}]})},1500)}
+  return r}}
 window.PrismTour={start,end,get on(){return !!T},steps:()=>T?T.list.map(s=>s.t):[]};
 })();

@@ -31,8 +31,8 @@ const LQ={full:0,t:0,last:0,k:1};
 /* jamais pour les réglages de détail (netteté, texture, bruit, grain…) : en basse résolution on ne verrait pas leur effet, l'image paraîtrait floue.
    le facteur est choisi une fois par glissé et ne bouge plus ensuite : sinon l'image change d'échelle d'une image à l'autre et tremble */
 const LQ_DETAIL=/^(sharpen|sharpRadius|texture|clarity|noise|grain|grainSize|dehaze)$/;
-function lqFactor(){if(!S.sliding||S.stroke||S.holdBefore){LQ.lock=0;return 1}const el=S.slideEl,k0=el&&(el.dataset&&el.dataset.k||el.id||'').replace(/^d-/,'');if(k0&&LQ_DETAIL.test(k0))return 1;
-  if(LQ.lock)return LQ.lock;if(LQ.full<60)return 1;LQ.lock=Math.max(.5,Math.min(1,Math.round(Math.sqrt(40/LQ.full)*10)/10));return LQ.lock}
+function lqFactor(){if(!S.sliding||S.stroke||S.holdBefore||!PREF.get('lq',true)){LQ.lock=0;return 1}const el=S.slideEl,k0=el&&(el.dataset&&el.dataset.k||el.id||'').replace(/^d-/,'');if(k0&&LQ_DETAIL.test(k0))return 1;
+  if(LQ.lock)return LQ.lock;if(LQ.full<100)return 1;LQ.lock=Math.max(.6,Math.min(1,Math.round(Math.sqrt(40/LQ.full)*10)/10));return LQ.lock}
 function lqRefine(){clearTimeout(LQ.t);LQ.t=setTimeout(()=>{if(!S.doc)return;if(S.sliding){lqRefine();return}if(S.workSize&&S.workSize.k<1)markContent()},140)}
 function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.width,H=view.height,sc=S.zoom*pr;
   const M=new DOMMatrix(viewMatrix(0,0));const pts=[[0,0],[d.w,0],[0,d.h],[d.w,d.h]].map(([x,y])=>{const p=M.transformPoint(new DOMPoint(x,y));return[p.x,p.y]});
@@ -48,7 +48,7 @@ function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.widt
 const histoP=mk(1,1);
 function histoRead(){const ws=S.workSize;if(!S.doc||!ws||work.width<2)return null;const k=Math.min(1,480/Math.max(ws.w,ws.h)),w=Math.max(1,Math.round(ws.w*k)),h=Math.max(1,Math.round(ws.h*k));if(histoP.width!==w||histoP.height!==h){histoP.width=w;histoP.height=h}const g=rx(histoP);g.clearRect(0,0,w,h);g.imageSmoothingQuality='low';g.drawImage(work,0,0,work.width,work.height,0,0,w,h);return g.getImageData(0,0,w,h)}
 function histoNow(){histT=performance.now();const im=histoRead();if(im)histogram(im)}
-function histoSched(now){const iv=(S.stroke||S.drag||S.sliding)?90:40;clearTimeout(histogram.t);if(now-histT>=iv)histoNow();else histogram.t=setTimeout(histoNow,iv-(now-histT))}
+function histoSched(now){const iv=S.stroke?450:(S.drag||S.sliding)?90:40;clearTimeout(histogram.t);if(now-histT>=iv)histoNow();else histogram.t=setTimeout(histoNow,iv-(now-histT))}
 
 /* histogram */
 const histoC=$('#histo'),hctx=cx(histoC);

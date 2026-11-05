@@ -61,17 +61,44 @@ fn report_issue(url: String) -> Result<(), String> {
     if !issue_url_ok(&url) {
         return Err("adresse refusée".into());
     }
+    open_url(&url)
+}
+
+/// macOS and Linux: the system opener, the URL passed as one argument.
+#[cfg(not(target_os = "windows"))]
+fn open_url(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let mut cmd = std::process::Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut cmd = {
-        let mut c = std::process::Command::new("rundll32");
-        c.arg("url.dll,FileProtocolHandler");
-        c
-    };
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     let mut cmd = std::process::Command::new("xdg-open");
-    cmd.arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+    cmd.arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Windows: ShellExecuteW from shell32, called directly. No child process (no rundll32 or cmd), which some antivirus
+/// heuristics flag in an unsigned program.
+#[cfg(target_os = "windows")]
+fn open_url(url: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    let wide = |s: &str| -> Vec<u16> { std::ffi::OsStr::new(s).encode_wide().chain(Some(0)).collect() };
+    type ShellExecuteW = unsafe extern "system" fn(
+        *mut std::ffi::c_void,
+        *const u16,
+        *const u16,
+        *const u16,
+        *const u16,
+        i32,
+    ) -> isize;
+    unsafe {
+        let lib = libloading::Library::new("shell32.dll").map_err(|e| e.to_string())?;
+        let f: libloading::Symbol<ShellExecuteW> = lib.get(b"ShellExecuteW\0").map_err(|e| e.to_string())?;
+        let (verb, target) = (wide("open"), wide(url));
+        let r = f(std::ptr::null_mut(), verb.as_ptr(), target.as_ptr(), std::ptr::null(), std::ptr::null(), 1);
+        if r > 32 {
+            Ok(())
+        } else {
+            Err(format!("ShellExecuteW : code {r}"))
+        }
+    }
 }
 
 /// Only a new-issue page of the Prism repository, already percent-encoded (no space, quote or control character).
