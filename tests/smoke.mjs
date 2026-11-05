@@ -603,6 +603,12 @@ await test('trait : tous les points d’un même mouvement du navigateur sont tr
     document.dispatchEvent(new KeyboardEvent('keydown',{key:"'",code:'Quote',ctrlKey:true,bubbles:true}));const g2=PrismGuides.st.grid;document.dispatchEvent(new KeyboardEvent('keydown',{key:"'",code:'Quote',ctrlKey:true,bubbles:true}));
     return{hit,g0,g1,g2}});
   if(!(r.hit>200&&r.g1===r.g0&&r.g2!==r.g0))throw new Error(JSON.stringify(r))});
+await test('aperçu rapide : pas de liseré à damier sur les bords de la photo',async()=>{await fresh();await sample();
+  const r=await ev(()=>{const edge=()=>{const w=work,d=w.getContext('2d').getImageData(0,0,w.width,w.height).data,W=w.width,H=w.height;let n=0;for(let y=2;y<H-2;y++)if(d[(y*W+W-1)*4+3]<250)n++;for(let x=2;x<W-2;x++)if(d[((H-1)*W+x)*4+3]<250)n++;return n},bad=[];
+    for(const z of [0.31,0.337,0.5]){const at=k=>{S.fitted=false;S.zoom=z;S.panX=100.4;S.panY=60.7;S.sliding=k<1;S.slideEl=null;LQ.full=k<1?250:0;LQ.lock=k<1?k:0;markContent();render();return edge()};const base=at(1);
+      for(const k of [.5,.6,.7]){const n=at(k);if(n>base+2)bad.push([z,k,n,base])}}
+    S.sliding=false;LQ.lock=0;return bad});
+  if(r.length)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

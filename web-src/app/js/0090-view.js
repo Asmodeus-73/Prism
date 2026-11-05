@@ -38,7 +38,8 @@ function renderContent0(){S.contentDirty=false;const d=S.doc,pr=S.pr,W=view.widt
   const M=new DOMMatrix(viewMatrix(0,0));const pts=[[0,0],[d.w,0],[0,d.h],[d.w,d.h]].map(([x,y])=>{const p=M.transformPoint(new DOMPoint(x,y));return[p.x,p.y]});
   const bx0=Math.max(0,Math.floor(Math.min(...pts.map(p=>p[0])))),by0=Math.max(0,Math.floor(Math.min(...pts.map(p=>p[1])))),bx1=Math.min(W,Math.ceil(Math.max(...pts.map(p=>p[0])))),by1=Math.min(H,Math.ceil(Math.max(...pts.map(p=>p[1]))));
   if(bx1<=bx0||by1<=by0){S.workPos=null;return}const bw0=bx1-bx0,bh0=by1-by0,k=lqFactor(),bw=Math.max(1,Math.round(bw0*k)),bh=Math.max(1,Math.round(bh0*k));if(work.width!==bw||work.height!==bh){work.width=bw;work.height=bh}
-  const T=viewMatrix(bx0,by0).map(v=>v*k),o={scale:sc*k,ox:T[4],oy:T[5]};if(k<1)lqRefine();
+  /* en aperçu rapide, la petite image est ensuite agrandie à la taille de la zone : on réduit chaque axe du facteur exact (arrondi compris), sinon un liseré de 1 px reste vide sur les bords et laisse voir le damier */
+  const kx=bw/bw0,ky=bh/bh0,T0=viewMatrix(bx0,by0),T=[T0[0]*kx,T0[1]*ky,T0[2]*kx,T0[3]*ky,T0[4]*kx,T0[5]*ky],o={scale:sc*Math.min(kx,ky),ox:T[4],oy:T[5]};if(k<1)lqRefine();
   const before=S.holdBefore;const A=AL();
   if(!before&&A&&A.kind==='adjust'&&!S.stroke){o.cacheIdx=d.active;o.cacheKey=[S.docVer,T.join(),bw,bh,d.layers.slice(0,d.active).map(L=>L.kind==='adjust'?JSON.stringify(L.dev):'').join('|')].join('#')}
   renderStack(wctx,bw,bh,T,{...o,before});if(PROOF.on)proofApply(wctx,bw,bh);
