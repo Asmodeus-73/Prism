@@ -1,6 +1,8 @@
 // Attaques simulées contre Prism : le serveur de synchro (server/, dans Miniflare) et l'éditeur (navigateur).
 // Chaque attaque doit échouer. Run: node tests/security.mjs   (après npm ci dans server/)
 import http from 'node:http';import fs from 'node:fs';import path from 'node:path';import zlib from 'node:zlib';import {createRequire} from 'node:module';
+/* les attaques qui envoient trop de données voient le serveur couper la connexion : une coupure tardive sur la socket n'est pas un échec du test */
+process.on('uncaughtException',e=>{if(e&&(e.code==='ECONNRESET'||e.code==='EPIPE'))return;console.error(e);process.exit(1)});
 const here=path.dirname(new URL(import.meta.url).pathname),root=path.join(here,'..','web'),srv=path.join(here,'..','server');
 const require=createRequire(import.meta.url);const sreq=createRequire(path.join(srv,'package.json'));
 let pw;try{pw=require('playwright')}catch(e){pw=require(process.env.PLAYWRIGHT_MODULE||'/opt/node22/lib/node_modules/playwright')}
