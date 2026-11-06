@@ -1,0 +1,41 @@
+name: Réparer latest.json
+
+# latest.json tells the installed apps where the update is and gives its signature.
+# When the same version is rebuilt, tauri-action may keep an older signature in it:
+# the app then refuses the update ("signature verification failed").
+# This rewrites each signature from the .sig file published next to the update.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Signatures à jour
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          v=$(node -p 'require("./package.json").version')
+          case "$v" in *-beta*) echo "Bêta : pas de latest.json"; exit 0 ;; esac
+          tag="v$v"; mkdir -p upd && cd upd
+          gh release download "$tag" -R "$GITHUB_REPOSITORY" -p latest.json -p '*.sig'
+          node - <<'JS'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync('latest.json', 'utf8'));
+          let changed = 0;
+          for (const [k, p] of Object.entries(j.platforms)) {
+            const sig = decodeURIComponent(p.url.split('/').pop()) + '.sig';
+            if (!fs.existsSync(sig)) throw new Error(k + ' : ' + sig + ' introuvable');
+            const s = fs.readFileSync(sig, 'utf8').trim();
+            if (p.signature.trim() !== s) { p.signature = s; changed++; console.log('Corrigé : ' + k); }
+          }
+          fs.writeFileSync('latest.json', JSON.stringify(j, null, 2));
+          fs.writeFileSync('changed', String(changed));
+          JS
+          if [ "$(cat changed)" != "0" ]; then gh release upload "$tag" latest.json --clobber -R "$GITHUB_REPOSITORY"; else echo "Déjà à jour"; fi
