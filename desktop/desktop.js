@@ -262,8 +262,8 @@
       try { await invoke('update_install'); } catch (e) { busy(false); toast(String(e), 6000); }
     };
     dialog({
-      title: 'Nouvelle version disponible',
-      body: `<p>Prism ${esc(found.version)} est disponible (vous avez la ${esc(found.current)}).</p>${notes}
+      title: found.version === found.current ? 'Mise à jour disponible' : 'Nouvelle version disponible',
+      body: `<p>${found.version === found.current ? `Une version corrigée de Prism ${esc(found.version)} est disponible.` : `Prism ${esc(found.version)} est disponible (vous avez la ${esc(found.current)}).`}</p>${notes}
              <p class="muted">Votre travail est enregistré avant l’installation, puis Prism se relance tout seul.</p>`,
       buttons: [
         { label: 'Plus tard' },

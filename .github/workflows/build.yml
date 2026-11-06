@@ -102,6 +102,8 @@ jobs:
             *) echo "BETA=" >> "$GITHUB_ENV"; echo "Version publique $v" ;;
           esac
           echo "CODENAME=$(node -p 'require("./package.json").codename||""')" >> "$GITHUB_ENV"
+          # build time, read by src-tauri/build.rs: a later rebuild of the same version is offered as an update
+          echo "PRISM_BUILD_UNIX=$(date -u +%s)" >> "$GITHUB_ENV"
 
       # Native AI engine (ONNX Runtime) shipped inside the app: DirectML on Windows, Core ML on Mac.
       # Windows takes the DirectML build from NuGet (one pinned version, checked); if it cannot be fetched,

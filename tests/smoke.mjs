@@ -19,11 +19,13 @@ console.log('Navigateur : '+ENGINE+' '+browser.version());
 const results=[];let page,errs,logs=[];
 // fonts and the update check go to the internet; the tests do not depend on them
 const IGNORE=/fonts\.(googleapis|gstatic)|api\.github\.com|net::ERR_|Failed to load resource|GroupMarkerNotSet|swiftshader/i;
-async function fresh(){if(page)await page.close();page=await browser.newPage({viewport:{width:1440,height:900}});errs=[];
+async function fresh(keep){const old=page;page=keep&&old?await old.context().newPage():await (await browser.newContext({viewport:{width:1440,height:900}})).newPage();if(old){const c=old.context();await old.close();if(!keep)await c.close()}errs=[];
   page.on('pageerror',e=>errs.push('pageerror: '+(e.stack||e)));page.on('console',m=>{logs.push(m.text());if(logs.length>200)logs.shift();if(m.type()==='error'&&!IGNORE.test(m.text()))errs.push('console: '+m.text())});
   await page.route(/fonts\.(googleapis|gstatic)\.com|api\.github\.com/,r=>r.abort());
   await page.goto(URL0);await page.waitForFunction(()=>typeof loadSample==='function'&&document.querySelector('#view'));await page.waitForTimeout(300)}
 const ev=(fn,arg)=>page.evaluate(fn,arg);
+/* rouvrir l'app comme après l'avoir quittée : même stockage, nouvelle page */
+const reopen=()=>fresh(true);
 async function test(name,fn){const t0=Date.now();try{await fn();await page.waitForTimeout(100);if(errs.length)throw new Error(errs.slice(0,5).join('\n'));results.push([name,'ok',Date.now()-t0])}
   catch(e){results.push([name,'FAIL',Date.now()-t0,String(e.message||e).slice(0,1500)])}finally{errs.length=0}}
 async function sample(){await ev(()=>loadSample());await page.waitForFunction(()=>S.doc&&S.doc.layers.length>0);await page.waitForTimeout(200)}
@@ -173,6 +175,28 @@ await test('panneaux détachables : s’aimantent à gauche comme à droite, à 
   await drag('[data-sec=base] > summary',[[700,300],[1300,500]]);const d=await st();
   if(!(a.inRail&&a.pin==='left'&&a.fl.join()==='sec:base'&&b.lp.includes('insp')&&c.lp==='atRail'&&!d.fl.length))throw new Error(JSON.stringify({a,b,c,d}));
   await ev(()=>{PrismFloat.dockAll();PREF.set('pfHome',{})})});
+await test('calques calés à droite : visibles, et encore après réouverture',async()=>{await ev(()=>switchTab('develop'));
+  const h=await page.locator('#lyHead').boundingBox();await page.mouse.move(h.x+30,h.y+h.height/2);await page.mouse.down();
+  for(const [x,y] of [[600,300],[1300,700]])await page.mouse.move(x,y,{steps:8});await page.mouse.up();await page.waitForTimeout(300);
+  const geo=()=>ev(()=>{const lp=document.querySelector('#layersPanel'),r=lp.getBoundingClientRect(),rows=document.querySelectorAll('#pane-layers .layer, #pane-layers [data-li], #pane-layers li').length;
+    return {in:lp.parentElement.id||lp.parentElement.className,top:Math.round(r.top),h:Math.round(r.height),bottom:Math.round(r.bottom),vh:innerHeight,rows,home:PREF.get('pfHome',{}).layers}});
+  const a=await geo();
+  await reopen();await sample();await page.waitForTimeout(300);
+  const b=await geo();
+  await ev(()=>{PrismFloat.dockAll();PREF.set('pfHome',{})});await reopen();await sample();
+  const ok=g=>g.in.includes('insp')&&g.h>=150&&g.bottom<=g.vh+1&&g.top<g.vh-150;
+  if(!ok(a)||!ok(b))throw new Error(JSON.stringify({a,b}))});
+await test('« + Ajouter un réglage » : la section ajoutée et ses valeurs restent après réouverture',async()=>{if(!(await ev(()=>!!S.doc)))await sample();await ev(()=>switchTab('develop'));
+  await page.locator('[data-fxadd]').click();await page.waitForTimeout(250);
+  const id=await ev(()=>{const v=[...document.querySelectorAll('#devBody details[data-fx]')].filter(d=>!d.hidden).map(d=>d.dataset.fx);return v});
+  await page.locator('.menu button:not([disabled]), .menu [role=menuitem]:not([aria-disabled=true])').first().click();await page.waitForTimeout(300);
+  const added=await ev(v=>[...document.querySelectorAll('#devBody details[data-fx]')].filter(d=>!d.hidden&&!v.includes(d.dataset.fx)).map(d=>d.dataset.fx)[0],id);
+  const r=await page.locator(`#devBody details[data-fx="${added}"] input[type=range]`).first().boundingBox();await page.mouse.click(r.x+r.width*.85,r.y+r.height/2);await page.waitForTimeout(300);
+  const before=await ev(s=>JSON.stringify((ADJ()&&ADJ().dev.fx||{})[s]||null),added);
+  await page.waitForTimeout(2500);
+  await reopen();await page.waitForFunction(()=>S.doc&&S.doc.layers.length>0,null,{timeout:8000}).catch(()=>{});await page.waitForTimeout(500);
+  const after=await ev(s=>({vis:!!document.querySelector(`#devBody details[data-fx="${s}"]:not([hidden])`),fx:JSON.stringify(((typeof ADJ==='function'&&ADJ())&&ADJ().dev.fx||{})[s]||null),doc:!!S.doc,pin:PREF.get('fxPinned',[])}),added);
+  if(!added||before==='null'||!after.vis||after.fx!==before)throw new Error(JSON.stringify({added,before,after}))});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
   if(!(r[1]===r[0]+2&&r[2]===r[1]-1))throw new Error(JSON.stringify(r))});
 await test('export : PNG, JPEG, TIFF, GIF',async()=>{const r=await ev(async()=>{const c=flatSync(),id=c.getContext('2d').getImageData(0,0,c.width,c.height);const o={};
