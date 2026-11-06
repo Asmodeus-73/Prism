@@ -87,3 +87,5 @@ body.compact .scrim.light .dlg{right:8px;left:8px;top:auto;bottom:8px;width:auto
   :root[data-theme="light"]{--line:#8a8a92;--line-2:#6a6a73;--fg-2:#2c2c33;--fg-3:#45454d}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+
+@media (max-width:1599px){.mark .ver{display:none}}
