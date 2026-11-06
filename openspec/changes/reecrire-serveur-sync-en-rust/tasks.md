@@ -4,11 +4,11 @@ Plan de migration en 10 étapes. Chaque étape finit par les tests de contrat au
 
 ## 1. Prototype et vérification des points risqués (go / no-go)
 
-- [ ] 1.1 Ajouter `server/Cargo.toml` (crate `cdylib` `prism-sync`, `worker` et `worker-build` épinglés), `server/rust-toolchain.toml` (stable épinglé + cible `wasm32-unknown-unknown`) et le profil release (`opt-level = "z"`, `lto`, `codegen-units = 1`)
-- [ ] 1.2 Écrire un Worker minimal (`GET /v1` santé) et vérifier que Miniflare charge `build/worker/shim.mjs` + `.wasm`
-- [ ] 1.3 Prototyper chacun des points de R3 : `batch` D1, `INSERT … RETURNING seq` via `first`, `FixedLengthStream` + `Bucket::put` en flux, Durable Object avec hibernation et attachements, transfert de la requête d'upgrade au Durable Object, `wait_until`, cron
-- [ ] 1.4 Mesurer : temps CPU d'un PBKDF2 WebCrypto appelé depuis Rust, d'un JSON de 4 Mio lu et réécrit, taille du `.wasm` compressé
-- [ ] 1.5 Écrire le résultat (ce qui marche, contournements, mesures) dans `design.md` et faire le point avec Draconix avant de continuer
+- [x] 1.1 Ajouter `server/Cargo.toml` (crate `cdylib` `prism-sync`, `worker` et `worker-build` épinglés), `server/rust-toolchain.toml` (stable épinglé + cible `wasm32-unknown-unknown`) et le profil release (`opt-level = "z"`, `lto`, `codegen-units = 1`)
+- [x] 1.2 Écrire un Worker minimal (`GET /v1` santé) et vérifier que Miniflare charge `build/index.js` + `.wasm`
+- [x] 1.3 Prototyper chacun des points de R3 : `batch` D1, `INSERT … RETURNING seq` via `first`, `FixedLengthStream` + `Bucket::put` en flux, Durable Object avec hibernation et attachements, transfert de la requête d'upgrade au Durable Object, `wait_until`, cron
+- [x] 1.4 Mesurer : temps CPU d'un PBKDF2 WebCrypto appelé depuis Rust, d'un JSON de 4 Mio lu et réécrit, taille du `.wasm` compressé
+- [x] 1.5 Écrire le résultat (ce qui marche, contournements, mesures) dans `design.md` et faire le point avec Draconix avant de continuer
 
 ## 2. Banc de tests en double exécution
 
@@ -54,6 +54,15 @@ Plan de migration en 10 étapes. Chaque étape finit par les tests de contrat au
 - [ ] 8.2 `notify()` côté Worker, sans erreur quand personne n'est connecté
 - [ ] 8.3 `maintenance.rs` : `sweep_all` sur le cron `17 * * * *` et réglages par variables d'environnement
 
+## 8 bis. Moins d'allers-retours (D13)
+
+- [ ] 8b.1 Ménage du transit et ménage horaire : `delete_multiple` R2 et `DELETE … IN` en `batch`, curseurs en une requête `GROUP BY`
+- [ ] 8b.2 Dépôt : place globale, place du compte et « déjà là » en une requête
+- [ ] 8b.3 Liste des partages en deux requêtes ; copies d'évènement en un `batch`
+- [ ] 8b.4 Compteurs de débit en un `INSERT … ON CONFLICT … RETURNING`
+- [ ] 8b.5 Compter les requêtes D1/R2 par route avant et après (test de contrat qui journalise les appels) et noter le résultat dans `design.md`
+- [ ] 8b.6 Demander à Draconix si `last` peut n'être mis à jour qu'une fois par minute
+
 ## 9. CI et outillage
 
 - [ ] 9.1 `tests.yml`, job `server` : installer Rust (toolchain épinglée) et `worker-build`, `cargo clippy --target wasm32-unknown-unknown -- -D warnings`, `cargo test` natif, puis les tests de contrat contre les deux versions
@@ -63,7 +72,7 @@ Plan de migration en 10 étapes. Chaque étape finit par les tests de contrat au
 
 ## 10. Bascule
 
-- [ ] 10.1 `wrangler.toml` : `main = "build/worker/shim.mjs"` et `[build] command = "worker-build --release"`
+- [ ] 10.1 `wrangler.toml` : `main = "build/index.js"` et `[build] command = "worker-build --release"`
 - [ ] 10.2 Supprimer `server/src/index.js` ; `PRISM_SYNC_SCRIPT` vise désormais la sortie Rust par défaut ; retirer la double exécution de la CI
 - [ ] 10.3 Mettre à jour les commentaires de `server/` et le README (compilation locale, tests)
 - [ ] 10.4 Archiver le changement OpenSpec (`openspec archive reecrire-serveur-sync-en-rust`) une fois la PR acceptée par Draconix

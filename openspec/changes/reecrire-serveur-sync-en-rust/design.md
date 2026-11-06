@@ -29,7 +29,7 @@ Le crate `worker` compile en `wasm32-unknown-unknown` et expose D1, R2, Durable 
 *Alternatives écartées* : axum + SQLite/Postgres + stockage S3 sur un serveur (il faut un serveur à payer et à maintenir, perte des Durable Objects) ; Spin/Fermyon (autre hébergeur, pas de D1/R2).
 
 ### D2. Contrat inchangé, tests JavaScript comme juge de paix
-Les tests existants testent de l'extérieur (HTTP et WebSocket via Miniflare) : ils ne dépendent pas du langage du serveur. Ils lisent `PRISM_SYNC_SCRIPT` (défaut : `server/src/index.js`) ; la CI les fait tourner **deux fois** pendant la transition, contre le JavaScript et contre `server/build/worker/shim.mjs`. La bascule n'a lieu que quand les deux passent.
+Les tests existants testent de l'extérieur (HTTP et WebSocket via Miniflare) : ils ne dépendent pas du langage du serveur. Ils lisent `PRISM_SYNC_SCRIPT` (défaut : `server/src/index.js`) ; la CI les fait tourner **deux fois** pendant la transition, contre le JavaScript et contre `server/build/index.js`. La bascule n'a lieu que quand les deux passent.
 Miniflare charge la sortie de `worker-build` (module ES + `.wasm`) avec `modulesRules: [{ type: 'CompiledWasm', include: ['**/*.wasm'] }]` ; à vérifier dès l'étape 1 (voir R3).
 
 ### D3. WebCrypto plutôt que des crates de cryptographie en WASM
@@ -85,10 +85,56 @@ Chaque module correspond à une spec `sync-*`, ce qui permet de cocher la parit�
 `#[durable_object] pub struct Live` avec `state.accept_web_socket`, `state.get_websockets`, `ws.serialize_attachment`/`deserialize_attachment` (struct `Peer { device, name }`) et les méthodes `websocket_message`, `websocket_close`, `websocket_error`. Le nom de classe `Live` et la migration `v1` ne changent pas (une base Durable Object existante resterait valide).
 
 ### D11. Chaîne de compilation épinglée
-`rust-toolchain.toml` (canal stable épinglé, cible `wasm32-unknown-unknown`), `worker` et `worker-build` à des versions fixes (une version récente vérifiée lors de l'étape 1, pas « latest »), `Cargo.lock` versionné. `wrangler.toml` : `main = "build/worker/shim.mjs"` et `[build] command = "worker-build --release"`. Profil release : `opt-level = "z"`, `lto = true`, `codegen-units = 1`, puis `wasm-opt` (fait par `worker-build`).
+`rust-toolchain.toml` (canal stable épinglé, cible `wasm32-unknown-unknown`), `worker` et `worker-build` à des versions fixes (une version récente vérifiée lors de l'étape 1, pas « latest »), `Cargo.lock` versionné. `wrangler.toml` : `main = "build/index.js"` et `[build] command = "worker-build --release"`. Profil release : `opt-level = "z"`, `lto = true`, `codegen-units = 1`, puis `wasm-opt` (fait par `worker-build`).
 
 ### D12. Transition dans `server/`, bascule en une fois
 Le Rust est écrit à côté de `src/index.js` sur la branche. `wrangler.toml` ne pointe vers le Rust qu'à la dernière étape, et `src/index.js` est supprimé dans la même PR. Comme rien n'est déployé, il n'y a pas de cohabitation en production à gérer.
+
+### D13. Moins d'allers-retours vers D1 et R2 (même comportement)
+Le serveur passe son temps à attendre D1 et R2, et le JavaScript actuel enchaîne ses requêtes une par une. La réécriture les regroupe, sans changer ce que voient les appareils :
+- **Ménage du transit** (`sweepUser`, à chaque accusé de réception) : aujourd'hui une requête `MIN(cursor)` par compte, puis, pour chaque fichier effacé, un `delete` R2 et un `DELETE` D1. Une photo, c'est des dizaines ou des centaines de tuiles : on passe à un seul `delete_multiple` R2 (1 000 clés au plus par appel) et un seul `DELETE … WHERE key IN (…)` en `batch`, et les curseurs de tous les comptes en une requête `GROUP BY`.
+- **Ménage horaire** (`sweepAll`) : même chose, un `delete_multiple` et un `DELETE … WHERE created < ?` au lieu de deux appels par fichier. Avec des centaines de fichiers expirés, l'enchaînement actuel risque de dépasser la limite de sous-requêtes par invocation et de laisser le ménage à moitié fait.
+- **Dépôt d'un fichier** : la place occupée est lue deux fois (`used()` global appelé deux fois, puis celle du compte) en plus du test « déjà là » : une seule requête rend les trois valeurs.
+- **Liste des partages** : deux requêtes par photo partagée (membres, verrou) ; on passe à deux requêtes en tout (jointure sur les photos du compte).
+- **Photo partagée** : la copie de l'évènement chez chaque membre devient un seul `batch` d'`INSERT … RETURNING seq`.
+- **Compteurs de débit** (évènements, invitations, inscriptions) : `SELECT` puis `UPDATE` deviennent un seul `INSERT … ON CONFLICT … DO UPDATE … RETURNING n`.
+- **Accusé de réception** : le ménage des comptes d'origine se fait en parallèle plutôt qu'à la suite.
+
+Une seule optimisation changerait un détail visible et n'est **pas** faite sans accord : ne mettre à jour `last` (dernière activité d'un appareil) qu'une fois par minute au lieu d'à chaque requête, ce qui enlèverait une écriture D1 sur chaque appel.
+
+## Résultats du prototype (étape 1, 2026-11-06)
+
+Prototype dans `server/proto/` (`worker` 0.8.7, `worker-build` 0.8.7, Rust 1.97.0) ; `node server/proto/test.mjs` le vérifie dans Miniflare et le compare à la même chose écrite en JavaScript. **17 vérifications sur 17 passent : go.**
+
+| Point (R3) | Résultat |
+|---|---|
+| Miniflare charge la sortie de `worker-build` | Oui, `build/index.js` + `index_bg.wasm` avec `modulesRules` `CompiledWasm` (`build/worker/shim.mjs` n'est plus qu'un renvoi). |
+| PBKDF2 et SHA-256 via WebCrypto depuis Rust | Oui, empreintes identiques au bit près à celles du serveur JavaScript (et de Node). |
+| D1 : `batch`, `INSERT … RETURNING`, `first(colonne)` | Oui. |
+| `wait_until` (tâche après la réponse) | Oui. |
+| R2 : flux à taille fixe | Oui, deux façons : `FixedLengthStream` de workers-rs (les octets traversent le WASM) ou le `FixedLengthStream` natif construit par `js-sys` (les octets ne touchent pas le WASM). Un corps trop court est refusé et rien ne reste dans R2. **Retenu : le natif.** |
+| Durable Object avec hibernation | Oui : attachements, liste des appareils, remplacement (code 4000), relais WebRTC, `ping`/`pong`, `/notify`, départ. |
+| Requête d'upgrade transmise au Durable Object | Oui (`Request::new_with_init` avec les en-têtes d'origine). |
+| Cron | Oui (`#[event(scheduled)]`). |
+
+Mesures (temps par requête dans Miniflare, aller-retour local compris, à comparer entre elles seulement) :
+
+| Opération | Rust | JavaScript |
+|---|---|---|
+| Connexion (PBKDF2 100 000 tours) | 28 à 34 ms | 26 à 29 ms |
+| Manifeste JSON de 1,3 Mio, décodé puis réécrit (`serde_json::Value`) | 94 à 132 ms | 48 à 78 ms |
+| Même manifeste, `body` gardé tel quel (`RawValue`, texte lu en natif) | 49 ms | — |
+| Dépôt R2 de 50 Mo, flux natif | 2,2 s (stable) | — |
+| Dépôt R2 de 50 Mo, flux via le WASM | 2,0 à 4,1 s (instable) | — |
+
+Taille du module : 552 Ko de WASM, **190 Ko compressé** (limite gratuite : 3 Mo).
+
+Conséquences pour la suite :
+- **D7 précisé** : `body` d'un évènement n'est jamais décodé en arbre ; il est gardé tel quel (`RawValue`). C'est ce qui ramène le Rust au niveau du JavaScript. Pour un JSON compact (ce qu'envoient les appareils, via `JSON.stringify`), le résultat est identique octet pour octet, vérifié par le prototype.
+- **D9 tranché** : dépôt R2 par le `FixedLengthStream` natif.
+- **D11 corrigé** : `main = "build/index.js"`.
+- **R1 revu** : PBKDF2 coûte autant en Rust qu'en JavaScript (c'est WebCrypto qui calcule dans les deux cas). Le risque de dépasser les 10 ms de CPU de l'offre gratuite à la connexion existe donc **déjà** avec le serveur actuel ; il sera à mesurer au premier vrai déploiement, quel que soit le langage.
+- Le Rust ne rend aucune opération plus rapide que le JavaScript ; le gain de vitesse viendra de D13.
 
 ## Risks / Trade-offs
 
