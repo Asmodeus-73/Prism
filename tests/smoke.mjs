@@ -19,11 +19,13 @@ console.log('Navigateur : '+ENGINE+' '+browser.version());
 const results=[];let page,errs,logs=[];
 // fonts and the update check go to the internet; the tests do not depend on them
 const IGNORE=/fonts\.(googleapis|gstatic)|api\.github\.com|net::ERR_|Failed to load resource|GroupMarkerNotSet|swiftshader/i;
-async function fresh(){if(page)await page.close();page=await browser.newPage({viewport:{width:1440,height:900}});errs=[];
+async function fresh(keep){const old=page;page=keep&&old?await old.context().newPage():await (await browser.newContext({viewport:{width:1440,height:900}})).newPage();if(old){const c=old.context();await old.close();if(!keep)await c.close()}errs=[];
   page.on('pageerror',e=>errs.push('pageerror: '+(e.stack||e)));page.on('console',m=>{logs.push(m.text());if(logs.length>200)logs.shift();if(m.type()==='error'&&!IGNORE.test(m.text()))errs.push('console: '+m.text())});
   await page.route(/fonts\.(googleapis|gstatic)\.com|api\.github\.com/,r=>r.abort());
   await page.goto(URL0);await page.waitForFunction(()=>typeof loadSample==='function'&&document.querySelector('#view'));await page.waitForTimeout(300)}
 const ev=(fn,arg)=>page.evaluate(fn,arg);
+/* rouvrir l'app comme après l'avoir quittée : même stockage, nouvelle page */
+const reopen=()=>fresh(true);
 async function test(name,fn){const t0=Date.now();try{await fn();await page.waitForTimeout(100);if(errs.length)throw new Error(errs.slice(0,5).join('\n'));results.push([name,'ok',Date.now()-t0])}
   catch(e){results.push([name,'FAIL',Date.now()-t0,String(e.message||e).slice(0,1500)])}finally{errs.length=0}}
 async function sample(){await ev(()=>loadSample());await page.waitForFunction(()=>S.doc&&S.doc.layers.length>0);await page.waitForTimeout(200)}
@@ -179,12 +181,12 @@ await test('calques calés à droite : visibles, et encore après réouverture',
   const geo=()=>ev(()=>{const lp=document.querySelector('#layersPanel'),r=lp.getBoundingClientRect(),rows=document.querySelectorAll('#pane-layers .layer, #pane-layers [data-li], #pane-layers li').length;
     return {in:lp.parentElement.id||lp.parentElement.className,top:Math.round(r.top),h:Math.round(r.height),bottom:Math.round(r.bottom),vh:innerHeight,rows,home:PREF.get('pfHome',{}).layers}});
   const a=await geo();
-  await page.reload();await page.waitForFunction(()=>typeof loadSample==='function'&&document.querySelector('#view'));await sample();await page.waitForTimeout(300);
+  await reopen();await sample();await page.waitForTimeout(300);
   const b=await geo();
-  await ev(()=>{PrismFloat.dockAll();PREF.set('pfHome',{});location.reload()});await page.waitForFunction(()=>typeof loadSample==='function'&&document.querySelector('#view'));await sample();
+  await ev(()=>{PrismFloat.dockAll();PREF.set('pfHome',{})});await reopen();await sample();
   const ok=g=>g.in.includes('insp')&&g.h>=150&&g.bottom<=g.vh+1&&g.top<g.vh-150;
   if(!ok(a)||!ok(b))throw new Error(JSON.stringify({a,b}))});
-await test('« + Ajouter un réglage » : la section ajoutée et ses valeurs restent après réouverture',async()=>{await ev(()=>switchTab('develop'));
+await test('« + Ajouter un réglage » : la section ajoutée et ses valeurs restent après réouverture',async()=>{if(!(await ev(()=>!!S.doc)))await sample();await ev(()=>switchTab('develop'));
   await page.locator('[data-fxadd]').click();await page.waitForTimeout(250);
   const id=await ev(()=>{const v=[...document.querySelectorAll('#devBody details[data-fx]')].filter(d=>!d.hidden).map(d=>d.dataset.fx);return v});
   await page.locator('.menu button:not([disabled]), .menu [role=menuitem]:not([aria-disabled=true])').first().click();await page.waitForTimeout(300);
@@ -192,7 +194,7 @@ await test('« + Ajouter un réglage » : la section ajoutée et ses valeurs res
   const r=await page.locator(`#devBody details[data-fx="${added}"] input[type=range]`).first().boundingBox();await page.mouse.click(r.x+r.width*.85,r.y+r.height/2);await page.waitForTimeout(300);
   const before=await ev(s=>JSON.stringify((ADJ()&&ADJ().dev.fx||{})[s]||null),added);
   await page.waitForTimeout(2500);
-  await page.reload();await page.waitForFunction(()=>typeof loadSample==='function'&&document.querySelector('#view'));await page.waitForFunction(()=>S.doc&&S.doc.layers.length>0,null,{timeout:8000}).catch(()=>{});await page.waitForTimeout(500);
+  await reopen();await page.waitForFunction(()=>S.doc&&S.doc.layers.length>0,null,{timeout:8000}).catch(()=>{});await page.waitForTimeout(500);
   const after=await ev(s=>({vis:!!document.querySelector(`#devBody details[data-fx="${s}"]:not([hidden])`),fx:JSON.stringify(((typeof ADJ==='function'&&ADJ())&&ADJ().dev.fx||{})[s]||null),doc:!!S.doc,pin:PREF.get('fxPinned',[])}),added);
   if(!added||before==='null'||!after.vis||after.fx!==before)throw new Error(JSON.stringify({added,before,after}))});
 await test('calques : nouveau, dupliquer, supprimer',async()=>{const r=await ev(()=>{const n0=S.doc.layers.length;addLayer();dupLayer();const n1=S.doc.layers.length;delLayer();return [n0,n1,S.doc.layers.length]});
