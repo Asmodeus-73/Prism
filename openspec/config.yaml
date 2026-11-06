@@ -1,0 +1,22 @@
+schema: spec-driven
+
+context: |
+  Language: fr
+  All artifacts must be written in fr.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Prism est un éditeur photo (web + application de bureau Tauri 2, Mac et Windows).
+  Le dépôt contient :
+  - web-src/ : sources de l'éditeur web (web/index.html est généré par node web-src/build.mjs) ;
+  - src-tauri/ : application de bureau en Rust ;
+  - server/ : serveur de synchronisation entre appareils (Cloudflare Worker + D1 + R2 + Durable Objects).
+  Les specs de openspec/specs/sync-* décrivent le comportement observable de server/
+  (l'API /v1 utilisée par web-src/app/js/1060-synchro.js, 1065-compte-essai-et-profil.js et 1100-partage.js).
+  Les messages d'erreur rendus aux appareils sont en français et font partie du contrat.
+  Règle du projet : rien n'est fusionné, tagué, compilé en release ni déployé sans l'accord explicite de Draconix.
+  Le déploiement du serveur est en pause (« on s'occupera du cloud à la fin »).
+
+rules:
+  tasks:
+    - Chaque étape se termine par les tests de contrat (server/test.mjs, tests/sync.mjs, tests/collab.mjs, tests/security.mjs) au vert.
+    - Ne jamais lancer le workflow server.yml (déploiement) dans le cadre d'une tâche.
