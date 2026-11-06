@@ -165,6 +165,11 @@ jobs:
           # Until the update key exists (setup-update-key.yml), build without the update files.
           args: ${{ matrix.args }} ${{ env.BETA && '--config src-tauri/beta.conf.json' || (secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config src-tauri/no-updater.conf.json' || '') }}
 
+  # Public version: latest.json gets the signature of each file actually published.
+  updater-json:
+    needs: build
+    uses: ./.github/workflows/updater-json.yml
+
   # Private beta: once the new beta is built, keep only it and the one just before;
   # older beta drafts are deleted. Public releases are never touched (drafts only).
   prune-betas:
