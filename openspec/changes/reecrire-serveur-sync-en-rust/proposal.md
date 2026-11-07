@@ -27,7 +27,9 @@ Ce qu'on n'y gagne pas : de la vitesse. Le serveur passe son temps à attendre D
 Aucune.
 
 ### Modified Capabilities
-Aucune : c'est une réécriture à comportement identique. Les exigences de `sync-http`, `sync-accounts`, `sync-transit`, `sync-events`, `sync-sharing`, `sync-live` et `sync-maintenance` (écrites à partir du serveur JavaScript actuel) sont le contrat à respecter. D'où `skip_specs: true` dans `.openspec.yaml`.
+- `sync-http` : la dernière activité d'un appareil (`last`, affichée « vu il y a … » dans la liste des appareils) n'est plus réécrite à chaque requête mais au plus une fois par minute (accord de Draconix le 2026-11-07). Fait aussi dans le serveur JavaScript actuel.
+
+Pour le reste, c'est une réécriture à comportement identique : les exigences de `sync-accounts`, `sync-transit`, `sync-events`, `sync-sharing`, `sync-live` et `sync-maintenance` (écrites à partir du serveur JavaScript actuel) sont le contrat à respecter.
 
 ## Impact
 

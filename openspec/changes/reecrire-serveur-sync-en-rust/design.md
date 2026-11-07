@@ -100,7 +100,7 @@ Le serveur passe son temps à attendre D1 et R2, et le JavaScript actuel enchaî
 - **Compteurs de débit** (évènements, invitations, inscriptions) : `SELECT` puis `UPDATE` deviennent un seul `INSERT … ON CONFLICT … DO UPDATE … RETURNING n`.
 - **Accusé de réception** : le ménage des comptes d'origine se fait en parallèle plutôt qu'à la suite.
 
-Une seule optimisation changerait un détail visible et n'est **pas** faite sans accord : ne mettre à jour `last` (dernière activité d'un appareil) qu'une fois par minute au lieu d'à chaque requête, ce qui enlèverait une écriture D1 sur chaque appel.
+- **Dernière activité** (`last`) : réécrite au plus une fois par minute au lieu d'à chaque requête, ce qui enlève une écriture D1 sur presque tous les appels pendant une synchro. C'est le seul changement visible (« vu il y a … » peut retarder d'une minute) ; accepté par Draconix le 2026-11-07, spec `sync-http` modifiée, et fait aussi dans le serveur JavaScript.
 
 ## Résultats du prototype (étape 1, 2026-11-06)
 

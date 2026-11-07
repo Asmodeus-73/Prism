@@ -29,6 +29,7 @@ const PID_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 const EMAIL_RE = /^[^\s@<>"'`]{1,64}@[^\s@<>"'`]{1,190}\.[^\s@<>"'`]{2,}$/;   // pas de balise ni de guillemet : l'adresse s'affiche chez les autres membres d'un partage
 const MAX_BODY = 4 << 20;          // un manifeste de projet (JSON) : 4 Mo au plus
 const MAX_BLOB = 500 << 20;        // un fichier : 500 Mo au plus
+const LAST_MS = 60e3;              // dernière activité d'un appareil : précise à la minute
 
 async function hashPw(pw, salt = rid(16)) {
   const k = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -57,9 +58,10 @@ async function auth(env, req, url) {
   // le jeton dans l'adresse n'est accepté que pour la WebSocket (un navigateur ne peut pas y mettre d'en-tête)
   const t = h.startsWith('Bearer ') ? h.slice(7) : url.pathname === '/v1/live' ? url.searchParams.get('token') : null;
   if (!t || t.length > 128) return null;
-  const s = await env.DB.prepare('SELECT s.user, s.device, d.name FROM sessions s JOIN devices d ON d.id = s.device WHERE s.token = ?').bind(await sha(t)).first();
+  const s = await env.DB.prepare('SELECT s.user, s.device, d.name, d.last FROM sessions s JOIN devices d ON d.id = s.device WHERE s.token = ?').bind(await sha(t)).first();
   if (!s) return null;
-  await env.DB.prepare('UPDATE devices SET last = ? WHERE id = ?').bind(now(), s.device).run();
+  // « vu il y a … » : réécrit au plus une fois par minute, pas à chaque requête d'une synchro
+  if (now() - s.last >= LAST_MS) await env.DB.prepare('UPDATE devices SET last = ? WHERE id = ?').bind(now(), s.device).run();
   return { user: s.user, device: s.device, name: s.name };
 }
 

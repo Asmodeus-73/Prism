@@ -61,7 +61,7 @@ Plan de migration en 10 étapes. Chaque étape finit par les tests de contrat au
 - [ ] 8b.3 Liste des partages en deux requêtes ; copies d'évènement en un `batch`
 - [ ] 8b.4 Compteurs de débit en un `INSERT … ON CONFLICT … RETURNING`
 - [ ] 8b.5 Compter les requêtes D1/R2 par route avant et après (test de contrat qui journalise les appels) et noter le résultat dans `design.md`
-- [ ] 8b.6 Demander à Draconix si `last` peut n'être mis à jour qu'une fois par minute
+- [x] 8b.6 `last` mis à jour au plus une fois par minute (accord de Draconix le 2026-11-07, fait dans le serveur JavaScript ; à reprendre dans `auth.rs`)
 
 ## 9. CI et outillage
 
