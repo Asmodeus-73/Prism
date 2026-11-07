@@ -75,4 +75,4 @@ Plan de migration en 10 étapes. Chaque étape finit par les tests de contrat au
 - [x] 10.1 `wrangler.toml` : `main = "build/index.js"` et `[build] command = "worker-build --release"`
 - [x] 10.2 Supprimer `server/src/index.js` ; `PRISM_SYNC_SCRIPT` vise désormais la sortie Rust par défaut ; la CI compile le Rust avant les tests
 - [x] 10.3 Mettre à jour les commentaires de `server/` et ajouter `server/README.md` (compilation locale, tests, particularités reproduites)
-- [ ] 10.4 Archiver le changement OpenSpec (`openspec archive reecrire-serveur-sync-en-rust`) une fois la PR acceptée par Draconix
+- [x] 10.4 Archiver le changement OpenSpec (`openspec archive reecrire-serveur-sync-en-rust`) une fois la PR acceptée par Draconix
