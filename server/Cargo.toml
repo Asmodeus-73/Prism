@@ -1,0 +1,30 @@
+# Serveur de synchronisation de Prism, en Rust (workers-rs), compilé en WebAssembly pour Cloudflare Workers.
+# Compiler : worker-build --release   (sortie dans build/, voir wrangler.toml)
+[package]
+name = "prism-sync"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+worker = { version = "=0.8.7", features = ["d1"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Crypto", "SubtleCrypto", "CryptoKey", "ReadableStream", "WritableStream", "Request"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+sha2 = "0.10"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

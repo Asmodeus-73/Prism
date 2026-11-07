@@ -1,8 +1,12 @@
 # Prism : serveur de synchronisation (Cloudflare Workers)
 # Cloudflare ne garde rien : les photos passent en transit (24 h au plus) d'un appareil à l'autre.
 name = "prism-sync"
-main = "src/index.js"
+# écrit en Rust (src/*.rs) : wrangler le compile en WebAssembly avec worker-build (cargo install worker-build@0.8.7 --locked)
+main = "build/index.js"
 compatibility_date = "2026-07-30"
+
+[build]
+command = "worker-build --release"
 
 [vars]
 TRANSIT_LIMIT = "9500000000"   # 9,5 Go : on reste sous les 10 Go gratuits de R2

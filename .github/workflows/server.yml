@@ -3,7 +3,8 @@ name: Déployer le serveur de synchronisation
 # À lancer à la main (onglet Actions). Il faut deux secrets sur le dépôt :
 #   CLOUDFLARE_API_TOKEN : jeton Cloudflare avec les droits Workers Scripts, D1 et Workers R2 Storage (modification)
 #   CLOUDFLARE_ACCOUNT_ID : l'identifiant du compte Cloudflare
-# Crée la base D1 et le bucket R2 la première fois, applique le schéma, puis publie le Worker.
+# Crée la base D1 et le bucket R2 la première fois, applique le schéma, puis publie le Worker
+# (écrit en Rust : wrangler le compile avec worker-build, voir [build] dans wrangler.toml).
 on:
   workflow_dispatch:
 
@@ -25,6 +26,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.97.0
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: server
+      - name: Outil de compilation du serveur (worker-build)
+        run: cargo install worker-build@0.8.7 --locked
       - name: Les secrets Cloudflare sont là
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then

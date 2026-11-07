@@ -1,9 +1,9 @@
 // Tests du serveur de synchronisation, en local avec Miniflare (D1, R2 et Durable Objects simulés).
-// node server/test.mjs   (Miniflare : npm i -D miniflare@4 dans server/)
+// cd server && worker-build --release && node test.mjs   (Miniflare : npm ci dans server/)
 import { Miniflare } from 'miniflare';
 import { readFileSync } from 'node:fs';
 const dir = new URL('.', import.meta.url).pathname;
-const mf = new Miniflare({ modules: true, scriptPath: dir + 'src/index.js', compatibilityDate: '2026-07-30',
+const mf = new Miniflare({ modules: true, scriptPath: process.env.PRISM_SYNC_SCRIPT || dir + 'build/index.js', modulesRules: [{ type: 'CompiledWasm', include: ['**/*.wasm'] }], compatibilityDate: '2026-07-30',
   d1Databases: ['DB'], r2Buckets: ['TRANSIT'], durableObjects: { LIVE: { className: 'Live', useSQLite: true } },
   bindings: { TRANSIT_LIMIT: '5000', TRANSIT_HOURS: '24', EVENTS_DAYS: '30' } });
 const db = await mf.getD1Database('DB');
@@ -24,6 +24,15 @@ ok(win.status === 200 && win.data.device !== mac.data.device, 'connexion d’un 
 const T1 = mac.data.token, T2 = win.data.token;
 ok((await call('/v1/me', { token: 'faux' })).status === 401, 'jeton inconnu refusé');
 const me = await call('/v1/me', { token: T1 }); ok(me.data.devices.length === 2, 'deux appareils sur le compte');
+// dernière activité : pas réécrite à chaque requête, seulement après une minute
+await db.prepare('UPDATE devices SET last = ? WHERE id = ?').bind(Date.now() - 30e3, mac.data.device).run();
+await call('/v1/me', { token: T1 });
+const l30 = (await db.prepare('SELECT last FROM devices WHERE id = ?').bind(mac.data.device).first()).last;
+ok(Date.now() - l30 >= 29e3, 'dernière activité de moins d’une minute : pas réécrite');
+await db.prepare('UPDATE devices SET last = ? WHERE id = ?').bind(Date.now() - 61e3, mac.data.device).run();
+await call('/v1/me', { token: T1 });
+const l61 = (await db.prepare('SELECT last FROM devices WHERE id = ?').bind(mac.data.device).first()).last;
+ok(Date.now() - l61 < 5e3, 'dernière activité de plus d’une minute : mise à jour');
 // le Mac envoie une photo
 ok((await call('/v1/blobs/tile1', { method: 'PUT', token: T1, body: new Uint8Array(1000), headers: { 'content-length': '1000' } })).status === 201, 'fichier déposé en transit');
 ok((await call('/v1/blobs/tile2', { method: 'PUT', token: T1, body: new Uint8Array(4500), headers: { 'content-length': '4500' } })).status === 507, 'transit plein : 507, l’appareil attendra');
