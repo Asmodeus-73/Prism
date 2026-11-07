@@ -1,9 +1,9 @@
 // Tests du serveur de synchronisation, en local avec Miniflare (D1, R2 et Durable Objects simulés).
-// node server/test.mjs   (Miniflare : npm i -D miniflare@4 dans server/)
+// cd server && worker-build --release && node test.mjs   (Miniflare : npm ci dans server/)
 import { Miniflare } from 'miniflare';
 import { readFileSync } from 'node:fs';
 const dir = new URL('.', import.meta.url).pathname;
-const mf = new Miniflare({ modules: true, scriptPath: dir + 'src/index.js', compatibilityDate: '2026-07-30',
+const mf = new Miniflare({ modules: true, scriptPath: process.env.PRISM_SYNC_SCRIPT || dir + 'build/index.js', modulesRules: [{ type: 'CompiledWasm', include: ['**/*.wasm'] }], compatibilityDate: '2026-07-30',
   d1Databases: ['DB'], r2Buckets: ['TRANSIT'], durableObjects: { LIVE: { className: 'Live', useSQLite: true } },
   bindings: { TRANSIT_LIMIT: '5000', TRANSIT_HOURS: '24', EVENTS_DAYS: '30' } });
 const db = await mf.getD1Database('DB');

@@ -136,6 +136,14 @@ Conséquences pour la suite :
 - **R1 revu** : PBKDF2 coûte autant en Rust qu'en JavaScript (c'est WebCrypto qui calcule dans les deux cas). Le risque de dépasser les 10 ms de CPU de l'offre gratuite à la connexion existe donc **déjà** avec le serveur actuel ; il sera à mesurer au premier vrai déploiement, quel que soit le langage.
 - Le Rust ne rend aucune opération plus rapide que le JavaScript ; le gain de vitesse viendra de D13.
 
+## Résultat de la réécriture (2026-11-07)
+
+- `server/src/*.rs` (environ 1 760 lignes avec les tests, découpage D8 sauf `maintenance.rs`, dont le contenu est dans `transit.rs`) remplace `server/src/index.js`, supprimé ; le prototype `server/proto/` est retiré.
+- Module : 881 Ko de WASM, **306 Ko compressé** (limite gratuite : 3 Mo).
+- Tests : `server/test.mjs` (47 vérifications), `tests/sync.mjs`, `tests/collab.mjs`, `tests/security.mjs` (50 attaques) passent contre le Rust ; `cargo test --lib` (9 tests des validations, coercions et de l'empreinte PBKDF2) ; `cargo clippy -D warnings` propre.
+- Parité : `server/parite.mjs` envoie 93 requêtes, dont des requêtes bizarres, à l'ancien serveur JavaScript et au Rust : aucune différence. Un compte créé par le serveur JavaScript (jeton et mot de passe) fonctionne sur le Rust.
+- Particularités reproduites, écarts acceptés et nombre de requêtes D1/R2 par route avant et après : `server/README.md`.
+
 ## Risks / Trade-offs
 
 - **R1. Temps CPU (offre gratuite : 10 ms par requête).** PBKDF2 via WebCrypto est à 100 000 itérations, la limite maximale acceptée par Workers ; le coût réel par connexion doit être mesuré (`wrangler dev` + `--log-level debug`, ou métriques après un futur déploiement). Lire et réécrire des manifestes JSON de 4 Mio en WASM coûte aussi du CPU. → Mesure dès l'étape 1 sur `login` et sur un `POST /v1/events` de 4 Mio ; si ça dépasse, garder `body` comme texte brut (`RawValue`) sans le décoder.

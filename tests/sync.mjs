@@ -1,5 +1,5 @@
 // Synchronisation de bout en bout : le serveur (server/, dans Miniflare) et deux « appareils » (deux navigateurs séparés).
-// Run: node tests/sync.mjs   (après npm ci dans server/)
+// Run: node tests/sync.mjs   (après npm ci et worker-build --release dans server/)
 import http from 'node:http';import fs from 'node:fs';import path from 'node:path';import {createRequire} from 'node:module';
 const here=path.dirname(new URL(import.meta.url).pathname),root=path.join(here,'..','web'),srv=path.join(here,'..','server');
 const require=createRequire(import.meta.url);const sreq=createRequire(path.join(srv,'package.json'));
@@ -9,7 +9,7 @@ const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript','.wasm':
 const server=http.createServer((q,r)=>{const u=decodeURIComponent(new URL(q.url,'http://x').pathname),f=path.join(root,u==='/'?'index.html':u);
   if(!f.startsWith(root)||!fs.existsSync(f)||fs.statSync(f).isDirectory()){r.writeHead(404);r.end();return}r.writeHead(200,{'content-type':TYPES[path.extname(f)]||'application/octet-stream'});fs.createReadStream(f).pipe(r)});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const PAGE=`http://127.0.0.1:${server.address().port}/index.html`;
-const mf=new Miniflare({modules:true,scriptPath:path.join(srv,'src/index.js'),compatibilityDate:'2026-07-30',host:'127.0.0.1',port:0,
+const mf=new Miniflare({modules:true,scriptPath:process.env.PRISM_SYNC_SCRIPT||path.join(srv,'build/index.js'),modulesRules:[{type:'CompiledWasm',include:['**/*.wasm']}],compatibilityDate:'2026-07-30',host:'127.0.0.1',port:0,
   d1Databases:['DB'],r2Buckets:['TRANSIT'],durableObjects:{LIVE:{className:'Live',useSQLite:true}},bindings:{TRANSIT_LIMIT:'9500000000',TRANSIT_HOURS:'24',EVENTS_DAYS:'30'}});
 const API=(await mf.ready).toString().replace(/\/$/,'');const db=await mf.getD1Database('DB');
 for(const s of fs.readFileSync(path.join(srv,'schema.sql'),'utf8').replace(/--.*\n/g,'').split(';').map(x=>x.trim().replace(/\s+/g,' ')).filter(Boolean))await db.exec(s);

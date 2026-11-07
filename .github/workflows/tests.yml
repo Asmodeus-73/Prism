@@ -23,7 +23,23 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.97.0
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: server
+      - name: Outil de compilation du serveur (worker-build)
+        run: cargo install worker-build@0.8.7 --locked
       - run: npm ci
+      - name: Le serveur compile (Rust, WebAssembly)
+        run: cargo clippy --locked --release --target wasm32-unknown-unknown -- -D warnings
+      - name: Tests des validations du serveur
+        run: cargo test --locked --lib
+      - name: Compilation du serveur
+        run: worker-build --release
       - name: Serveur de synchronisation (Miniflare)
         run: node test.mjs
 
@@ -45,6 +61,16 @@ jobs:
       - name: Les algorithmes de Photo Studio correspondent à leurs sources
         run: node web-src/ps/build.mjs --check
 
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.97.0
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: server
+      - name: Outil de compilation du serveur (worker-build)
+        run: cargo install worker-build@0.8.7 --locked
       - name: Chaque fichier source se lit seul
         run: for f in web-src/app/js/*.js web-src/feat/*.js; do node --check "$f" || exit 1; done
 
@@ -57,7 +83,7 @@ jobs:
         run: node tests/vitesse.mjs
 
       - name: Synchronisation entre deux appareils (serveur dans Miniflare)
-        run: (cd server && npm ci) && node tests/sync.mjs && node tests/collab.mjs && node tests/security.mjs
+        run: (cd server && npm ci && worker-build --release) && node tests/sync.mjs && node tests/collab.mjs && node tests/security.mjs
 
   desktop:
     runs-on: ubuntu-latest
