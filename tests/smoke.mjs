@@ -666,6 +666,34 @@ await test('réduction du bruit : la version Rust (WebAssembly) se charge et don
       for(let j=0;j<t.h;j++)for(let i=0;i<t.w*4;i++)if(o[j*t.w*4+i]!==rs[((t.y+j)*W+t.x)*4+i])diff++}
     return{mod:!!mod,diff,n:W*H}});
   if(!r.mod||r.diff)throw new Error(JSON.stringify(r))});
+await test('lueur : les cinq styles éclairent les zones claires, sans erreur, en 8 et 16 bits',async()=>{await fresh();await sample();
+  const r=await ev(async()=>{insertLayer(newAdjust('Lueur'),'Lueur',true);const L=AL();const mean=async b=>{const old=S.doc.bits;S.doc.bits=b;S.docVer++;try{const c=b===16?await renderDoc16(0.2):await renderDoc(0.2);const d=c.data||(c.canvas||c).getContext('2d').getImageData(0,0,c.width,c.height).data,k=d instanceof Float32Array?255:d instanceof Uint16Array?1/257:1;let s=0;for(let i=0;i<d.length;i+=4)s+=d[i]+d[i+1]+d[i+2];return s/(d.length/4)*k}finally{S.doc.bits=old}};
+    const a=await mean(8),out=[];for(let st=0;st<5;st++){L.dev.fx={glow:{on:true,style:st,k:80,dir:30}};out.push(await mean(8)-a)}L.dev.fx={glow:{on:true,style:0,k:80}};const b16=await mean(16)-a;return{out,b16}});
+  if(r.out.some(v=>!(v>0.2))||!(r.b16>0.2))throw new Error(JSON.stringify(r))});
+await test('vectorscope : un clic sur l’histogramme l’affiche, compte les pixels, un autre clic revient',async()=>{await fresh();await sample();await ev(()=>{try{setHisto(true)}catch(e){}});
+  await page.click('#histo');await page.waitForTimeout(400);const a=await ev(()=>({on:PrismScope.on,tot:PrismScope.pts&&PrismScope.pts.tot,h:document.getElementById('histo').height}));
+  await page.click('#histo');await page.waitForTimeout(200);const b=await ev(()=>({on:PrismScope.on,h:document.getElementById('histo').height}));
+  if(!a.on||!(a.tot>100)||a.h!==400||b.on||b.h!==172)throw new Error(JSON.stringify({a,b}))});
+await test('points AF : FocusLocation Sony lu dans l’EXIF et ramené à l’orientation de la photo',async()=>{const r=await ev(()=>{
+    /* un EXIF minimal (II) : IFD0 Make, Model, Orientation=6, ExifIFD -> MakerNote « SONY DSC » avec 0x2027 = 6000, 4000, 1500, 1000 */
+    const b=[],u16=v=>b.push(v&255,v>>8),u32=v=>b.push(v&255,(v>>8)&255,(v>>16)&255,v>>>24);b.push(0x49,0x49,42,0);u32(8);
+    const ifd0=8,n0=4,mkOff=ifd0+2+n0*12+4,mdOff=mkOff+6,exOff=mdOff+10;u16(n0);
+    const ent=(t,ty,c,v)=>{u16(t);u16(ty);u32(c);u32(v)};ent(0x010F,2,5,mkOff);ent(0x0110,2,9,mdOff);ent(0x0112,3,1,6);ent(0x8769,4,1,exOff);u32(0);
+    b.push(...[...'SONY\0\0'].map(c=>c.charCodeAt(0)));b.push(...[...'ILCE-7M3\0\0'].map(c=>c.charCodeAt(0)));
+    const mnOff=exOff+2+12+4;u16(1);ent(0x927C,7,12+2+12+4+8,mnOff);u32(0);
+    b.push(...[...'SONY DSC \0\0\0'].map(c=>c.charCodeAt(0)));const valOff=mnOff+12+2+12+4;u16(1);ent(0x2027,3,4,valOff);u32(0);u16(6000);u16(4000);u16(1500);u16(1000);
+    const ex=new Uint8Array(b),L=ex.length+8,j=new Uint8Array(ex.length+12);j.set([0xFF,0xD8,0xFF,0xE1,L>>8,L&255,0x45,0x78,0x69,0x66,0,0]);j.set(ex,12);
+    const r=PrismAF.parse(j);return r&&{make:r.make,orient:r.orient,p:r.pts[0]}});
+  if(!r||r.make!=='sony'||r.orient!==6||Math.abs(r.p.x-0.25)>1e-6||Math.abs(r.p.y-0.25)>1e-6)throw new Error(JSON.stringify(r))});
+await test('vue d’ensemble : s’ouvre sur plusieurs photos, note au clavier, se ferme sans toucher à la photothèque',async()=>{await fresh();
+  await ev(async()=>{const fs=[];for(let s=0;s<3;s++){const c=document.createElement('canvas');c.width=600;c.height=400;const g=c.getContext('2d');g.fillStyle=`hsl(${s*90},60%,50%)`;g.fillRect(0,0,600,400);const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9));fs.push(new File([b],`s${s}.jpg`,{type:'image/jpeg'}))}window.__SV=fs});
+  await page.click('#atSwitch [data-v=lib]');await page.waitForSelector('#library',{timeout:30000});await ev(()=>{const _p=pickFiles;pickFiles=async()=>{pickFiles=_p;return window.__SV}});await page.click('#lbAdd');
+  await page.waitForFunction(()=>LIB.items.length>=3,null,{timeout:60000});await page.waitForTimeout(500);
+  await ev(()=>PrismSurvey.open(LIB.items.slice(0,3).map(i=>i.id)));await page.waitForTimeout(400);const n0=await ev(()=>LIB.items.length);
+  await page.keyboard.press('3');await page.waitForTimeout(300);await page.keyboard.press('Delete');await page.waitForTimeout(200);
+  const a=await ev(()=>({open:!!document.getElementById('lbSurvey'),n:PrismSurvey.list.length,lib:LIB.items.length,rated:LIB.items.some(i=>i.lib.rating===3)}));
+  await page.keyboard.press('Escape');await page.waitForTimeout(200);const closed=await ev(()=>!document.getElementById('lbSurvey'));
+  if(!a.open||a.n!==2||a.lib!==n0||!a.rated||!closed)throw new Error(JSON.stringify({a,closed,n0}))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
