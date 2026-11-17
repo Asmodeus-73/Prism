@@ -1,6 +1,7 @@
 // Prism smoke tests: open the built page (web/index.html) in Chromium and exercise the editor.
 // Run: node tests/smoke.mjs        (needs the "playwright" package and its Chromium)
 //      PRISM_BROWSER=webkit node tests/smoke.mjs   (WebKit, the engine of the Mac app)
+//      ONLY='ouvrir les yeux' node tests/smoke.mjs   (only the tests whose name contains this text)
 // Every test fails on any uncaught error or console error in the page.
 import http from 'node:http';import fs from 'node:fs';import path from 'node:path';import {createRequire} from 'node:module';
 const root=path.join(path.dirname(new URL(import.meta.url).pathname),'..','web');
@@ -26,7 +27,7 @@ async function fresh(keep){const old=page;page=keep&&old?await old.context().new
 const ev=(fn,arg)=>page.evaluate(fn,arg);
 /* rouvrir l'app comme après l'avoir quittée : même stockage, nouvelle page */
 const reopen=()=>fresh(true);
-async function test(name,fn){const t0=Date.now();try{await fn();await page.waitForTimeout(100);if(errs.length)throw new Error(errs.slice(0,5).join('\n'));results.push([name,'ok',Date.now()-t0])}
+async function test(name,fn){if(process.env.ONLY&&!name.includes(process.env.ONLY))return;const t0=Date.now();try{await fn();await page.waitForTimeout(100);if(errs.length)throw new Error(errs.slice(0,5).join('\n'));results.push([name,'ok',Date.now()-t0])}
   catch(e){results.push([name,'FAIL',Date.now()-t0,String(e.message||e).slice(0,1500)])}finally{errs.length=0}}
 async function sample(){await ev(()=>loadSample());await page.waitForFunction(()=>S.doc&&S.doc.layers.length>0);await page.waitForTimeout(200)}
 async function drag(x0,y0,x1,y1,steps=8){const b=await page.locator('#view').boundingBox();await page.mouse.move(b.x+b.width*x0,b.y+b.height*y0);await page.mouse.down();
@@ -695,6 +696,30 @@ await test('vue d’ensemble : s’ouvre sur plusieurs photos, note au clavier, 
   const a=await ev(()=>({open:!!document.getElementById('lbSurvey'),n:PrismSurvey.list.length,lib:LIB.items.length,rated:LIB.items.some(i=>i.lib.rating===3),r:LIB.items.map(i=>i.lib.rating),sv:PrismSurvey.list.map(i=>i.lib&&i.lib.rating),keys:window.__svk}));
   await page.keyboard.press('Escape');await page.waitForTimeout(200);const closed=await ev(()=>!document.getElementById('lbSurvey'));
   if(!a.open||a.n!==2||a.lib!==n0||!a.rated||!closed)throw new Error(JSON.stringify({a,closed,n0}))});
+await test('ouvrir les yeux : yeux fermés repérés, yeux ouverts d’une autre photo de la rafale greffés dans un calque, annulable',async()=>{await fresh();
+  const b64=fs.readFileSync(path.join(FIX,'portrait-astronaute.jpg')).toString('base64');
+  const r0=await ev(async b64=>{const im=new Image();im.src='data:image/jpeg;base64,'+b64;await im.decode();const W=960,H=960,orig=mk(W,H);cx(orig).drawImage(im,0,0,W,H);
+    const F=await PrismDepth.facesIn(orig);if(!F||!F.length)return{err:'pas de visage'};const G=PrismEyes.measure(orig,F[0]).G,closed=cloneC(orig),g=cx(closed);
+    /* yeux fermés : la peau de la joue par-dessus, puis la ligne des cils */
+    for(const c of [G.a,G.b]){const s=g.getImageData(c[0]-G.ed*0.1|0,c[1]+G.ed*0.3|0,1,1).data;g.fillStyle=`rgb(${s[0]},${s[1]},${s[2]})`;g.save();g.translate(c[0],c[1]);g.rotate(G.ang);g.beginPath();g.ellipse(0,0,G.ed*0.24,G.ed*0.13,0,0,7);g.fill();g.strokeStyle='rgb(60,40,35)';g.lineWidth=G.ed*0.025;g.beginPath();g.moveTo(-G.ed*0.2,G.ed*0.02);g.quadraticCurveTo(0,G.ed*0.08,G.ed*0.2,G.ed*0.02);g.stroke();g.restore()}
+    /* l'autre photo de la rafale : un peu tournée, plus près, décalée */
+    const src=mk(W,H),sg=cx(src);sg.translate(W/2,H/2);sg.rotate(0.03);sg.scale(1.04,1.04);sg.translate(-W/2+9,-H/2-6);sg.drawImage(orig,0,0);
+    const fl=async(c,n)=>new File([await new Promise(r=>c.toBlob(r,'image/png'))],n,{type:'image/png'});const other=mk(W,H);cx(other).fillRect(0,0,W,H);
+    window.__EYF=[await fl(src,'rafale-2.png'),await fl(other,'autre.png')];window.__EYO=orig;window.__EYG=G;
+    setDoc(closed,'yeux-fermes.png',{quiet:true});return{ed:G.ed}},b64);
+  if(r0.err)throw new Error(r0.err);
+  await page.waitForFunction(()=>S.doc&&S.doc.name==='yeux-fermes.png');const n0=await ev(()=>S.doc.layers.length);
+  /* l'autre photo de la rafale est dans la photothèque, choisie */
+  await page.click('#atSwitch [data-v=lib]');await page.waitForSelector('#library',{timeout:30000});await ev(()=>{const _p=pickFiles;pickFiles=async()=>{pickFiles=_p;return window.__EYF}});await page.click('#lbAdd');
+  await page.waitForFunction(()=>LIB.items.some(i=>i.name==='rafale-2.png')&&S.doc&&S.doc.name==='yeux-fermes.png',null,{timeout:60000});
+  await ev(()=>{LIB.sel=new Set([LIB.items.find(i=>i.name==='rafale-2.png').id]);closeLibrary()});await page.waitForTimeout(300);
+  await ev(()=>PrismEyes.dialog());await page.waitForSelector('#ey-l select',{timeout:60000});await page.waitForTimeout(300);
+  const st=await ev(()=>({s:$('#ey-s').textContent,v:$('#ey-l select').value}));
+  await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await page.waitForTimeout(300);
+  const err=()=>ev(()=>{const G=window.__EYG,c=flatSync();let e=0,n=0;for(const q of [G.a,G.b]){const x0=q[0]-G.ed*0.3|0,y0=q[1]-G.ed*0.18|0,w=G.ed*0.6|0,h=G.ed*0.36|0;const A=rx(c).getImageData(x0,y0,w,h).data,B=rx(window.__EYO).getImageData(x0,y0,w,h).data;for(let i=0;i<A.length;i+=4){e+=Math.abs(A[i]-B[i])+Math.abs(A[i+1]-B[i+1])+Math.abs(A[i+2]-B[i+2]);n+=3}}return Math.round(e/n)});
+  const a={n:await ev(()=>S.doc.layers.length),name:await ev(()=>S.doc.layers[1]&&S.doc.layers[1].name),label:await ev(()=>S.history[S.hi].label),err:await err()};
+  await ev(()=>undo());await page.waitForTimeout(200);const b={n:await ev(()=>S.doc.layers.length),err:await err()};
+  if(st.v!=='0'||a.n!==n0+1||a.name!=='Yeux ouverts'||a.label!=='Ouvrir les yeux'||!(a.err<b.err*0.6)||b.n!==n0)throw new Error(JSON.stringify({st,a,b,n0}))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

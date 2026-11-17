@@ -138,7 +138,12 @@ const iou=(a,b)=>{const x0=Math.max(a.x,b.x),y0=Math.max(a.y,b.y),x1=Math.min(a.
 function nms(F){F.sort((a,b)=>b.s-a.s);const k=[];for(const f of F)if(!k.some(g=>iou(f,g)>0.3||(f.x>=g.x&&f.y>=g.y&&f.x+f.w<=g.x+g.w&&f.y+f.h<=g.y+g.h)))k.push(f);return k}
 async function detectFaces(){const d=S.doc;if(!d)return null;const key=docKey(d),C=DP.faces;if(C&&C.d.deref()===d&&sameKey(C.key,key))return C.F;
   const sess=await session('ai/face1/','des visages','0,2 Mo');if(!sess||S.doc!==d)return null;busy(true,'Recherche des visages…',null);await tick();
-  try{const src=flatSync(),ort=window.ort,R=640,F=[];
+  try{const K=await facesOn(flatSync(),d.w,d.h);if(!K||S.doc!==d)return null;DP.faces={d:new WeakRef(d),key:weakKey(key),F:K};return K}
+  catch(e){console.error(e);toast('Recherche des visages impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
+/* les visages d'une image quelconque (une autre photo de la rafale, par exemple) ; pas de cache */
+async function facesIn(src){const sess=await session('ai/face1/','des visages','0,2 Mo');if(!sess)return null;return facesOn(src,src.width,src.height)}
+async function facesOn(src,W,H){const sess=await session('ai/face1/','des visages','0,2 Mo');if(!sess)return null;const d={w:W,h:H};
+  {const ort=window.ort,R=640,F=[];
     const pass=async(x0,y0,w,h)=>{const k=R/Math.max(w,h),t=mk(R,R),g=rx(t);g.fillStyle='#000';g.fillRect(0,0,R,R);g.imageSmoothingQuality='high';g.drawImage(src,x0,y0,w,h,0,0,w*k,h*k);
       const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);for(let i=0;i<N;i++){f[i]=a[i*4+2];f[N+i]=a[i*4+1];f[2*N+i]=a[i*4]}
       const out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',f,[1,3,R,R])});F.push(...decodeYu(out,k,x0,y0,0.6))};
@@ -146,8 +151,7 @@ async function detectFaces(){const d=S.doc;if(!d)return null;const key=docKey(d)
     // large photos: also in overlapping tiles, so that small faces in a group are found
     const long=Math.max(d.w,d.h);if(long>1000){const T=Math.round(long/2),step=Math.round(T*0.75);
       for(let y=0;y<d.h;y+=step){for(let x=0;x<d.w;x+=step){await pass(x,y,Math.min(T,d.w-x),Math.min(T,d.h-y));if(x+T>=d.w)break}if(y+T>=d.h)break}}
-    const K=nms(F).filter(f=>f.w>6&&f.h>6);if(S.doc!==d)return null;DP.faces={d:new WeakRef(d),key:weakKey(key),F:K};return K}
-  catch(e){console.error(e);toast('Recherche des visages impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
+    return nms(F).filter(f=>f.w>6&&f.h>6)}}
 function hideFaces(L,faces,p){const d=S.doc,out=cloneC(L.canvas),g=cx(out),src=L.canvas,ox=L.x|0,oy=L.y|0,m=p.margin/100;
   for(const f of faces){if(f.off)continue;const w=f.w*(1+m),h=f.h*(1+m)*1.15,x=f.x+f.w/2-w/2-ox,y=f.y+f.h/2-h/2-oy-f.h*0.05,pad=Math.ceil(Math.max(w,h)*0.3);
     const X=Math.max(0,Math.floor(x-pad)),Y=Math.max(0,Math.floor(y-pad)),X1=Math.min(src.width,Math.ceil(x+w+pad)),Y1=Math.min(src.height,Math.ceil(y+h+pad)),cw=X1-X,ch=Y1-Y;if(cw<2||ch<2)continue;
@@ -216,4 +220,4 @@ function injectDepth(){const r=document.querySelector('#zmSec .aim-row');if(!r||
   b.addEventListener('click',e=>{const t=e.target.closest('[data-aimd]');if(!t)return;e.preventDefault();e.stopPropagation();const k=t.dataset.aimd;if(k==='drange')depthRangeMask(opv());else if(window.PrismAIMask)PrismAIMask.apply(k,opv())});
   const ops=r.querySelector('.aim-b');if(ops&&ops.nextSibling)r.insertBefore(b,ops.nextSibling);else r.appendChild(b)}
 {const body=document.getElementById('devBody');if(body)new MutationObserver(()=>injectDepth()).observe(body,{childList:true,subtree:true});injectDepth()}
-window.PrismDepth={onPhoto,depthRange:depthRangeMask,rangeMask,depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
+window.PrismDepth={onPhoto,depthRange:depthRangeMask,rangeMask,depthMap,detectFaces,facesIn,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
