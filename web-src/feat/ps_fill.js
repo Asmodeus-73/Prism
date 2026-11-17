@@ -14,9 +14,10 @@ const PSX=window.PSX;
      .catch(e=>{console.warn('remplissage contextuel : repli sur l’ancienne méthode',e);return _ri.call(this,w,h,keep[0],keep[1],onProg)})}}
 
 /* gomme magique : IA (LaMa) ou rapide (sans modèle) */
-S.opts.remove.method=PREF.get('removeMethod','ai')==='fast'?'fast':'ai';
+/* « IA rapide » = MI-GAN (voir lama.js), proposé seulement si le modèle est livré */
+{const m=PREF.get('removeMethod','ai');S.opts.remove.method=m==='fast'||m==='aifast'?m:'ai'}
 {const _pe=PILL_EXTRA;PILL_EXTRA=function(t,o){let h=_pe.apply(this,arguments)||'';
-  if(t==='remove')h+=`<label title="IA : meilleur sur les grandes zones. Rapide : sans modèle, instantané sur les petites zones.">Méthode</label>`+seg('remove.method',[['ai','IA'],['fast','Rapide']]);return h}}
+  if(t==='remove'){const q=window.LM&&LM.metas&&LM.metas.migan;h+=`<label title="${q?'IA : la plus juste. IA rapide : environ 4 fois plus vite, moins juste sur les objets détaillés. Sans IA : instantané sur les petites zones.':'IA : meilleur sur les grandes zones. Rapide : sans modèle, instantané sur les petites zones.'}">Méthode</label>`+seg('remove.method',q?[['ai','IA'],['aifast','IA rapide'],['fast','Sans IA']]:[['ai','IA'],['fast','Rapide']])}return h}}
 document.addEventListener('click',e=>{const b=e.target&&e.target.closest&&e.target.closest('[data-seg="remove.method"]');if(b)PREF.set('removeMethod',b.dataset.v)},true);
 {const _ro=removeObject;
  removeObject=async function(){if(S.opts.remove.method!=='fast')return _ro.apply(this,arguments);

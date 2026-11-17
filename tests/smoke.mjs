@@ -666,6 +666,14 @@ await test('réduction du bruit : la version Rust (WebAssembly) se charge et don
       for(let j=0;j<t.h;j++)for(let i=0;i<t.w*4;i++)if(o[j*t.w*4+i]!==rs[((t.y+j)*W+t.x)*4+i])diff++}
     return{mod:!!mod,diff,n:W*H}});
   if(!r.mod||r.diff)throw new Error(JSON.stringify(r))});
+await test('gomme magique : la méthode « IA rapide » (MI-GAN) efface l’objet, puis « IA » revient à LaMa',async()=>{await sample();
+  const r=await ev(async()=>{setTool('remove');const pill=document.querySelector('#pill').innerText;const L=S.doc.layers.find(l=>l.kind==='pixel'),W=L.canvas.width,H=L.canvas.height;
+    const m=document.createElement('canvas');m.width=W;m.height=H;const g=m.getContext('2d');g.fillStyle='#fff';g.fillRect(W*0.4,H*0.4,W*0.06,H*0.06);
+    const bx={x0:Math.floor(W*0.4),y0:Math.floor(H*0.4),x1:Math.ceil(W*0.46),y1:Math.ceil(H*0.46)};
+    const b0=L.canvas.getContext('2d').getImageData(0,0,W,H).data.slice(0);S.opts.remove.method='aifast';await removeObject(L,m,bx);
+    const a=L.canvas.getContext('2d').getImageData(0,0,W,H).data;let ch=0;for(let i=0;i<a.length;i+=4)if(a[i]!==b0[i])ch++;const dir1=LM.dir;
+    S.opts.remove.method='ai';await LM.avail();return{pill,ch,dir1,dir2:LM.dir,last:LM.last}});
+  if(!/IA rapide/.test(r.pill)||r.dir1!=='migan'||r.dir2!=='lama'||r.ch<100||!r.last||r.last.w!==512)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);
