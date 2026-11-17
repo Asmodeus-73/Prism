@@ -115,10 +115,12 @@ function relightSpec(){const d=S.doc;return {key:'relight',title:'Rééclairage 
 function relightDialog(p0){if(S.doc)fxDialog({...relightSpec(),p0})}
 
 /* ---------- sélection selon la distance ---------- */
+/* masque (taille de la photo) de ce qui se trouve entre deux distances : p = {near, far, soft} en %, 100 = le plus proche */
+function rangeMask(dm,d,p){const {D,W,H}=dm,lo=p.far/100,hi=p.near/100,s=p.soft/100,F=new Float32Array(W*H);for(let i=0;i<W*H;i++){const v=D[i];F[i]=(lo<=0?1:sstep(lo-s,lo+s,v))*(hi>=1?1:1-sstep(hi-s,hi+s,v))}
+  const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=Math.round(F[i]*255)}g.putImageData(im,0,0);
+  const m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(c,0,0,d.w,d.h);return m}
 async function depthSelDialog(){const d=S.doc;if(!d)return;const dm=await depthMap();if(!dm||S.doc!==d)return;const old=d.sel,p={near:100,far:55,soft:8};let tmr=null;
-  const build=()=>{const {D,W,H}=dm,lo=p.far/100,hi=p.near/100,s=p.soft/100,F=new Float32Array(W*H);for(let i=0;i<W*H;i++){const v=D[i];F[i]=sstep(lo-s,lo+s,v)*(hi>=1?1:1-sstep(hi-s,hi+s,v))}
-    const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=Math.round(F[i]*255)}g.putImageData(im,0,0);
-    const m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(c,0,0,d.w,d.h);return m};
+  const build=()=>rangeMask(dm,d,p);
   const show=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(S.doc!==d)return;d.sel=build();selChanged()},100)};
   dialog({title:'Sélectionner selon la distance',light:true,
     body:'<p class="muted" style="margin:0 0 8px">Sélectionne ce qui se trouve entre deux distances, d’après la profondeur estimée par l’IA (100 % = le plus proche).</p>'+rangeRow('ds-near','Jusqu’à (proche)',0,100,1,p.near,' %')+rangeRow('ds-far','À partir de (loin)',0,100,1,p.far,' %')+rangeRow('ds-soft','Douceur',0,30,1,p.soft,' %'),
@@ -190,4 +192,26 @@ if(window.PrismEffects){
   [['fog',fogSpec,fogDialog],['relight',relightSpec,relightDialog]].forEach(([k,spec,dlg])=>PrismEffects.defineX(k,{name:spec().title,
     run:async(Lt,p)=>{const dm=await depthMap();if(!dm)throw new Error('profondeur indisponible');return spec().run(Lt,dm,p)},edit:p=>dlg(p)}));
   PrismEffects.defineX('faces',{name:'Anonymiser les visages',run:async(Lt,p)=>hideFaces(Lt,p.faces||[],p),edit:p=>facesDialog(p)})}
-window.PrismDepth={depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
+/* ---------- masques de profondeur pour les réglages locaux (section Masque) : premier plan, plan moyen, lointain, ou une plage choisie ---------- */
+const DK={dnear:['Premier plan',{near:100,far:62,soft:7}],dmid:['Plan moyen',{near:66,far:30,soft:7}],dfar:['Lointain',{near:34,far:0,soft:7}],drange:['Plage de profondeur',null]};
+DP.range={near:100,far:50,soft:8};
+{const _cm=AI.categoryMask,_cl=AI.categoryLabel;
+ AI.categoryMask=async function(kind){if(!DK[kind])return _cm.apply(this,arguments);const d=S.doc,dm=await depthMap();if(!dm||S.doc!==d)return null;return rangeMask(dm,d,DK[kind][1]||DP.range)};
+ AI.categoryLabel=k=>DK[k]?DK[k][0]:_cl(k)}
+/* plage choisie : on voit l'effet du réglage sur la zone pendant qu'on bouge les curseurs */
+async function depthRangeMask(op){const d=S.doc,A=d&&d.layers[d.active];if(!A){toast('Ouvrez d’abord une photo');return}const dm=await depthMap();if(!dm||S.doc!==d)return;
+  const p={...DP.range},prevShow=S.showMask;let tmr=null;const live=A.kind==='adjust';
+  const show=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(S.doc!==d)return;A.maskPreview=rangeMask(dm,d,p);if(!live)S.showMask=true;markComp();if(typeof markContent==='function')markContent();requestRender()},90)};
+  const end=()=>{clearTimeout(tmr);delete A.maskPreview;S.showMask=prevShow;markComp();if(typeof markContent==='function')markContent();requestRender()};
+  dialog({title:'Masque selon la distance',light:true,
+    body:'<p class="muted" style="margin:0 0 8px">Le réglage ne touche que ce qui se trouve entre ces deux distances, d’après la profondeur estimée par l’IA (100 % = le plus proche).</p>'+rangeRow('dr-near','Jusqu’à (proche)',0,100,1,p.near,' %')+rangeRow('dr-far','À partir de (loin)',0,100,1,p.far,' %')+rangeRow('dr-soft','Douceur',0,30,1,p.soft,' %'),
+    onOpen:el=>{[['near','dr-near'],['far','dr-far'],['soft','dr-soft']].forEach(([k,id])=>{const i=$('#'+id,el);i.oninput=()=>{p[k]=+i.value;$('#'+id+'-o',el).textContent=i.value+' %';show()}});show()},
+    buttons:[{label:'Annuler',onClick:end},{label:'Appliquer',primary:true,onClick:()=>{end();DP.range={...p};if(window.PrismAIMask)PrismAIMask.apply('drange',op)}}]})}
+{const st=document.createElement('style');st.textContent='.aim-row .aim-d{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.aim-row .aim-d span{font-size:11.5px;color:var(--fg-2);margin-right:2px}';document.head.appendChild(st)}
+function injectDepth(){const r=document.querySelector('#zmSec .aim-row');if(!r||r.querySelector('.aim-d'))return;const b=document.createElement('div');b.className='aim-d';
+  b.innerHTML='<span>Profondeur</span>'+['dnear','dmid','dfar'].map(k=>`<button type="button" class="btn sm" data-aimd="${k}">${DK[k][0]}</button>`).join('')+'<button type="button" class="btn sm" data-aimd="drange" title="Choisir les distances">Plage…</button>';
+  const opv=()=>{const o=r.querySelector('.aim-op');return o?o.value:'new'};
+  b.addEventListener('click',e=>{const t=e.target.closest('[data-aimd]');if(!t)return;e.preventDefault();e.stopPropagation();const k=t.dataset.aimd;if(k==='drange')depthRangeMask(opv());else if(window.PrismAIMask)PrismAIMask.apply(k,opv())});
+  const ops=r.querySelector('.aim-b');if(ops&&ops.nextSibling)r.insertBefore(b,ops.nextSibling);else r.appendChild(b)}
+{const body=document.getElementById('devBody');if(body)new MutationObserver(()=>injectDepth()).observe(body,{childList:true,subtree:true});injectDepth()}
+window.PrismDepth={depthRange:depthRangeMask,rangeMask,depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};

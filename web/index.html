@@ -3210,7 +3210,7 @@ const MENU2={
   view:{label:'Affichage',items:()=>[fromPick('view','Ajuster à l’écran',null,'fit'),fromPick('view','Taille réelle','Taille réelle (100 %)'),fromPick('view','Zoom avant',null,'zoomin'),fromPick('view','Zoom arrière',null,'zoomout'),SEP,
     MI('Comparer avant / après',{icon:'compare',kbd:'Y',check:S.compare==='split',fn:toggleCompare,dis:docDis()}),SEP,
     MI('Épreuvage écran (impression)',{icon:'proof',kbd:MOD+'⇧Y',check:!!PROOF.on,fn:pick('view','Épreuvage').fn,dis:docDis()}),MI('Format d’épreuve…',{fn:proofDialog}),SEP,
-    MI('Panneaux',{icon:'panels',sub:()=>[MI('Histogramme',{check:UI2.histo,fn:()=>setHisto(!UI2.histo)}),...($('#bAssist').hidden?[]:[MI('Assistant de retouche',{check:!$('#composer').hidden,fn:()=>$('#bAssist').click()})])]}),
+    MI('Panneaux',{icon:'panels',sub:()=>[MI('Histogramme',{check:UI2.histo,fn:()=>setHisto(!UI2.histo)}),MI('Vectorscope',{check:!!(window.PrismScope&&PrismScope.on),fn:()=>{if(!window.PrismScope)return;if(!UI2.histo)setHisto(true);PrismScope.set(!PrismScope.on)}}),...($('#bAssist').hidden?[]:[MI('Assistant de retouche',{check:!$('#composer').hidden,fn:()=>$('#bAssist').click()})])]}),
     MI('Thème',{icon:'theme',sub:()=>{const t=PREF.get('theme','auto');return[MI('Automatique (comme le système)',{check:t==='auto',fn:()=>themeSet('auto')}),MI('Clair',{check:t==='light',fn:()=>themeSet('light')}),MI('Sombre',{check:t==='dark',fn:()=>themeSet('dark')})]}}),...(Cloud.ok?[SEP,MI('Avis partagés',{icon:'share',fn:openReview})]:[])]},
   help:{label:'Aide',items:()=>[...(window.PRISM_VERSION?[MI(PRISM_TITLE(),{icon:'info',dis:'Version installée'}),SEP]:[]),MI('Raccourcis clavier',{icon:'keys',kbd:'?',fn:shortcutsDialog}),MI('Rechercher une commande…',{icon:'search',kbd:MOD+'K',fn:openCmdK}),MI('Formats pris en charge',{icon:'info',fn:formatsDialog}),SEP,MI('À propos de Prism',{icon:'help',fn:aboutDialog})]}};
 function adjSub(){const nd=k=>()=>{if(k==='subject'||k==='background')addSubjectAdjust(k==='background');else addAdjust(k)};return[MI('Global (toute la photo)',{icon:'adj',fn:nd('global')}),MI('Au pinceau',{icon:'brush',fn:nd('brush')}),MI('Dégradé linéaire',{icon:'grad',fn:nd('linear')}),MI('Dégradé radial',{icon:'radial',fn:nd('radial')}),SEP,MI('Sur le sujet (IA)',{icon:'subject',fn:nd('subject')}),MI('Sur l’arrière-plan (IA)',{icon:'subject',fn:nd('background')}),MI('Sur la sélection',{icon:'sel',fn:nd('selection'),dis:selDis()})]}
@@ -11936,10 +11936,13 @@ const FX_SECS=[
   {id:'mono',after:'fx-bw',title:'Couleur monochrome',colors:[['col','Couleur','#8d7454']],rows:()=>[['k','Intensité',0,100,1,100]]},
   {id:'sepia',after:'fx-mono',title:'Sépia',rows:()=>[['k','Intensité',0,100,1,100]]},
   {id:'mix',after:'fx-sepia',title:'Mélangeur de couches',tabs:['Rouge','Vert','Bleu'],rows:i=>{const o='rgb'[i];return[[o+'r','Rouge',-200,200,1,i===0?100:0],[o+'g','Vert',-200,200,1,i===1?100:0],[o+'b','Bleu',-200,200,1,i===2?100:0],[o+'c','Constante',-200,200,1,0]]}},
-  {id:'inv',after:'fx-mix',title:'Inverser',rows:()=>[['k','Intensité',0,100,1,100]]}];
+  {id:'inv',after:'fx-mix',title:'Inverser',rows:()=>[['k','Intensité',0,100,1,100]]},
+  /* lueur : une lumière qui déborde des zones claires, en cinq styles (choix « style »). Les deux derniers curseurs ne servent qu'aux styles filé et traînée. */
+  {id:'glow',after:'effects',title:'Lueur',choice:['style','Style',['Éclat','Diffusion','Halo','Filé','Traînée']],
+   rows:()=>[['k','Intensité',0,100,1,40],['thr','Seuil',0,100,1,60],['spread','Étendue',0,100,1,40],['warm','Chaleur',-100,100,1,0,'linear-gradient(90deg,#4f7fd8,#d8d0b8,#e2b23c)'],['dir','Direction',0,180,1,0,null,[3,4]],['soft','Douceur',0,100,1,40,null,[3,4]]]}];
 /* valeurs par défaut et bornes, par groupe */
 const FXD={},FXR={},FXT={};
-for(const s of FX_SECS){const d={},r={};const pages=s.tabs?s.tabs.map((_,i)=>s.rows(i)):[s.rows(0)];for(const rows of pages)for(const q of rows){d[q[0]]=q[5];r[q[0]]=q}for(const c of s.colors||[])d[c[0]]=c[2];FXD[s.id]=d;FXR[s.id]=r;FXT[s.id]=s.title}
+for(const s of FX_SECS){const d={},r={};const pages=s.tabs?s.tabs.map((_,i)=>s.rows(i)):[s.rows(0)];for(const rows of pages)for(const q of rows){d[q[0]]=q[5];r[q[0]]=q}for(const c of s.colors||[])d[c[0]]=c[2];if(s.choice)d[s.choice[0]]=0;FXD[s.id]=d;FXR[s.id]=r;FXT[s.id]=s.title}
 const fxv=(fx,s,k)=>{const o=fx&&fx[s];return o&&o[k]!==undefined?o[k]:FXD[s][k]};
 const fxOn=(fx,s)=>!!(fx&&fx[s]&&fx[s].on);
 function fxAny(fx){if(!fx)return false;for(const s in fx)if(fx[s]&&fx[s].on)return true;return false}
@@ -11947,6 +11950,40 @@ const hexRGB=h=>{const v=parseInt(String(h).slice(1),16);return[((v>>16)&255)/25
 const sm=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
 function rgb2hsl(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;if(mx-mn<1e-6)return[0,0,l];const d=mx-mn,s=l>0.5?d/(2-mx-mn):d/(mx+mn);
   let h=mx===r?(g-b)/d+(g<b?6:0):mx===g?(b-r)/d+2:(r-g)/d+4;return[h/6,s,l]}
+
+/* ---------------------------------------------------------------- lueur */
+/* Taille de la lueur en pixels de la photo : Étendue 0..100 -> 0,4 % à 8 % du petit côté. Filé et traînée s'étirent plus loin. */
+function glowSigma(fx,docW,docH){const s=fxv(fx,'glow','spread')/100,st=fxv(fx,'glow','style'),base=Math.min(docW,docH)*(0.004+0.076*s*s);return Math.min(Math.min(docW,docH)*0.1,st===3?base*2.2:st===4?base*6:base)}
+/* flou le long d'une direction (dx,dy), par passes de pas croissant (1, 4, 16...) : coût indépendant de la longueur */
+function dirBlur(P,w,h,dx,dy,len){let a=P,b=new Float32Array(P.length);const T=[-3,-2,-1,0,1,2,3],Wt=T.map(t=>Math.exp(-t*t/4.5)),ws=Wt.reduce((x,y)=>x+y,0);
+  for(let st=1;st<=len/3;st*=4){for(let y=0,i=0;y<h;y++)for(let x=0;x<w;x++,i++){let acc=0;for(let k=0;k<7;k++){let sx=x+T[k]*st*dx,sy=y+T[k]*st*dy;sx=sx<0?0:sx>w-1?w-1:sx;sy=sy<0?0:sy>h-1?h-1:sy;
+      const x0=sx|0,y0=sy|0,x1=x0<w-1?x0+1:x0,y1=y0<h-1?y0+1:y0,fx_=sx-x0,fy=sy-y0,r0=y0*w,r1=y1*w;acc+=Wt[k]*((a[r0+x0]*(1-fx_)+a[r0+x1]*fx_)*(1-fy)+(a[r1+x0]*(1-fx_)+a[r1+x1]*fx_)*fy)}
+    b[i]=acc/ws}const t=a;a=b;b=t===P?new Float32Array(P.length):t}return a}
+/* calcule la lumière ajoutée, à une définition réduite (la lueur est floue : inutile de la calculer pixel par pixel) */
+function glowBuf(data,W,H,mul,flip,fx,o){const k=fxv(fx,'glow','k')/100;if(!k)return null;const sc=o.scale||1,st=fxv(fx,'glow','style'),dW=S.doc?S.doc.w:W,dH=S.doc?S.doc.h:H;
+  const sig=Math.max(1,glowSigma(fx,dW,dH)*sc),thr=fxv(fx,'glow','thr')/100,dirl=st>=3,soft=fxv(fx,'glow','soft')/100;
+  const perp=dirl?Math.max(0.6,sig*(0.01+0.1*soft)):sig;const f=Math.max(sig>6?2:1,Math.min(24,Math.floor(dirl?Math.max(perp/2,sig/10):st===2?sig*0.12:sig/4))),w=Math.max(1,Math.ceil(W/f)),h=Math.max(1,Math.ceil(H/f)),inv=1/mul;
+  const R=new Float32Array(w*h),G=new Float32Array(w*h),B=new Float32Array(w*h),cnt=new Float32Array(w*h);
+  const t0=st===1?0:thr*0.9,t1=st===1?1:Math.min(1.02,thr*0.9+0.25);
+  for(let y=0;y<H;y++){const yy=flip?H-1-y:y,row=((yy/f)|0)*w;for(let x=0,j=y*W*4;x<W;x++,j+=4){const r=data[j]*inv,g=data[j+1]*inv,b=data[j+2]*inv,a=data[j+3]*inv,l=0.2126*r+0.7152*g+0.0722*b;
+    let m=st===1?(0.2+0.8*l*l):sm((l-t0)/(t1-t0));m*=a;const q=row+((x/f)|0);R[q]+=r*m;G[q]+=g*m;B[q]+=b*m;cnt[q]++}}
+  for(let i=0;i<w*h;i++){const c=cnt[i]||1;R[i]/=c;G[i]/=c;B[i]/=c}
+  const s=sig/f;let out;
+  if(dirl){const an=fxv(fx,'glow','dir')*Math.PI/180,dx=Math.cos(an),dy=-Math.sin(an),ps=perp/f;out=[R,G,B].map(P=>{let q=dirBlur(P,w,h,dx,dy,s*3);if(ps>0.5)q=gaussF(q,w,h,ps);return q});
+    if(st===4){const q=out.map(P=>dirBlur(P,w,h,dx,dy,s*0.8));out=out.map((P,c)=>{for(let i=0;i<P.length;i++)P[i]=P[i]*0.6+q[c][i]*0.8;return P})}}
+  else if(st===2){const a=[R,G,B].map(P=>gaussF(P,w,h,s*0.5)),b=[R,G,B].map(P=>gaussF(P,w,h,Math.max(0.5,s*0.12)));
+    /* halo : la frange autour des zones claires, rouge orangé comme la lumière renvoyée par le dos d'un film */
+    out=[0,1,2].map(()=>new Float32Array(w*h));const T=[1,0.32,0.1];for(let i=0;i<w*h;i++){const la=0.2126*a[0][i]+0.7152*a[1][i]+0.0722*a[2][i],lb=0.2126*b[0][i]+0.7152*b[1][i]+0.0722*b[2][i],v=Math.max(0,la-lb)*2.4;for(let c=0;c<3;c++)out[c][i]=v*T[c]}}
+  else out=[R,G,B].map(P=>gaussF(P,w,h,st===1?s*0.6:s));
+  const wm=fxv(fx,'glow','warm')/100,tint=[1+0.35*wm,1+0.05*wm,1-0.35*wm],gain=st===1?1:st===2?1.4:st===4?3:st===3?1.8:2.4;
+  for(let c=0;c<3;c++){const P=out[c],g=tint[c]*gain*k;for(let i=0;i<P.length;i++)P[i]*=g}
+  const Q={f,w,h,R:out[0],G:out[1],B:out[2],diff:st===1?k*0.5:0};glowTabs(Q,W,H);return Q}
+/* tables d'interpolation (colonnes et lignes) de la définition réduite vers la photo : calculées une fois par rendu */
+function glowTabs(Q,W,H){const ax=(n,N,f)=>{const i0=new Int32Array(n),i1=new Int32Array(n),t=new Float32Array(n);for(let x=0;x<n;x++){const u=(x+0.5)/f-0.5,a=Math.max(0,Math.min(N-1,Math.floor(u)));i0[x]=a;i1[x]=Math.min(N-1,a+1);t[x]=Math.max(0,Math.min(1,u-a))}return{i0,i1,t}};
+  Q.X=ax(W,Q.w,Q.f);Q.Y=ax(H,Q.h,Q.f);Q.row=new Float32Array(W*3);Q.ry=-1}
+/* une ligne de la lueur, interpolée, mise en cache tant qu'on reste sur la même ligne */
+function glowRow(Q,y){if(Q.ry===y)return Q.row;Q.ry=y;const r0=Q.Y.i0[y]*Q.w,r1=Q.Y.i1[y]*Q.w,ty=Q.Y.t[y],X=Q.X,o=Q.row,P=[Q.R,Q.G,Q.B];
+  for(let c=0;c<3;c++){const A=P[c];for(let x=0,k=c;x<X.i0.length;x++,k+=3){const a=X.i0[x],b=X.i1[x],t=X.t[x],top=A[r0+a]+(A[r0+b]-A[r0+a])*t,bot=A[r1+a]+(A[r1+b]-A[r1+a])*t;o[k]=top+(bot-top)*ty}}return o}
 
 /* ---------------------------------------------------------------- calcul */
 /* data : RVBA (0..mul), W x H ; flip : lignes de bas en haut (pile flottante) alors que le masque est de haut en bas */
@@ -11976,7 +12013,8 @@ function fxRun(data,W,H,mul,flip,fx,amt,mask,o){
   const SP=fxOn(fx,'sepia')?fxv(fx,'sepia','k')/100:0;
   let MX=null;if(fxOn(fx,'mix')){MX=[];for(const o of 'rgb')for(const i of 'rgbc')MX.push(fxv(fx,'mix',o+i)/100);if(MX.join()==='1,0,0,0,0,1,0,0,0,0,1,0')MX=null}
   const IV=fxOn(fx,'inv')?fxv(fx,'inv','k')/100:0;
-  if(!Y&&!HM&&!bril&&bgam===1&&!LV&&!RP&&!RM&&!FD&&!BW&&!MO&&!SP&&!MX&&!IV)return false;
+  const GL=fxOn(fx,'glow')?glowBuf(data,W,H,mul,flip,fx,o):null;
+  if(!Y&&!HM&&!bril&&bgam===1&&!LV&&!RP&&!RM&&!FD&&!BW&&!MO&&!SP&&!MX&&!IV&&!GL)return false;
   for(let y=0,i=0;y<H;y++){const my=flip?H-1-y:y;for(let x=0;x<W;x++,i++){const j=i*4;
     const r0=data[j]*inv,g0=data[j+1]*inv,b0=data[j+2]*inv,a0=data[j+3]*inv;let r=r0,g=g0,b=b0,a=a0;
     if(Y){const yy=Y[i],ws=(1-yy)*(1-yy),wh=yy*yy,wm=1-ws-wh;let dy=0;
@@ -11997,6 +12035,8 @@ function fxRun(data,W,H,mul,flip,fx,amt,mask,o){
     if(SP){const nr=0.393*r+0.769*g+0.189*b,ng=0.349*r+0.686*g+0.168*b,nb=0.272*r+0.534*g+0.131*b;r+=(nr-r)*SP;g+=(ng-g)*SP;b+=(nb-b)*SP}
     if(MX){const nr=MX[0]*r+MX[1]*g+MX[2]*b+MX[3],ng=MX[4]*r+MX[5]*g+MX[6]*b+MX[7],nb=MX[8]*r+MX[9]*g+MX[10]*b+MX[11];r=nr;g=ng;b=nb}
     if(IV){r+=(1-2*r)*IV;g+=(1-2*g)*IV;b+=(1-2*b)*IV}
+    if(GL){const gw=glowRow(GL,my),gr=gw[x*3],gg=gw[x*3+1],gb=gw[x*3+2];if(GL.diff){const d=GL.diff;r+=(0.5-r)*d*0.12;g+=(0.5-g)*d*0.12;b+=(0.5-b)*d*0.12}
+      r=1-(1-r)*(1-Math.min(1,gr));g=1-(1-g)*(1-Math.min(1,gg));b=1-(1-b)*(1-Math.min(1,gb))}
     const m=amt*(mask?mask[(my*W+x)*4+3]/255:1);if(m<1){r=r0+(r-r0)*m;g=g0+(g-g0)*m;b=b0+(b-b0)*m;a=a0+(a-a0)*m}
     data[j]=(r<0?0:r>1?1:r)*mul;data[j+1]=(g<0?0:g>1?1:g)*mul;data[j+2]=(b<0?0:b>1?1:b)*mul;data[j+3]=(a<0?0:a>1?1:a)*mul}}
   return true}
@@ -12012,7 +12052,7 @@ const stripFx=dv=>{const d={...dv};delete d.fx;return d};
   fxRun(F,W,H,1,true,fx,L.opacity,mc?rx(mc).getImageData(0,0,W,H).data:null,o);return F};
  /* la clarté sélective a besoin d'une marge entre les tuiles du rendu final */
  const _ms=maxSigma;
- maxSigma=function(dv,docW,docH,scale){let s=_ms.apply(this,arguments);const fx=dv&&dv.fx;if(fxOn(fx,'selcl')){for(let i=0;i<3;i++){if(fxv(fx,'selcl','cl'+i))s=Math.max(s,Math.min(docW,docH)*0.012*scale);if(fxv(fx,'selcl','tx'+i))s=Math.max(s,3.5*scale)}}return s}}
+ maxSigma=function(dv,docW,docH,scale){let s=_ms.apply(this,arguments);const fx=dv&&dv.fx;if(fxOn(fx,'selcl')){for(let i=0;i<3;i++){if(fxv(fx,'selcl','cl'+i))s=Math.max(s,Math.min(docW,docH)*0.012*scale);if(fxv(fx,'selcl','tx'+i))s=Math.max(s,3.5*scale)}}if(fxOn(fx,'glow')&&fxv(fx,'glow','k'))s=Math.max(s,glowSigma(fx,docW,docH)*scale);return s}}
 
 /* ---------------------------------------------------------------- panneau */
 const pane=$('#pane-develop');
@@ -12049,12 +12089,13 @@ details.sec>summary .fxhide:hover{background:var(--raise);color:var(--fg)}
 document.head.appendChild(css);
 const fmt=(q,v)=>q[4]<1?(+v).toFixed(2):(q[6]==='hue'?Math.round(v)+'°':(q[2]<0&&v>0?'+':'')+Math.round(v));
 function rowHTML(s,q){const tr=q[6]==='hue'?`style="--track:${HUE_TRACK}"`:q[6]?`style="--track:${q[6]}"`:'';const id=`fx-${s.id}-${q[0]}`;
-  return`<div class="row" data-fk="${s.id}:${q[0]}"><label for="${id}" title="Double-clic pour réinitialiser">${q[1]}</label><input type="range" id="${id}" data-fk="${s.id}:${q[0]}" min="${q[2]}" max="${q[3]}" step="${q[4]}" ${tr}><output></output></div>`}
+  return`<div class="row" data-fk="${s.id}:${q[0]}"${q[7]?` data-only="${q[7].join(' ')}"`:''}><label for="${id}" title="Double-clic pour réinitialiser">${q[1]}</label><input type="range" id="${id}" data-fk="${s.id}:${q[0]}" min="${q[2]}" max="${q[3]}" step="${q[4]}" ${tr}><output></output></div>`}
 function secHTML(s){let b='';
   if(s.hist)b+=`<canvas class="fxhist" data-fxhist="${s.id}" width="520" height="110"></canvas>`;
   if(s.tabs){TAB[s.id]=TAB[s.id]||0;b+=`<div class="subtabs" data-fxtabs="${s.id}">${s.tabs.map((t,i)=>`<button type="button" data-fxtab="${i}" class="${i===TAB[s.id]?'on':''}">${t}</button>`).join('')}</div>`+
     s.tabs.map((_,i)=>`<div data-fxpage="${i}" ${i===TAB[s.id]?'':'hidden'}>${s.rows(i).map(q=>rowHTML(s,q)).join('')}</div>`).join('')}
   else b+=s.rows(0).map(q=>rowHTML(s,q)).join('');
+  if(s.choice){const[k,l,opts]=s.choice;b=`<div class="subtabs fxchoice" role="radiogroup" aria-label="${l}">${opts.map((t,i)=>`<button type="button" role="radio" data-fch="${s.id}:${k}" data-v="${i}">${t}</button>`).join('')}</div>`+b}
   if(s.colors)b=s.colors.map(([k,l])=>`<div class="fxcol"><label>${l}</label><input type="color" data-fc="${s.id}:${k}" aria-label="${l}"><button type="button" data-fxpick="${s.id}:${k}" title="Prélever la couleur dans la photo" aria-label="Prélever ${l.toLowerCase()} dans la photo">${PIP}</button></div>`).join('')+b;
   return`<details class="sec fxsec" data-sec="fx-${s.id}" data-fx="${s.id}"><summary>${s.title}<span class="dot" aria-hidden="true"></span><button type="button" class="fxsw" role="switch" aria-checked="false" data-fxon="${s.id}" title="Activer ou désactiver" aria-label="Activer « ${s.title} »"></button><button type="button" class="fxhide" data-fxhide="${s.id}" title="Retirer du panneau" aria-label="Retirer « ${s.title} » du panneau">${HIDE}</button><button type="button" class="rs" data-fxreset="${s.id}" title="Réinitialiser ce groupe" aria-label="Réinitialiser « ${s.title} »">${RESET}</button></summary><div class="secbody">${b}</div></details>`}
 function mount(){const body=$('#devBody');if(!body||body.querySelector('[data-fx]'))return;let open={};try{open=JSON.parse(PREF.get('w47Sec','{}'))||{}}catch(e){}
@@ -12078,6 +12119,8 @@ function outFx(row){const[s,k]=row.dataset.fk.split(':'),A=FXA();if(!A)return;co
 function fxSync(){const A=FXA();if(!A||!pane.querySelector('[data-fx]'))return;const fx=A.dev.fx;
   pane.querySelectorAll('input[type=range][data-fk]').forEach(i=>{const[s,k]=i.dataset.fk.split(':');i.value=fxv(fx,s,k)});
   pane.querySelectorAll('.row[data-fk]').forEach(outFx);
+  pane.querySelectorAll('[data-fch]').forEach(b=>{const[s,k]=b.dataset.fch.split(':'),on=fxv(fx,s,k)===+b.dataset.v;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)});
+  pane.querySelectorAll('.row[data-only]').forEach(r=>{const s=r.dataset.fk.split(':')[0],c=FX_SECS.find(q=>q.id===s).choice;r.hidden=!r.dataset.only.split(' ').includes(String(fxv(fx,s,c[0])))});
   pane.querySelectorAll('input[data-fc]').forEach(i=>{const[s,k]=i.dataset.fc.split(':'),v=fxv(fx,s,k);i.value=v||'#808080';i.classList.toggle('none',!v);i.title=v?v:'Aucune couleur : choisissez-en une ou prélevez-la'});
   for(const s of FX_SECS){const d=pane.querySelector(`[data-fx="${s.id}"]`);if(!d)continue;const on=fxOn(fx,s.id);d.hidden=!shown(fx,s.id);d.querySelector('[data-fxon]').setAttribute('aria-checked',on);d.classList.toggle('fxlive',on);d.classList.toggle('mod',on)}
   drawHist()}
@@ -12091,6 +12134,7 @@ pane.addEventListener('click',e=>{const t=e.target;
   const sw=t.closest('[data-fxon]');if(sw){e.preventDefault();e.stopPropagation();const A=FXA();if(!A)return;const s=sw.dataset.fxon,o=ensure(A,s);o.on=!o.on;tidy(A);fxSync();markContent();pushHistory((o.on?'Activer ':'Désactiver ')+FXT[s].toLowerCase());return}
   const hd=t.closest('[data-fxhide]');if(hd){e.preventDefault();e.stopPropagation();const s=hd.dataset.fxhide,A=FXA();PIN.delete(s);savePin();
     if(A&&A.dev.fx&&A.dev.fx[s]){delete A.dev.fx[s];tidy(A);fxSync();markContent();pushHistory('Retirer '+FXT[s].toLowerCase())}else fxSync();return}
+  const ch=t.closest('[data-fch]');if(ch){e.preventDefault();const[s,k]=ch.dataset.fch.split(':'),o=touch(s);if(!o)return;o[k]=+ch.dataset.v;fxSync();markContent();pushHistory(FXT[s]+' : '+ch.textContent.toLowerCase());return}
   const ad=t.closest('[data-fxadd]');if(ad){e.preventDefault();addMenu(ad);return}
   const rs=t.closest('[data-fxreset]');if(rs){e.preventDefault();e.stopPropagation();const A=FXA();if(!A)return;const s=rs.dataset.fxreset;if(A.dev.fx){delete A.dev.fx[s];tidy(A)}fxSync();markContent();pushHistory('Réinitialiser '+FXT[s].toLowerCase());return}
   const tb=t.closest('[data-fxtab]');if(tb){const box=tb.closest('[data-fxtabs]'),s=box.dataset.fxtabs,n=+tb.dataset.fxtab;TAB[s]=n;box.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===tb));
@@ -14958,6 +15002,74 @@ window.PrismStack={run:stackRun,command:stackCommand,dialog:stackDialog,fileFram
 
 }
 
+/* ===== feat: feat/vecteurscope.js ===== */
+{
+/* ===== Vectorscope : la répartition des couleurs de la photo (teinte = angle, saturation = distance au centre) =====
+   - Remplace l’histogramme d’un clic sur celui-ci (ou clic droit, ou Affichage > Panneaux > Vectorscope) ; un autre clic le ramène.
+   - Lu sur la même petite copie de l'image que l'histogramme : aucun calcul de plus sur la photo, seulement quand il est affiché.
+   - Ligne des tons chair (la teinte moyenne des peaux, quelle que soit leur couleur), cibles des six couleurs primaires et secondaires.
+   - Si le calque choisi est un réglage avec un masque, seuls les pixels de ce masque sont comptés.
+   - Au survol de la photo, un réticule montre la couleur du pixel et ses valeurs RVB. ===== */
+const VS={on:!!PREF.get('vscope',false),img:null,hover:null,raf:0,pts:null};
+const c=document.getElementById('histo');
+if(c){
+const css=document.createElement('style');css.textContent=`
+body.vscope #histoPanel .histo canvas{height:208px!important;min-height:208px!important;max-height:208px!important;cursor:pointer}
+body.compact.vscope #histoPanel .histo canvas{height:168px!important;min-height:168px!important;max-height:168px!important}
+#histoPanel .histo canvas{cursor:pointer}`;document.head.appendChild(css);
+/* plan Cb/Cr (BT.709) : direction d'une couleur sur le disque */
+const uv=(r,g,b)=>{const y=0.2126*r+0.7152*g+0.0722*b;return[(b-y)/1.8556,(r-y)/1.5748]};
+const N=200;/* grille de comptage */
+const TGT=[['R',[1,0,0]],['Mg',[1,0,1]],['B',[0,0,1]],['Cy',[0,1,1]],['V',[0,1,0]],['J',[1,1,0]]];
+const SKIN=(()=>{const[u,v]=uv(0.86,0.64,0.52),a=Math.atan2(v,u);return a})();
+/* le masque du réglage choisi, ramené à la taille de la copie lue par l'histogramme */
+function maskProxy(w,h){const A=typeof AL==='function'?AL():null;if(!A||A.kind!=='adjust'||!A.mask||!S.workSize||S.workPos0x==null)return null;
+  const m=mk(w,h),g=rx(m),T=viewMatrix(S.workPos0x,S.workPos0y),kx=w/S.workSize.w,ky=h/S.workSize.h;g.setTransform(T[0]*kx,T[1]*ky,T[2]*kx,T[3]*ky,T[4]*kx,T[5]*ky);g.drawImage(A.mask,0,0);
+  return{a:g.getImageData(0,0,w,h).data,name:A.name||'Réglage'}}
+function count(img){const d=img.data,n=d.length/4,step=Math.max(1,Math.floor(n/120000)),M=maskProxy(img.width,img.height),H=new Float32Array(N*N),C=new Float32Array(N*N*3);let tot=0;
+  for(let i=0;i<n;i+=step){const j=i*4;if(d[j+3]<10)continue;let w=1;if(M){w=M.a[j+3]/255;if(w<0.03)continue}const r=d[j]/255,g=d[j+1]/255,b=d[j+2]/255,[u,v]=uv(r,g,b);
+    const x=Math.round((u*1.9+1)/2*(N-1)),y=Math.round((1-(v*1.9+1)/2)*(N-1));if(x<0||y<0||x>=N||y>=N)continue;const q=y*N+x;H[q]+=w;C[q*3]+=r*w;C[q*3+1]+=g*w;C[q*3+2]+=b*w;tot+=w}
+  return{H,C,tot,mask:M&&M.name}}
+function draw(){if(!VS.on)return;const g=c.getContext('2d'),W=c.width,Hh=c.height,st=rootStyle(),R=Hh/2-6,cx0=W/2,cy0=Hh/2;g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,Hh);
+  const line=st.getPropertyValue('--line-2')||'#555',fg3=st.getPropertyValue('--fg-3')||'#888';
+  g.strokeStyle=line;g.lineWidth=1;for(const k of [1,0.75,0.5,0.25]){g.beginPath();g.arc(cx0,cy0,R*k,0,Math.PI*2);g.stroke()}
+  g.beginPath();g.moveTo(cx0-R,cy0);g.lineTo(cx0+R,cy0);g.moveTo(cx0,cy0-R);g.lineTo(cx0,cy0+R);g.stroke();
+  /* ligne des tons chair */
+  g.strokeStyle=fg3;g.setLineDash([4,3]);g.beginPath();g.moveTo(cx0,cy0);g.lineTo(cx0+Math.cos(SKIN)*R,cy0-Math.sin(SKIN)*R);g.stroke();g.setLineDash([]);
+  g.fillStyle=fg3;g.font=`${Math.round(Hh/20)}px system-ui,sans-serif`;g.textAlign='center';g.textBaseline='middle';
+  for(const[l,col]of TGT){const[u,v]=uv(...col),x=cx0+u*1.9*R*0.75,y=cy0-v*1.9*R*0.75;g.strokeStyle=`rgb(${col.map(v=>v*200+30).join()})`;g.strokeRect(x-5,y-5,10,10);g.fillText(l,cx0+u*1.9*R*0.93,cy0-v*1.9*R*0.93)}
+  const P=VS.pts;if(P&&P.tot){const sc=2*R/N,img=g.createImageData(N,N),D=img.data;let mx=0;for(let i=0;i<N*N;i++)if(P.H[i]>mx)mx=P.H[i];const lm=Math.log1p(mx);
+    for(let i=0;i<N*N;i++){const h=P.H[i];if(!h)continue;const a=Math.log1p(h)/lm,k=1/h,j=i*4;let r=P.C[i*3]*k,gg=P.C[i*3+1]*k,b=P.C[i*3+2]*k;const mxc=Math.max(r,gg,b,1e-3),f=0.55/mxc+0.45;
+      D[j]=Math.min(255,r*f*255+40);D[j+1]=Math.min(255,gg*f*255+40);D[j+2]=Math.min(255,b*f*255+40);D[j+3]=Math.round(60+195*a)}
+    const t=VS.tmp||(VS.tmp=mk(N,N));rx(t).putImageData(img,0,0);g.imageSmoothingEnabled=true;g.globalCompositeOperation=st.getPropertyValue('--hist-blend').trim()==='multiply'?'multiply':'lighter';g.drawImage(t,cx0-R,cy0-R,2*R,2*R);g.globalCompositeOperation='source-over'}
+  const hv=VS.hover;if(hv){const[u,v]=uv(hv[0]/255,hv[1]/255,hv[2]/255),x=cx0+u*1.9*R,y=cy0-v*1.9*R;g.strokeStyle=st.getPropertyValue('--fg')||'#fff';g.lineWidth=1.5;g.beginPath();g.moveTo(x-9,y);g.lineTo(x+9,y);g.moveTo(x,y-9);g.lineTo(x,y+9);g.stroke();g.lineWidth=1}
+  const L=document.getElementById('hmL'),Rr=document.getElementById('hmR');
+  if(L)L.textContent=hv?`R ${hv[0]} · V ${hv[1]} · B ${hv[2]}`:(P&&P.mask?`Vectorscope · masque « ${P.mask} »`:'Vectorscope');
+  if(Rr)Rr.textContent=hv?'':'Clic : histogramme'}
+function size(){if(VS.on){if(c.width!==560||c.height!==400){c.width=560;c.height=400}}else if(c.width!==620||c.height!==172){c.width=620;c.height=172}}
+function setOn(on){VS.on=on;PREF.set('vscope',on);document.body.classList.toggle('vscope',on);size();c.setAttribute('aria-label',on?'Vectorscope de la photo':'Histogramme de la photo');
+  c.title=on?'Vectorscope : cliquez pour revenir à l’histogramme':'Cliquez pour afficher le vectorscope';VS.hover=null;
+  if(on){if(VS.img)VS.pts=count(VS.img);draw()}else{try{histoNow()}catch(e){}}}
+VS.set=setOn;window.PrismScope=VS;
+/* l'histogramme reçoit la petite copie de l'image : on la garde, et on dessine le vectorscope à sa place quand il est affiché */
+{const _h=histogram;histogram=function(img){VS.img=img;if(!VS.on)return _h.apply(this,arguments);
+  try{const sv=c.width,sh=c.height;/* l'histogramme calcule ses chiffres (S.lastHist, courbe) sans être vu */
+    _h.apply(this,arguments);if(c.width!==sv||c.height!==sh){c.width=sv;c.height=sh}}catch(e){}
+  VS.pts=count(img);draw()}}
+c.addEventListener('click',()=>setOn(!VS.on));
+c.addEventListener('contextmenu',e=>{e.preventDefault();setOn(!VS.on)});
+/* réticule : la couleur sous la souris, lue sur l'image affichée */
+const view=document.getElementById('view');
+if(view)view.addEventListener('pointermove',e=>{if(!VS.on||!S.doc||!S.workPos||typeof work==='undefined')return;const r=view.getBoundingClientRect(),pr=S.pr||1,k=S.workSize?S.workSize.k||1:1;
+  const x=Math.floor(((e.clientX-r.left)*pr-S.workPos.x)*k),y=Math.floor(((e.clientY-r.top)*pr-S.workPos.y)*k);
+  if(x<0||y<0||x>=work.width||y>=work.height){if(VS.hover){VS.hover=null;draw()}return}
+  if(VS.raf)return;VS.raf=requestAnimationFrame(()=>{VS.raf=0;try{const p=rx(work).getImageData(x,y,1,1).data;if(p[3]<10){VS.hover=null}else VS.hover=[p[0],p[1],p[2]];draw()}catch(_){}})});
+if(view)view.addEventListener('pointerleave',()=>{if(VS.hover){VS.hover=null;draw()}});
+setOn(VS.on);
+}
+
+}
+
 /* ===== feat: feat/zz_aimask.js ===== */
 {
 /* ===== 0.4: AI masks for retouching.
@@ -15043,7 +15155,7 @@ function dose(kind,st,sub){const z=DEV0();DOSE.why=[];if(!st)return z;
 const devSubject=st=>dose('subj',st),devSky=st=>dose('sky',st),devBg=(st,sub)=>dose('bg',st,sub);
 // a starting dose for a single AI mask, measured on the region (the user then tunes it)
 function devFor(kind,m){const st=stats(m);if(!st)return DEV0();
-  return dose(kind==='people'?'subj':kind,st,kind==='bg'?stats(invOf(m)):null)}
+  return dose(kind==='people'||kind==='dnear'||kind==='dmid'?'subj':kind==='dfar'?'bg':kind==='drange'?'':kind,st,kind==='bg'||kind==='dfar'?stats(invOf(m)):null)}
 const isNeutral=L=>{const z=DEV0(),v=L.dev||{};return Object.keys(z).every(k=>typeof z[k]!=='number'||(v[k]??z[k])===z[k])};
 
 async function aiMaskRetouch(){const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}const h0=S.history[S.hi];
@@ -15318,10 +15430,12 @@ function relightSpec(){const d=S.doc;return {key:'relight',title:'Rééclairage 
 function relightDialog(p0){if(S.doc)fxDialog({...relightSpec(),p0})}
 
 /* ---------- sélection selon la distance ---------- */
+/* masque (taille de la photo) de ce qui se trouve entre deux distances : p = {near, far, soft} en %, 100 = le plus proche */
+function rangeMask(dm,d,p){const {D,W,H}=dm,lo=p.far/100,hi=p.near/100,s=p.soft/100,F=new Float32Array(W*H);for(let i=0;i<W*H;i++){const v=D[i];F[i]=(lo<=0?1:sstep(lo-s,lo+s,v))*(hi>=1?1:1-sstep(hi-s,hi+s,v))}
+  const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=Math.round(F[i]*255)}g.putImageData(im,0,0);
+  const m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(c,0,0,d.w,d.h);return m}
 async function depthSelDialog(){const d=S.doc;if(!d)return;const dm=await depthMap();if(!dm||S.doc!==d)return;const old=d.sel,p={near:100,far:55,soft:8};let tmr=null;
-  const build=()=>{const {D,W,H}=dm,lo=p.far/100,hi=p.near/100,s=p.soft/100,F=new Float32Array(W*H);for(let i=0;i<W*H;i++){const v=D[i];F[i]=sstep(lo-s,lo+s,v)*(hi>=1?1:1-sstep(hi-s,hi+s,v))}
-    const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=Math.round(F[i]*255)}g.putImageData(im,0,0);
-    const m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(c,0,0,d.w,d.h);return m};
+  const build=()=>rangeMask(dm,d,p);
   const show=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(S.doc!==d)return;d.sel=build();selChanged()},100)};
   dialog({title:'Sélectionner selon la distance',light:true,
     body:'<p class="muted" style="margin:0 0 8px">Sélectionne ce qui se trouve entre deux distances, d’après la profondeur estimée par l’IA (100 % = le plus proche).</p>'+rangeRow('ds-near','Jusqu’à (proche)',0,100,1,p.near,' %')+rangeRow('ds-far','À partir de (loin)',0,100,1,p.far,' %')+rangeRow('ds-soft','Douceur',0,30,1,p.soft,' %'),
@@ -15393,7 +15507,29 @@ if(window.PrismEffects){
   [['fog',fogSpec,fogDialog],['relight',relightSpec,relightDialog]].forEach(([k,spec,dlg])=>PrismEffects.defineX(k,{name:spec().title,
     run:async(Lt,p)=>{const dm=await depthMap();if(!dm)throw new Error('profondeur indisponible');return spec().run(Lt,dm,p)},edit:p=>dlg(p)}));
   PrismEffects.defineX('faces',{name:'Anonymiser les visages',run:async(Lt,p)=>hideFaces(Lt,p.faces||[],p),edit:p=>facesDialog(p)})}
-window.PrismDepth={depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
+/* ---------- masques de profondeur pour les réglages locaux (section Masque) : premier plan, plan moyen, lointain, ou une plage choisie ---------- */
+const DK={dnear:['Premier plan',{near:100,far:62,soft:7}],dmid:['Plan moyen',{near:66,far:30,soft:7}],dfar:['Lointain',{near:34,far:0,soft:7}],drange:['Plage de profondeur',null]};
+DP.range={near:100,far:50,soft:8};
+{const _cm=AI.categoryMask,_cl=AI.categoryLabel;
+ AI.categoryMask=async function(kind){if(!DK[kind])return _cm.apply(this,arguments);const d=S.doc,dm=await depthMap();if(!dm||S.doc!==d)return null;return rangeMask(dm,d,DK[kind][1]||DP.range)};
+ AI.categoryLabel=k=>DK[k]?DK[k][0]:_cl(k)}
+/* plage choisie : on voit l'effet du réglage sur la zone pendant qu'on bouge les curseurs */
+async function depthRangeMask(op){const d=S.doc,A=d&&d.layers[d.active];if(!A){toast('Ouvrez d’abord une photo');return}const dm=await depthMap();if(!dm||S.doc!==d)return;
+  const p={...DP.range},prevShow=S.showMask;let tmr=null;const live=A.kind==='adjust';
+  const show=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(S.doc!==d)return;A.maskPreview=rangeMask(dm,d,p);if(!live)S.showMask=true;markComp();if(typeof markContent==='function')markContent();requestRender()},90)};
+  const end=()=>{clearTimeout(tmr);delete A.maskPreview;S.showMask=prevShow;markComp();if(typeof markContent==='function')markContent();requestRender()};
+  dialog({title:'Masque selon la distance',light:true,
+    body:'<p class="muted" style="margin:0 0 8px">Le réglage ne touche que ce qui se trouve entre ces deux distances, d’après la profondeur estimée par l’IA (100 % = le plus proche).</p>'+rangeRow('dr-near','Jusqu’à (proche)',0,100,1,p.near,' %')+rangeRow('dr-far','À partir de (loin)',0,100,1,p.far,' %')+rangeRow('dr-soft','Douceur',0,30,1,p.soft,' %'),
+    onOpen:el=>{[['near','dr-near'],['far','dr-far'],['soft','dr-soft']].forEach(([k,id])=>{const i=$('#'+id,el);i.oninput=()=>{p[k]=+i.value;$('#'+id+'-o',el).textContent=i.value+' %';show()}});show()},
+    buttons:[{label:'Annuler',onClick:end},{label:'Appliquer',primary:true,onClick:()=>{end();DP.range={...p};if(window.PrismAIMask)PrismAIMask.apply('drange',op)}}]})}
+{const st=document.createElement('style');st.textContent='.aim-row .aim-d{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.aim-row .aim-d span{font-size:11.5px;color:var(--fg-2);margin-right:2px}';document.head.appendChild(st)}
+function injectDepth(){const r=document.querySelector('#zmSec .aim-row');if(!r||r.querySelector('.aim-d'))return;const b=document.createElement('div');b.className='aim-d';
+  b.innerHTML='<span>Profondeur</span>'+['dnear','dmid','dfar'].map(k=>`<button type="button" class="btn sm" data-aimd="${k}">${DK[k][0]}</button>`).join('')+'<button type="button" class="btn sm" data-aimd="drange" title="Choisir les distances">Plage…</button>';
+  const opv=()=>{const o=r.querySelector('.aim-op');return o?o.value:'new'};
+  b.addEventListener('click',e=>{const t=e.target.closest('[data-aimd]');if(!t)return;e.preventDefault();e.stopPropagation();const k=t.dataset.aimd;if(k==='drange')depthRangeMask(opv());else if(window.PrismAIMask)PrismAIMask.apply(k,opv())});
+  const ops=r.querySelector('.aim-b');if(ops&&ops.nextSibling)r.insertBefore(b,ops.nextSibling);else r.appendChild(b)}
+{const body=document.getElementById('devBody');if(body)new MutationObserver(()=>injectDepth()).observe(body,{childList:true,subtree:true});injectDepth()}
+window.PrismDepth={depthRange:depthRangeMask,rangeMask,depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
 
 }
 
