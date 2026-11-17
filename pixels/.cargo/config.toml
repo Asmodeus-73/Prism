@@ -1,0 +1,3 @@
+# SIMD 128 bits : Chrome/Edge 91+, Safari 16.4+ (macOS 13.3), Firefox 89+
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

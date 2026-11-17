@@ -658,6 +658,14 @@ await test('sans serveur ni compte Claude : aucun compte, synchro, partage ni as
     const bad=out.filter(l=>/compte|Synchroniser|Partager|Avis partagés|Assistant de retouche/i.test(l));MENU2.file.items().find(x=>x&&x.label==='Paramètres…').fn();const nav=[...document.querySelectorAll('#scrim .at-set nav button')].map(b=>b.textContent.trim());try{closeDialog()}catch(e){}
     return{bad,nav,badge:!!document.querySelector('#syBadge')}});
   if(r.bad.length||r.nav.includes('Compte')||r.badge)throw new Error(JSON.stringify(r))});
+await test('réduction du bruit : la version Rust (WebAssembly) se charge et donne la même photo que la version JS',async()=>{await sample();
+  const r=await ev(async()=>{const mod=await DNX.pxLoad();const L=S.doc.layers.find(l=>l.kind==='pixel'),c=L.canvas,W=c.width,H=c.height,g=c.getContext('2d'),p={a:60,c:80,d:40};
+    const rs=(await DNX.runAsync(c,p).promise).getContext('2d').getImageData(0,0,W,H).data;
+    const pl=DNX.plan(W,H,p,(x,y,w,h)=>{const im=g.getImageData(x,y,w,h);return{data:im.data,w,h}});let diff=0;
+    for(const t of pl.tiles){const R=DNX.region(pl.P,t),o=DNX.tile({P:pl.P,core:t,reg:{...R,data:g.getImageData(R.x,R.y,R.w,R.h).data}}).out;
+      for(let j=0;j<t.h;j++)for(let i=0;i<t.w*4;i++)if(o[j*t.w*4+i]!==rs[((t.y+j)*W+t.x)*4+i])diff++}
+    return{mod:!!mod,diff,n:W*H}});
+  if(!r.mod||r.diff)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

@@ -11651,14 +11651,37 @@ function dnPlan(W,H,p,getReg,tile){
   return {P:P,tiles:tiles};
 }
 function dnRegion(P,c){const ov=P.ov,x0=Math.max(0,c.x-ov),y0=Math.max(0,c.y-ov),x1=Math.min(P.W,c.x+c.w+ov),y1=Math.min(P.H,c.y+c.h+ov);return {x:x0,y:y0,w:x1-x0,h:y1-y0}}
+/* la même tuile calculée par la version Rust (pixels/src/denoise.rs, compilée en web/px/prism_px.wasm) : même calcul, même résultat.
+   X = instance du module. Les pixels sont copiés dans la mémoire du module, le résultat en est recopié. */
+function pxTile(X,job){
+  const P=job.P,c=job.core,rg=job.reg,e=X.exports,nIn=rg.w*rg.h*4,nOut=c.w*c.h*4,nP=21*8;
+  const pp=e.px_alloc(nP),pin=e.px_alloc(nIn),pout=e.px_alloc(nOut);
+  try{if(!pp||!pin||!pout)throw new Error('mémoire');
+    new Float64Array(e.memory.buffer,pp,21).set([P.W,P.H,P.ov,c.x,c.y,c.w,c.h,rg.x,rg.y,rg.w,rg.h,P.sY,P.S,P.lum,P.col,P.det,P.prot,P.hBase,P.rC,P.eps,P.cBlend]);
+    new Uint8Array(e.memory.buffer,pin,nIn).set(rg.data.length===nIn?rg.data:rg.data.subarray(0,nIn));
+    const rc=e.dn_tile(pp,pin,pout);if(rc!==0)throw new Error('paramètres refusés ('+rc+')');
+    return {out:new Uint8ClampedArray(e.memory.buffer.slice(pout,pout+nOut)),x:c.x,y:c.y,w:c.w,h:c.h}}
+  finally{if(pp)e.px_free(pp,nP);if(pin)e.px_free(pin,nIn);if(pout)e.px_free(pout,nOut)}}
 /*CORE_END*/
 
 /* ---- colle navigateur ---- */
-const DN={workers:null,src:null,wsrc(){if(!this.src)this.src=URL.createObjectURL(new Blob(['const dnTile='+dnTile.toString()+';onmessage=e=>{try{const r=dnTile(e.data);postMessage(r,[r.out.buffer])}catch(err){postMessage({err:String(err&&err.message||err)})}}'],{type:'text/javascript'}));return this.src}};
+/* Workers : la version Rust quand le module est là (il leur est passé déjà compilé), sinon la version JS ;
+   une tuile que le module refuse est refaite en JS. */
+const DN={workers:null,src:null,pxP:null,pxMod:null,pxInst:null,
+  wsrc(){if(!this.src)this.src=URL.createObjectURL(new Blob(['const dnTile='+dnTile.toString()+';const pxTile='+pxTile.toString()+';let X=null,ready=null;'
+    +'onmessage=async e=>{const d=e.data;if(d&&d.pxMod){ready=WebAssembly.instantiate(d.pxMod,{}).then(i=>{X=i},()=>{X=null});return}if(ready)await ready;'
+    +'try{let r=null;if(X){try{r=pxTile(X,d)}catch(err){X=null}}if(!r)r=dnTile(d);postMessage(r,[r.out.buffer])}catch(err){postMessage({err:String(err&&err.message||err)})}}'],{type:'text/javascript'}));return this.src},
+  /* charge le module une fois ; null s'il manque ou si le navigateur ne le prend pas (WebAssembly SIMD : Safari 16.4+) */
+  pxLoad(){return this.pxP||(this.pxP=(async()=>{if(window.PRISM_NO_PX||typeof WebAssembly!=='object')return null;
+    const r=await fetch(asset('px/prism_px.wasm'));if(!r.ok)throw new Error('module '+r.status);
+    const mod=await WebAssembly.compile(await r.arrayBuffer()),inst=await WebAssembly.instantiate(mod,{});if(inst.exports.px_version()!==1)return null;
+    this.pxMod=mod;this.pxInst=inst;return mod})().catch(e=>{console.warn('module Rust de réduction du bruit indisponible, version JS',e);return null}))},
+  tile(job){const X=this.pxInst;if(X){try{return pxTile(X,job)}catch(e){console.warn('tuile refaite en JS',e)}}return dnTile(job)}};
+setTimeout(()=>DN.pxLoad(),3000);
 const dnReg=g=>(x,y,w,h)=>{const im=g.getImageData(x,y,w,h);return {data:im.data,w:w,h:h}};
 /* synchrone (repli : effets modifiables, actions, dernier filtre) ; opts.tile pour les tests */
 function dnRunSync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),pl=dnPlan(W,H,p||{},dnReg(g),opts.tile),out=mk(W,H),og=cx(out);
-  for(const c of pl.tiles){const r=dnRegion(pl.P,c),im=g.getImageData(r.x,r.y,r.w,r.h),o=dnTile({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}});og.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y)}
+  for(const c of pl.tiles){const r=dnRegion(pl.P,c),im=g.getImageData(r.x,r.y,r.w,r.h),o=DN.tile({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}});og.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y)}
   return out}
 /* asynchrone par Workers, tuiles avec recouvrement, progression + annulation. region = {x,y,w,h} pour l'aperçu */
 function dnRunAsync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),pl=dnPlan(W,H,p||{},dnReg(g),opts.tile);
@@ -11667,16 +11690,16 @@ function dnRunAsync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),p
   const nW=Math.max(1,Math.min(opts.workers||Math.min(4,Math.max(1,(navigator.hardwareConcurrency||4)-1)),tiles.length));
   let next=0,done=0,fail=null,cancelled=false;const ws=[];
   let rejectFn=null;const job={cancel(){if(cancelled)return;cancelled=true;ws.forEach(w=>w.terminate());if(rejectFn)rejectFn(Object.assign(new Error('annulé'),{code:'cancelled'}))},promise:null};
-  job.promise=new Promise((res,rej)=>{rejectFn=rej;
+  job.promise=new Promise((res,rej)=>{rejectFn=rej;DN.pxLoad().then(mod=>{if(cancelled)return;
     const finish=()=>{ws.forEach(w=>w.terminate());if(cancelled)rej(Object.assign(new Error('annulé'),{code:'cancelled'}));else if(fail)rej(fail);else res(out)};
     const feed=w=>{if(cancelled||fail)return;if(next>=tiles.length){return}const c=tiles[next++],r=dnRegion(pl.P,c),im=g.getImageData(r.x,r.y,r.w,r.h);w.postMessage({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}},[im.data.buffer])};
     for(let i=0;i<nW;i++){
-      const w=new Worker(DN.wsrc());ws.push(w);
+      const w=new Worker(DN.wsrc());ws.push(w);if(mod)w.postMessage({pxMod:mod});
       w.onmessage=e=>{const o=e.data;if(o.err){fail=new Error(o.err);finish();return}
         og.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y);done++;if(opts.onProgress)opts.onProgress(done/tiles.length);
         if(done===tiles.length)finish();else feed(w)};
       w.onerror=e=>{fail=new Error(e.message||'worker');finish()};
-      feed(w)}
+      feed(w)}})
   });
   job.promise.P=pl.P;job.P=pl.P;return job}
 
@@ -11684,7 +11707,7 @@ function dnRunAsync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),p
 {const F=FILTERS.denoise;
  F.params=[['a','Luminance',0,100,1,50,' %'],['c','Couleur',0,100,1,70,' %'],['d','Détails',0,100,1,30,' %'],['e','Contours protégés',0,100,1,60,' %']];
  F.run=function(s,p){F._lp={...p};const R=(window.PrismC&&window.PrismC.REC)||(typeof REC==='object'?REC:null);if(R)R.last={id:'denoise',p:{...p}};return dnRunSync(s,p)};
- window.DNX={plan:dnPlan,tile:dnTile,runSync:dnRunSync,runAsync:dnRunAsync};
+ window.DNX={plan:dnPlan,tile:dnTile,pxTile:j=>pxTile(DN.pxInst,j),pxLoad:()=>DN.pxLoad(),region:dnRegion,runSync:dnRunSync,runAsync:dnRunAsync};
  const _fd=filterDialog;
  const dnTarget=()=>{const d=S.doc;if(!d)return null;const M=maskTarget();if(M)return{L:M,mask:true};const L=pixelTarget();return L?{L,mask:false}:null};
  const alive=(d,L)=>S.doc===d&&d.layers.includes(L);
@@ -11710,7 +11733,7 @@ function dnRunAsync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),p
    const pl=dnPlan(src.width,src.height,p,dnReg(cx(src))),res=mk(src.width,src.height),rg=cx(res);rg.drawImage(src,0,0);
    const sg=cx(src);const jb={cancel(){this.c=true},c:false};setJob(jb);
    for(const c of dnTilesIn(pl,x,y,cw,ch)){if(jb.c)throw Object.assign(new Error('annulé'),{code:'cancelled'});
-    const r=dnRegion(pl.P,c),im=sg.getImageData(r.x,r.y,r.w,r.h),o=dnTile({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}});rg.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y);await new Promise(r=>setTimeout(r,0))}
+    const r=dnRegion(pl.P,c),im=sg.getImageData(r.x,r.y,r.w,r.h),o=DN.tile({P:pl.P,core:c,reg:{x:r.x,y:r.y,w:r.w,h:r.h,data:im.data}});rg.putImageData(new ImageData(o.out,o.w,o.h),o.x,o.y);await new Promise(r=>setTimeout(r,0))}
    return res}
   dialog({title:F.name,light:true,
    body:P.map(q=>rangeRow('f-'+q[0],q[1],q[2],q[3],q[4],q[5],q[6])).join('')+(big?'<p class="muted">Aperçu sur la zone centrale ; l’application traite toute la photo.</p>':'')+(d.sel?'<p class="muted">Appliqué à la sélection.</p>':''),

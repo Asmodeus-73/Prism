@@ -12,6 +12,7 @@ Application de retouche photo pour Mac et Windows, construite avec [Tauri 2](htt
 - `desktop/` : ce que l'application de bureau ajoute (pont vers les fonctions natives dans `desktop.js`, polices embarquées pour fonctionner hors ligne).
 - `scripts/prepare.mjs` : assemble `web/` et `desktop/` dans `dist/`, que Tauri embarque.
 - `src-tauri/` : la partie native (Rust) : fenêtre, boîtes de dialogue, écriture des fichiers.
+- `pixels/` : les calculs lourds sur les pixels écrits en Rust (pour l'instant la réduction du bruit), compilés en WebAssembly dans `web/px/prism_px.wasm` (`npm run build-px`) : le même module sert la version web et l'application. Chaque calcul garde sa version JavaScript, utilisée si le module manque ; `node tests/pixels.mjs` vérifie que les deux donnent la même photo.
 
 ## Construire
 

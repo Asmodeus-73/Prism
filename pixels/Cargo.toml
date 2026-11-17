@@ -1,0 +1,18 @@
+[package]
+name = "prism-pixels"
+version = "1.0.0"
+description = "Prism : calculs sur les pixels en Rust, compilés en WebAssembly pour la page web et l'app"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

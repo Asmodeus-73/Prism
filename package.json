@@ -11,6 +11,7 @@
     "build": "tauri build",
     "build-web": "node web-src/build.mjs",
     "build-ps": "node web-src/ps/build.mjs",
+    "build-px": "node scripts/build-pixels.mjs",
     "test": "node web-src/build.mjs --check && node web-src/ps/build.mjs --check && node tests/smoke.mjs"
   },
   "devDependencies": {
