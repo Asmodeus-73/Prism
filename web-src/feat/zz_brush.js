@@ -77,7 +77,7 @@ pixelDab=function(st,p){
   // result, always from the photo as it was before the stroke
   const img=st.ctx.getImageData(x0,y0,w,h);
   shade(B,bx0,by0,bw,bh,x0,y0,w,h,cov,w,img.data,mode,sig,{x:p.x,y:p.y,r});
-  st.ctx.putImageData(img,x0,y0)};
+  st.ctx.putImageData(img,x0,y0);mipDirty(st.ctx.canvas,x0,y0,w,h)};
 // end of a stroke on a 16-bit layer: every pixel the coverage reached, recomputed in float and stored at 16 bits
 const _esBR=endStroke;
 endStroke=function(){const st=S.stroke;
