@@ -1,0 +1,15 @@
+[package]
+name = "socle"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rawler.workspace = true
+rayon.workspace = true
+walkdir.workspace = true
+xxhash-rust.workspace = true
+zune-jpeg.workspace = true
+zune-core = "0.4"
+kamadak-exif.workspace = true
+serde.workspace = true
+serde_json.workspace = true
