@@ -692,7 +692,8 @@ await test('vue d’ensemble : s’ouvre sur plusieurs photos, note au clavier, 
   await page.waitForFunction(()=>LIB.items.length>=3,null,{timeout:60000});await page.waitForTimeout(500);
   await ev(()=>{window.__svk=[];addEventListener('keydown',e=>window.__svk.push(e.key+'@'+(e.target&&e.target.tagName)+(e.target&&e.target.id?'#'+e.target.id:'')),true)});
   await ev(()=>PrismSurvey.open(LIB.items.slice(0,3).map(i=>i.id)));await page.waitForTimeout(400);const n0=await ev(()=>LIB.items.length);
-  await page.keyboard.press('3');await page.waitForFunction(()=>LIB.items.some(i=>i.lib.rating===3),null,{timeout:5000}).catch(()=>{});await page.waitForTimeout(300);await page.keyboard.press('Delete');await page.waitForTimeout(200);
+  /* WebKit (Playwright, macOS) n'envoie pas de keydown pour une touche chiffre : on l'envoie nous-mêmes à l'élément actif */
+  await ev(()=>(document.activeElement||document.body).dispatchEvent(new KeyboardEvent('keydown',{key:'3',code:'Digit3',bubbles:true,cancelable:true})));await page.waitForFunction(()=>LIB.items.some(i=>i.lib.rating===3),null,{timeout:5000}).catch(()=>{});await page.waitForTimeout(300);await page.keyboard.press('Delete');await page.waitForTimeout(200);
   const a=await ev(()=>({open:!!document.getElementById('lbSurvey'),n:PrismSurvey.list.length,lib:LIB.items.length,rated:LIB.items.some(i=>i.lib.rating===3),r:LIB.items.map(i=>i.lib.rating),sv:PrismSurvey.list.map(i=>i.lib&&i.lib.rating),keys:window.__svk}));
   await page.keyboard.press('Escape');await page.waitForTimeout(200);const closed=await ev(()=>!document.getElementById('lbSurvey'));
   if(!a.open||a.n!==2||a.lib!==n0||!a.rated||!closed)throw new Error(JSON.stringify({a,closed,n0}))});
