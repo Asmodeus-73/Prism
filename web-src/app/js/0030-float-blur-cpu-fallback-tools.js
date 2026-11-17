@@ -2,7 +2,18 @@
 function boxesForGauss(s,n){const wI=Math.sqrt(12*s*s/n+1);let wl=Math.floor(wI);if(wl%2===0)wl--;const wu=wl+2;const m=Math.round((12*s*s-n*wl*wl-4*n*wl-3*n)/(-4*wl-4));const r=[];for(let i=0;i<n;i++)r.push(i<m?wl:wu);return r}
 function boxH(s,d,w,h,r){const inv=1/(2*r+1);for(let y=0;y<h;y++){const o=y*w;let a=0;for(let k=-r;k<=r;k++)a+=s[o+(k<0?0:k>w-1?w-1:k)];for(let x=0;x<w;x++){d[o+x]=a*inv;let p=x+r+1,q=x-r;if(p>w-1)p=w-1;if(q<0)q=0;a+=s[o+p]-s[o+q]}}}
 function boxV(s,d,w,h,r){const inv=1/(2*r+1);for(let x=0;x<w;x++){let a=0;for(let k=-r;k<=r;k++)a+=s[(k<0?0:k>h-1?h-1:k)*w+x];for(let y=0;y<h;y++){d[y*w+x]=a*inv;let p=y+r+1,q=y-r;if(p>h-1)p=h-1;if(q<0)q=0;a+=s[p*w+x]-s[q*w+x]}}}
-function gaussF(src,w,h,s){if(s<0.35)return src;const a=Float32Array.from(src),b=new Float32Array(src.length);for(const bs of boxesForGauss(s,3)){const r=(bs-1)>>1;if(r<1)continue;boxH(a,b,w,h,r);boxV(b,a,w,h,r)}return a}
+/* Module Rust des calculs sur les pixels (pixels/, compilé en web/px/prism_px.wasm) : chargé une fois, partagé par les calculs qui l'utilisent.
+   PX.inst reste null tant qu'il n'est pas là (ou s'il est refusé) : chaque calcul garde alors sa version JS. */
+const PX={p:null,mod:null,inst:null,
+  load(){return this.p||(this.p=(async()=>{if(window.PRISM_NO_PX||typeof WebAssembly!=='object')return null;
+    const r=await fetch(asset('px/prism_px.wasm'));if(!r.ok)throw new Error('module '+r.status);
+    const mod=await WebAssembly.compile(await r.arrayBuffer()),inst=await WebAssembly.instantiate(mod,{});if(inst.exports.px_version()!==2)return null;
+    this.mod=mod;this.inst=inst;return mod})().catch(e=>{console.warn('module Rust des pixels indisponible, versions JS',e);return null}))}};
+setTimeout(()=>PX.load(),1500);
+function gaussJS(src,w,h,s){const a=Float32Array.from(src),b=new Float32Array(src.length);for(const bs of boxesForGauss(s,3)){const r=(bs-1)>>1;if(r<1)continue;boxH(a,b,w,h,r);boxV(b,a,w,h,r)}return a}
+function gaussRS(X,src,w,h,s){const e=X.exports,n=w*h*4,p=e.px_alloc(n);if(!p)return null;
+  try{new Float32Array(e.memory.buffer,p,w*h).set(src);if(e.blur_f32(p,w,h,s)!==0)return null;return new Float32Array(e.memory.buffer.slice(p,p+n))}finally{e.px_free(p,n)}}
+function gaussF(src,w,h,s){if(s<0.35)return src;const X=PX.inst;if(X&&src.length===w*h){try{const o=gaussRS(X,src,w,h,s);if(o)return o}catch(e){}}return gaussJS(src,w,h,s)}
 function blurCanvas(src,r){const w=src.width,h=src.height;if(r<0.3)return cloneC(src);
   if(filterOK()){const p=Math.ceil(r*3)+2,big=mk(w+2*p,h+2*p),b=cx(big);b.drawImage(src,p,p);b.drawImage(src,0,0,1,h,0,p,p,h);b.drawImage(src,w-1,0,1,h,w+p,p,p,h);b.drawImage(big,0,p,w+2*p,1,0,0,w+2*p,p);b.drawImage(big,0,h+p-1,w+2*p,1,0,h+p,w+2*p,p);
     const o=mk(w+2*p,h+2*p),oc=cx(o);oc.filter=`blur(${r}px)`;oc.drawImage(big,0,0);const res=mk(w,h);cx(res).drawImage(o,p,p,w,h,0,0,w,h);return res}

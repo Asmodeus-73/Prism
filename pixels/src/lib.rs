@@ -8,6 +8,7 @@
 //! mémoire avec `px_alloc`, y copie les pixels, appelle le calcul, relit le résultat
 //! et libère avec `px_free`.
 
+pub mod blur;
 pub mod denoise;
 
 use std::alloc::{alloc, dealloc, Layout};
@@ -41,7 +42,7 @@ pub unsafe extern "C" fn px_free(p: *mut u8, n: usize) {
 /// Version de l'interface : la page vérifie qu'elle parle au bon module.
 #[no_mangle]
 pub extern "C" fn px_version() -> u32 {
-    1
+    2
 }
 
 /// Réduction du bruit d'une tuile (voir `denoise::tile`).
@@ -60,5 +61,19 @@ pub unsafe extern "C" fn dn_tile(params: *const f64, reg: *const u8, out: *mut u
     let reg = std::slice::from_raw_parts(reg, p.rw * p.rh * 4);
     let out = std::slice::from_raw_parts_mut(out, p.cw * p.ch * 4);
     denoise::tile(&p, reg, out);
+    0
+}
+
+/// Flou gaussien d'écart `s` sur `w*h` valeurs `f32`, sur place (voir `blur::gauss`).
+///
+/// # Safety
+/// `data` pointe sur `w*h` `f32` (alignés sur 4 : mémoire de `px_alloc`).
+#[no_mangle]
+pub unsafe extern "C" fn blur_f32(data: *mut f32, w: u32, h: u32, s: f64) -> i32 {
+    let n = (w as usize).saturating_mul(h as usize);
+    if data.is_null() || n == 0 || !s.is_finite() || !(data as usize).is_multiple_of(4) {
+        return 1;
+    }
+    blur::gauss(std::slice::from_raw_parts_mut(data, n), w as usize, h as usize, s);
     0
 }

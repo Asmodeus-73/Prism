@@ -129,17 +129,13 @@ function pxTile(X,job){
 /* ---- colle navigateur ---- */
 /* Workers : la version Rust quand le module est là (il leur est passé déjà compilé), sinon la version JS ;
    une tuile que le module refuse est refaite en JS. */
-const DN={workers:null,src:null,pxP:null,pxMod:null,pxInst:null,
+const DN={workers:null,src:null,
   wsrc(){if(!this.src)this.src=URL.createObjectURL(new Blob(['const dnTile='+dnTile.toString()+';const pxTile='+pxTile.toString()+';let X=null,ready=null;'
     +'onmessage=async e=>{const d=e.data;if(d&&d.pxMod){ready=WebAssembly.instantiate(d.pxMod,{}).then(i=>{X=i},()=>{X=null});return}if(ready)await ready;'
     +'try{let r=null;if(X){try{r=pxTile(X,d)}catch(err){X=null}}if(!r)r=dnTile(d);postMessage(r,[r.out.buffer])}catch(err){postMessage({err:String(err&&err.message||err)})}}'],{type:'text/javascript'}));return this.src},
-  /* charge le module une fois ; null s'il manque ou si le navigateur ne le prend pas (WebAssembly SIMD : Safari 16.4+) */
-  pxLoad(){return this.pxP||(this.pxP=(async()=>{if(window.PRISM_NO_PX||typeof WebAssembly!=='object')return null;
-    const r=await fetch(asset('px/prism_px.wasm'));if(!r.ok)throw new Error('module '+r.status);
-    const mod=await WebAssembly.compile(await r.arrayBuffer()),inst=await WebAssembly.instantiate(mod,{});if(inst.exports.px_version()!==1)return null;
-    this.pxMod=mod;this.pxInst=inst;return mod})().catch(e=>{console.warn('module Rust de réduction du bruit indisponible, version JS',e);return null}))},
-  tile(job){const X=this.pxInst;if(X){try{return pxTile(X,job)}catch(e){console.warn('tuile refaite en JS',e)}}return dnTile(job)}};
-setTimeout(()=>DN.pxLoad(),3000);
+  /* le module est partagé (PX, 0030) ; null s'il manque ou si le navigateur ne le prend pas (WebAssembly SIMD : Safari 16.4+) */
+  pxLoad(){return PX.load()},
+  tile(job){const X=PX.inst;if(X){try{return pxTile(X,job)}catch(e){console.warn('tuile refaite en JS',e)}}return dnTile(job)}};
 const dnReg=g=>(x,y,w,h)=>{const im=g.getImageData(x,y,w,h);return {data:im.data,w:w,h:h}};
 /* synchrone (repli : effets modifiables, actions, dernier filtre) ; opts.tile pour les tests */
 function dnRunSync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),pl=dnPlan(W,H,p||{},dnReg(g),opts.tile),out=mk(W,H),og=cx(out);
@@ -169,7 +165,7 @@ function dnRunAsync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),p
 {const F=FILTERS.denoise;
  F.params=[['a','Luminance',0,100,1,50,' %'],['c','Couleur',0,100,1,70,' %'],['d','Détails',0,100,1,30,' %'],['e','Contours protégés',0,100,1,60,' %']];
  F.run=function(s,p){F._lp={...p};const R=(window.PrismC&&window.PrismC.REC)||(typeof REC==='object'?REC:null);if(R)R.last={id:'denoise',p:{...p}};return dnRunSync(s,p)};
- window.DNX={plan:dnPlan,tile:dnTile,pxTile:j=>pxTile(DN.pxInst,j),pxLoad:()=>DN.pxLoad(),region:dnRegion,runSync:dnRunSync,runAsync:dnRunAsync};
+ window.DNX={plan:dnPlan,tile:dnTile,pxTile:j=>pxTile(PX.inst,j),pxLoad:()=>DN.pxLoad(),region:dnRegion,runSync:dnRunSync,runAsync:dnRunAsync};
  const _fd=filterDialog;
  const dnTarget=()=>{const d=S.doc;if(!d)return null;const M=maskTarget();if(M)return{L:M,mask:true};const L=pixelTarget();return L?{L,mask:false}:null};
  const alive=(d,L)=>S.doc===d&&d.layers.includes(L);
