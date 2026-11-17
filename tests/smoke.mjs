@@ -690,7 +690,7 @@ await test('vue d’ensemble : s’ouvre sur plusieurs photos, note au clavier, 
   await page.click('#atSwitch [data-v=lib]');await page.waitForSelector('#library',{timeout:30000});await ev(()=>{const _p=pickFiles;pickFiles=async()=>{pickFiles=_p;return window.__SV}});await page.click('#lbAdd');
   await page.waitForFunction(()=>LIB.items.length>=3,null,{timeout:60000});await page.waitForTimeout(500);
   await ev(()=>PrismSurvey.open(LIB.items.slice(0,3).map(i=>i.id)));await page.waitForTimeout(400);const n0=await ev(()=>LIB.items.length);
-  await page.keyboard.press('3');await page.waitForTimeout(300);await page.keyboard.press('Delete');await page.waitForTimeout(200);
+  await page.keyboard.press('3');await page.waitForFunction(()=>LIB.items.some(i=>i.lib.rating===3),null,{timeout:5000}).catch(()=>{});await page.waitForTimeout(300);await page.keyboard.press('Delete');await page.waitForTimeout(200);
   const a=await ev(()=>({open:!!document.getElementById('lbSurvey'),n:PrismSurvey.list.length,lib:LIB.items.length,rated:LIB.items.some(i=>i.lib.rating===3)}));
   await page.keyboard.press('Escape');await page.waitForTimeout(200);const closed=await ev(()=>!document.getElementById('lbSurvey'));
   if(!a.open||a.n!==2||a.lib!==n0||!a.rated||!closed)throw new Error(JSON.stringify({a,closed,n0}))});
