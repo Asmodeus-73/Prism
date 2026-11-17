@@ -642,6 +642,12 @@ await test('trait sur une grosse photo : l’aperçu en cours de trait montre le
     const red=px(400+15*50,500+Math.sin(15/4)*120),far=px(2000,1500),before=grey0;await endStroke();render();const after=px(400+15*50,500+Math.sin(15/4)*120);
     return{red,far,before,after}});
   const ok=r.red[0]>200&&r.red[1]<60&&Math.abs(r.far[0]-128)<6&&Math.abs(r.after[0]-r.red[0])<12;if(!ok)throw new Error(JSON.stringify(r))});
+await test('vitesse : Doigt, Densité et Fluidité sur une grosse photo ne reconstruisent pas la pyramide d’aperçu à chaque mouvement',async()=>{await fresh();
+  await ev(async()=>{const c=document.createElement('canvas');c.width=4000;c.height=3000;const g=c.getContext('2d');g.fillStyle='#808080';g.fillRect(0,0,4000,3000);setDoc(c,'g.jpg',{});await new Promise(r=>setTimeout(r,800));
+    S.doc.active=S.doc.layers.findIndex(l=>l.kind==='pixel');window.__b=0;const ml=mipLevel;mipLevel=function(src){const had=MIP.has(src)&&MIP.get(src).length;const r=ml.apply(this,arguments);if(!had&&r!==src)window.__b++;return r}});
+  const vb=await page.locator('#view').boundingBox(),P=(fx,fy)=>[vb.x+vb.width*fx,vb.y+vb.height*fy],out={};
+  for(const t of['dodge','smudge','liquify']){await ev(t=>{setTool(t);window.__b=0},t);await page.mouse.move(...P(.4,.4));await page.mouse.down();for(let i=0;i<=25;i++){await page.mouse.move(...P(.4+i*.004,.4+i*.006));await page.waitForTimeout(10)}await page.mouse.up();await page.waitForTimeout(300);out[t]=await ev(()=>window.__b)}
+  for(const t in out)if(out[t]>6)throw new Error(JSON.stringify(out))});
 await test('dézoom rapide : la partie qui n’était pas affichée montre la photo, pas le damier',async()=>{await fresh();
   const r=await ev(async()=>{const W=4000,H=3000,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');g.fillStyle='#2a6';g.fillRect(0,0,W,H);setDoc(c,'v.png',{});const w=ms=>new Promise(r=>setTimeout(r,ms));await w(600);
     fit();render();await w(1000);zoomAt(S.zoom*6,S.vw/2,S.vh/2);render();await w(100);S.contentMs=50;S.zoomRedraw=performance.now();zoomAt(S.zoom/2,S.vw/2,S.vh/2);zoomAt(S.zoom/2,S.vw/2,S.vh/2);render();
