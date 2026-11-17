@@ -689,9 +689,10 @@ await test('vue d’ensemble : s’ouvre sur plusieurs photos, note au clavier, 
   await ev(async()=>{const fs=[];for(let s=0;s<3;s++){const c=document.createElement('canvas');c.width=600;c.height=400;const g=c.getContext('2d');g.fillStyle=`hsl(${s*90},60%,50%)`;g.fillRect(0,0,600,400);const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9));fs.push(new File([b],`s${s}.jpg`,{type:'image/jpeg'}))}window.__SV=fs});
   await page.click('#atSwitch [data-v=lib]');await page.waitForSelector('#library',{timeout:30000});await ev(()=>{const _p=pickFiles;pickFiles=async()=>{pickFiles=_p;return window.__SV}});await page.click('#lbAdd');
   await page.waitForFunction(()=>LIB.items.length>=3,null,{timeout:60000});await page.waitForTimeout(500);
+  await ev(()=>{window.__svk=[];addEventListener('keydown',e=>window.__svk.push(e.key+'@'+(e.target&&e.target.tagName)+(e.target&&e.target.id?'#'+e.target.id:'')),true)});
   await ev(()=>PrismSurvey.open(LIB.items.slice(0,3).map(i=>i.id)));await page.waitForTimeout(400);const n0=await ev(()=>LIB.items.length);
   await page.keyboard.press('3');await page.waitForFunction(()=>LIB.items.some(i=>i.lib.rating===3),null,{timeout:5000}).catch(()=>{});await page.waitForTimeout(300);await page.keyboard.press('Delete');await page.waitForTimeout(200);
-  const a=await ev(()=>({open:!!document.getElementById('lbSurvey'),n:PrismSurvey.list.length,lib:LIB.items.length,rated:LIB.items.some(i=>i.lib.rating===3)}));
+  const a=await ev(()=>({open:!!document.getElementById('lbSurvey'),n:PrismSurvey.list.length,lib:LIB.items.length,rated:LIB.items.some(i=>i.lib.rating===3),r:LIB.items.map(i=>i.lib.rating),sv:PrismSurvey.list.map(i=>i.lib&&i.lib.rating),keys:window.__svk}));
   await page.keyboard.press('Escape');await page.waitForTimeout(200);const closed=await ev(()=>!document.getElementById('lbSurvey'));
   if(!a.open||a.n!==2||a.lib!==n0||!a.rated||!closed)throw new Error(JSON.stringify({a,closed,n0}))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
