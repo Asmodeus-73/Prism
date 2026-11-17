@@ -131,7 +131,9 @@ async function depthSelDialog(){const d=S.doc;if(!d)return;const dm=await depthM
 /* ---------- visages : YuNet (640 × 640, BGR 0..255), sorties par pas 8, 16, 32 ---------- */
 function decodeYu(out,k,ox,oy,th){const F=[];for(const s of [8,16,32]){const cls=out['cls_'+s].data,obj=out['obj_'+s].data,bb=out['bbox_'+s].data,cols=640/s;
     for(let i=0;i<cls.length;i++){const sc=Math.sqrt(clamp(cls[i],0,1)*clamp(obj[i],0,1));if(sc<th)continue;const c=i%cols,r=(i/cols)|0;
-      const cxp=(c+bb[i*4])*s,cyp=(r+bb[i*4+1])*s,w=Math.exp(bb[i*4+2])*s,h=Math.exp(bb[i*4+3])*s;F.push({x:ox+(cxp-w/2)/k,y:oy+(cyp-h/2)/k,w:w/k,h:h/k,s:sc})}}return F}
+      const cxp=(c+bb[i*4])*s,cyp=(r+bb[i*4+1])*s,w=Math.exp(bb[i*4+2])*s,h=Math.exp(bb[i*4+3])*s,f={x:ox+(cxp-w/2)/k,y:oy+(cyp-h/2)/k,w:w/k,h:h/k,s:sc};
+      /* cinq repères : œil droit, œil gauche, bout du nez, coins droit et gauche de la bouche */
+      const kp=out['kps_'+s]&&out['kps_'+s].data;if(kp)f.kp=[0,1,2,3,4].map(j=>[ox+(c+kp[i*10+j*2])*s/k,oy+(r+kp[i*10+j*2+1])*s/k]);F.push(f)}}return F}
 const iou=(a,b)=>{const x0=Math.max(a.x,b.x),y0=Math.max(a.y,b.y),x1=Math.min(a.x+a.w,b.x+b.w),y1=Math.min(a.y+a.h,b.y+b.h),i=Math.max(0,x1-x0)*Math.max(0,y1-y0);return i/(a.w*a.h+b.w*b.h-i||1)};
 function nms(F){F.sort((a,b)=>b.s-a.s);const k=[];for(const f of F)if(!k.some(g=>iou(f,g)>0.3||(f.x>=g.x&&f.y>=g.y&&f.x+f.w<=g.x+g.w&&f.y+f.h<=g.y+g.h)))k.push(f);return k}
 async function detectFaces(){const d=S.doc;if(!d)return null;const key=docKey(d),C=DP.faces;if(C&&C.d.deref()===d&&sameKey(C.key,key))return C.F;
@@ -214,4 +216,4 @@ function injectDepth(){const r=document.querySelector('#zmSec .aim-row');if(!r||
   b.addEventListener('click',e=>{const t=e.target.closest('[data-aimd]');if(!t)return;e.preventDefault();e.stopPropagation();const k=t.dataset.aimd;if(k==='drange')depthRangeMask(opv());else if(window.PrismAIMask)PrismAIMask.apply(k,opv())});
   const ops=r.querySelector('.aim-b');if(ops&&ops.nextSibling)r.insertBefore(b,ops.nextSibling);else r.appendChild(b)}
 {const body=document.getElementById('devBody');if(body)new MutationObserver(()=>injectDepth()).observe(body,{childList:true,subtree:true});injectDepth()}
-window.PrismDepth={depthRange:depthRangeMask,rangeMask,depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
+window.PrismDepth={onPhoto,depthRange:depthRangeMask,rangeMask,depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
