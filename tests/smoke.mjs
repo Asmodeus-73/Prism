@@ -111,7 +111,7 @@ await test('corbeille : une photo supprimée se restaure, ses tuiles restent',as
     await libOpen(id);return [gone,miss,back,S.doc&&S.doc.pid===id].join()});
   if(r!=='true,0,true,true')throw new Error(r)});
 await test('aperçu rapide : une photo lente se calcule en plus petit pendant le glissé, en entier ensuite',async()=>{const r=await ev(async()=>{const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    S.sliding=true;LQ.full=600;LQ.last=0;markContent();await fr();const k1=S.workSize.k,small=work.width<S.workSize.w;S.sliding=false;await new Promise(r=>setTimeout(r,450));await fr();
+    S.sliding=true;LQ.full=600;LQ.last=0;LQ.lock=0;markContent();await fr();const k1=S.workSize.k,small=work.width<S.workSize.w;S.sliding=false;await new Promise(r=>setTimeout(r,450));await fr();
     return [k1<1,small,S.workSize.k===1,work.width===S.workSize.w].join()});
   if(r!=='true,true,true,true')throw new Error(r)});
 await test('nouveaux effets : nuages, fractale, vitrail, verre dépoli, déformation, inversion polaire, croquis, peinture',async()=>{const r=await ev(()=>{const src=S.doc.layers[0].canvas,s=resample(src,320,214),bad=[];
@@ -658,6 +658,14 @@ await test('sans serveur ni compte Claude : aucun compte, synchro, partage ni as
     const bad=out.filter(l=>/compte|Synchroniser|Partager|Avis partagés|Assistant de retouche/i.test(l));MENU2.file.items().find(x=>x&&x.label==='Paramètres…').fn();const nav=[...document.querySelectorAll('#scrim .at-set nav button')].map(b=>b.textContent.trim());try{closeDialog()}catch(e){}
     return{bad,nav,badge:!!document.querySelector('#syBadge')}});
   if(r.bad.length||r.nav.includes('Compte')||r.badge)throw new Error(JSON.stringify(r))});
+await test('curseurs : Maj+flèche = pas x10, Maj+glisser = réglage fin, Alt+molette, un glissé = une seule entrée d’historique',async()=>{await fresh();await sample();
+  const loc=k=>page.locator(`#pane-develop input[data-k="${k}"]`),val=k=>ev(k=>ADJ().dev[k],k),out=[];
+  await loc('exposure').focus();await page.keyboard.press('Shift+ArrowRight');out.push(['maj+flèche',Math.abs(await val('exposure')-0.1)<0.005]);
+  const c=await loc('contrast').boundingBox();await page.mouse.move(c.x+c.width/2,c.y+c.height/2);await page.keyboard.down('Alt');await page.mouse.wheel(0,-100);await page.keyboard.up('Alt');await page.waitForTimeout(500);out.push(['alt+molette',(await val('contrast'))===1]);
+  const drag=async(k,shift)=>{const b=await loc(k).boundingBox();await page.mouse.move(b.x+b.width*.5,b.y+b.height/2);if(shift)await page.keyboard.down('Shift');await page.mouse.down();await page.mouse.move(b.x+b.width*.7,b.y+b.height/2,{steps:6});await page.mouse.up();if(shift)await page.keyboard.up('Shift');await page.waitForTimeout(250)};
+  await drag('highlights',true);const f=await val('highlights');out.push(['fin',f>2&&f<7,f]);
+  const h0=await ev(()=>S.history.length);await drag('shadows',false);const n=await val('shadows'),h1=await ev(()=>S.history.length);out.push(['plein',n>25,n]);out.push(['historique',h1-h0===1,h1-h0]);
+  const bad=out.filter(o=>!o[1]);if(bad.length)throw new Error(JSON.stringify(out))});
 await test('réduction du bruit : la version Rust (WebAssembly) se charge et donne la même photo que la version JS',async()=>{await sample();
   const r=await ev(async()=>{const mod=await DNX.pxLoad();const L=S.doc.layers.find(l=>l.kind==='pixel'),c=L.canvas,W=c.width,H=c.height,g=c.getContext('2d'),p={a:60,c:80,d:40};
     const rs=(await DNX.runAsync(c,p).promise).getContext('2d').getImageData(0,0,W,H).data;
