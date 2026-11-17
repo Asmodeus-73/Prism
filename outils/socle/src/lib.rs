@@ -5,6 +5,7 @@ pub mod date;
 pub mod empreinte;
 pub mod nature;
 pub mod parcours;
+pub mod registre;
 pub mod tiff;
 pub mod verif;
 

@@ -4,16 +4,17 @@
 
 use clap::Parser;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use socle::verif::{self, Verdict};
+use socle::registre::{self, Entree, Registre};
 use socle::{empreinte, parcours, Nature};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
-const REGISTRE: &str = ".prism-empreintes.json";
+use registre::NOM as REGISTRE;
 
 #[derive(Parser)]
 #[command(name = "prism-scan", version, about = "Trouve les photos abîmées et surveille leur dégradation")]
@@ -32,20 +33,6 @@ struct Args {
     /// Nombre de fils de calcul (par défaut : un par cœur).
     #[arg(long)]
     fils: Option<usize>,
-}
-
-#[derive(Serialize, Deserialize, Default)]
-struct Registre {
-    version: u32,
-    fichiers: BTreeMap<String, Entree>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
-struct Entree {
-    taille: u64,
-    /// Date de modification, en nanosecondes depuis 1970.
-    modif: u128,
-    xxh3: u128,
 }
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
@@ -85,12 +72,7 @@ fn main() {
         eprintln!("« {} » n'est pas un dossier.", a.dossier.display());
         std::process::exit(2);
     }
-    let chemin_registre = a.dossier.join(REGISTRE);
-    let ancien: Registre = if a.sans_empreintes {
-        Registre::default()
-    } else {
-        std::fs::read(&chemin_registre).ok().and_then(|o| serde_json::from_slice(&o).ok()).unwrap_or_default()
-    };
+    let ancien = if a.sans_empreintes { Registre::default() } else { Registre::lire(&a.dossier) };
 
     let fichiers = parcours::fichiers(&a.dossier, |_| true);
     let total = fichiers.len();
@@ -132,7 +114,7 @@ fn main() {
     sortie.extend(disparus);
 
     if !a.sans_empreintes {
-        if let Err(e) = std::fs::write(&chemin_registre, serde_json::to_vec(&nouveau).unwrap()) {
+        if let Err(e) = nouveau.ecrire(&a.dossier) {
             eprintln!("Registre d'empreintes non enregistré : {e}");
         }
     }
@@ -155,7 +137,7 @@ fn main() {
 }
 
 fn examiner(racine: &Path, p: &Path, ancien: &Registre, rapide: bool) -> Ligne {
-    let chemin = p.strip_prefix(racine).unwrap_or(p).to_string_lossy().replace('\\', "/");
+    let chemin = registre::cle(racine, p);
     let mut l = Ligne { chemin, probleme: None, remarques: vec![], entree: None, inconnu: false, modifie: false };
     let meta = match std::fs::metadata(p) {
         Ok(m) => m,
@@ -164,7 +146,7 @@ fn examiner(racine: &Path, p: &Path, ancien: &Registre, rapide: bool) -> Ligne {
             return l;
         }
     };
-    let modif = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+    let modif = meta.modified().map(registre::nanos).unwrap_or(0);
     let nature = Nature::de(p);
     let verifier = !rapide && nature.photo();
     // Lire le fichier une seule fois : la même mémoire sert au hachage et au décodage.

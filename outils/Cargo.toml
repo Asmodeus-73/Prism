@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["socle", "scanner"]
+members = ["socle", "scanner", "copie"]
 
 [workspace.package]
 version = "0.1.0"
