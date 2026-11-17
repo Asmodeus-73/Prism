@@ -68,9 +68,22 @@ jobs:
           components: clippy
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          workspaces: server
+          workspaces: |
+            server
+            pixels
       - name: Outil de compilation du serveur (worker-build)
         run: cargo install worker-build@0.8.7 --locked
+
+      - name: Calculs sur les pixels en Rust (lint, tests)
+        working-directory: pixels
+        run: cargo clippy --locked --release --target wasm32-unknown-unknown -- -D warnings && cargo test --locked --release
+
+      - name: Le module Rust des pixels correspond à ses sources
+        run: node scripts/build-pixels.mjs --check
+
+      - name: La version Rust de la réduction du bruit donne la même photo que la version JS
+        run: node tests/pixels.mjs
+
       - name: Chaque fichier source se lit seul
         run: for f in web-src/app/js/*.js web-src/feat/*.js; do node --check "$f" || exit 1; done
 

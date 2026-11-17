@@ -1,7 +1,8 @@
 {
   "name": "prism-desktop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "displayVersion": "1.0.0",
   "codename": "Aurore",
   "type": "module",
   "scripts": {
@@ -11,6 +12,7 @@
     "build": "tauri build",
     "build-web": "node web-src/build.mjs",
     "build-ps": "node web-src/ps/build.mjs",
+    "build-px": "node scripts/build-pixels.mjs",
     "test": "node web-src/build.mjs --check && node web-src/ps/build.mjs --check && node tests/smoke.mjs"
   },
   "devDependencies": {

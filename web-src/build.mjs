@@ -8,7 +8,7 @@ import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'n
 const here=path.dirname(new URL(import.meta.url).pathname),root=path.join(here,'..');
 const list=d=>fs.readdirSync(path.join(here,d)).filter(f=>/\.(css|js)$/.test(f)).sort().map(f=>path.join(here,d,f));
 const read=f=>fs.readFileSync(f,'utf8');
-const pkg=JSON.parse(read(path.join(root,'package.json'))),version=pkg.version,codename=pkg.codename||'';
+const pkg=JSON.parse(read(path.join(root,'package.json'))),version=pkg.displayVersion||pkg.version,codename=pkg.codename||'';
 const css=list('app/css').map(read).join(''),js=list('app/js').map(read).join('');
 const feats=list('feat');
 const head='window.PRISM_VERSION='+JSON.stringify(version)+';window.PRISM_CODENAME='+JSON.stringify(codename)+';\n',add='\n'+feats.map(f=>`\n/* ===== feat: feat/${path.basename(f)} ===== */\n{\n${read(f)}\n}\n`).join('');
