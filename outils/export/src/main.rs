@@ -165,13 +165,9 @@ fn jpeg(o: &[u8]) -> Result<(Image, u16), String> {
     let mut d = zune_jpeg::JpegDecoder::new_with_options(o, opts);
     let px = d.decode().map_err(|e| e.to_string())?;
     let i = d.info().ok_or("JPEG illisible")?;
-    Ok((Image { l: i.width as usize, h: i.height as usize, px }, orientation_exif(o).unwrap_or(1)))
+    Ok((Image { l: i.width as usize, h: i.height as usize, px }, socle::apercu::orientation_jpeg(o).unwrap_or(1)))
 }
 
-fn orientation_exif(o: &[u8]) -> Option<u16> {
-    let e = exif::Reader::new().read_from_container(&mut std::io::Cursor::new(o)).ok()?;
-    e.get_field(exif::Tag::Orientation, exif::In::PRIMARY)?.value.get_uint(0).map(|v| v as u16)
-}
 
 fn raw(o: &Arc<Vec<u8>>, apercu: bool) -> Result<(Image, u16), String> {
     let src = RawSource::new_from_shared_vec(o.clone());
@@ -200,34 +196,9 @@ fn raw(o: &Arc<Vec<u8>>, apercu: bool) -> Result<(Image, u16), String> {
     Ok((Image { l, h, px: rgb.into_raw() }, orientation))
 }
 
-/// Applique l'orientation EXIF (1 à 8) aux pixels.
 fn redresser(img: Image, o: u16) -> Image {
-    if !(2..=8).contains(&o) {
-        return img;
-    }
-    let (l, h) = (img.l, img.h);
-    let transpose = o >= 5;
-    let (nl, nh) = if transpose { (h, l) } else { (l, h) };
-    let mut px = vec![0u8; l * h * 3];
-    for y in 0..nh {
-        for x in 0..nl {
-            // Pixel source pour la position (x, y) de l'image redressée.
-            let (sx, sy) = match o {
-                2 => (l - 1 - x, y),
-                3 => (l - 1 - x, h - 1 - y),
-                4 => (x, h - 1 - y),
-                5 => (y, x),
-                6 => (y, h - 1 - x),
-                7 => (l - 1 - y, h - 1 - x),
-                8 => (l - 1 - y, x),
-                _ => (x, y),
-            };
-            let s = (sy * l + sx) * 3;
-            let d = (y * nl + x) * 3;
-            px[d..d + 3].copy_from_slice(&img.px[s..s + 3]);
-        }
-    }
-    Image { l: nl, h: nh, px }
+    let r = socle::apercu::redresser(socle::apercu::Image { l: img.l, h: img.h, px: img.px }, o);
+    Image { l: r.l, h: r.h, px: r.px }
 }
 
 fn reduire(img: Image, cote: usize) -> Result<Image, String> {
@@ -329,22 +300,5 @@ fn exif_orientation_1(t: &mut [u8]) {
     let lien = ifd + 2 + n as usize * 12;
     if let Some(v) = t.get_mut(lien..lien + 4) {
         v.copy_from_slice(&[0; 4]);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn redressement() {
-        // 2 × 1 : rouge puis vert
-        let img = || Image { l: 2, h: 1, px: vec![255, 0, 0, 0, 255, 0] };
-        let r6 = redresser(img(), 6); // 90° horaire : rouge en haut
-        assert_eq!((r6.l, r6.h), (1, 2));
-        assert_eq!(&r6.px[..3], &[255, 0, 0]);
-        let r8 = redresser(img(), 8); // 90° anti-horaire : vert en haut
-        assert_eq!(&r8.px[..3], &[0, 255, 0]);
-        let r3 = redresser(img(), 3);
-        assert_eq!(&r3.px[..3], &[0, 255, 0]);
     }
 }

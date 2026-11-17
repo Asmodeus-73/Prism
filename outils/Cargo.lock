@@ -1250,7 +1250,6 @@ dependencies = [
  "clap",
  "fast_image_resize",
  "jpeg-encoder",
- "kamadak-exif",
  "png",
  "ravif",
  "rawler",
@@ -1258,6 +1257,18 @@ dependencies = [
  "socle",
  "zune-core 0.4.12",
  "zune-jpeg 0.4.21",
+]
+
+[[package]]
+name = "prism-poussieres"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "png",
+ "rayon",
+ "serde",
+ "serde_json",
+ "socle",
 ]
 
 [[package]]

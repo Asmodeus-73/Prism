@@ -11,7 +11,6 @@ rayon.workspace = true
 clap.workspace = true
 zune-jpeg.workspace = true
 zune-core = "0.4"
-kamadak-exif.workspace = true
 fast_image_resize = "5"
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 ravif = "0.11"
