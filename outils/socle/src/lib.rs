@@ -4,6 +4,7 @@
 pub mod apercu;
 pub mod date;
 pub mod empreinte;
+pub mod integre;
 pub mod nature;
 pub mod parcours;
 pub mod registre;
