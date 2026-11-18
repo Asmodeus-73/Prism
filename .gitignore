@@ -6,3 +6,4 @@ src-tauri/gen/
 src-tauri/onnxruntime/
 # stray screenshots at the root
 /*.png
+outils/target/

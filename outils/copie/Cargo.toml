@@ -1,0 +1,14 @@
+[package]
+name = "prism-copie"
+description = "Décharge une carte mémoire vers un ou plusieurs disques, avec vérification"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+socle = { path = "../socle" }
+serde.workspace = true
+clap.workspace = true
+xxhash-rust.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

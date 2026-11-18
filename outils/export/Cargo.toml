@@ -1,0 +1,17 @@
+[package]
+name = "prism-export"
+description = "Exporte des photos (JPEG, RAW) en JPEG, AVIF ou PNG redimensionnés, sur tous les cœurs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+socle = { path = "../socle" }
+rawler.workspace = true
+rayon.workspace = true
+clap.workspace = true
+zune-jpeg.workspace = true
+zune-core = "0.4"
+fast_image_resize = "5"
+jpeg-encoder = { version = "0.6", features = ["simd"] }
+ravif = "0.11"
+png = "0.17"

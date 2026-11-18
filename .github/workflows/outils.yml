@@ -1,0 +1,62 @@
+name: Outils photo
+
+# Teste et compile les outils en ligne de commande de outils/ (prism-tri, prism-copie,
+# prism-scan, prism-export, prism-poussieres) pour Mac, Windows et Linux. Les exécutables sont
+# dans les « Artifacts » de chaque exécution (onglet Actions), un fichier par système.
+on:
+  push:
+    paths: ['outils/**', '.github/workflows/outils.yml']
+  pull_request:
+    paths: ['outils/**', '.github/workflows/outils.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  outils:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            nom: mac
+          - os: windows-latest
+            nom: windows
+          - os: ubuntu-latest
+            nom: linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: outils
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.97.0
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: outils
+      # L'encodeur AVIF (rav1e) a des routines en assembleur x86 assemblées avec NASM.
+      - name: NASM
+        run: |
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get install -y nasm ;;
+            macOS) brew install nasm ;;
+            Windows) choco install nasm -y --no-progress && echo "C:\\Program Files\\NASM" >> "$GITHUB_PATH" ;;
+          esac
+      - name: Tests
+        run: cargo test --release
+      - name: Compilation
+        run: |
+          cargo build --release
+          mkdir -p ../livraison
+          for b in prism-tri prism-copie prism-scan prism-export prism-poussieres; do
+            cp "target/release/$b$( [ "$RUNNER_OS" = Windows ] && echo .exe )" ../livraison/
+          done
+          cp README.md ../livraison/LISEZMOI.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: outils-photo-${{ matrix.nom }}
+          path: livraison/
