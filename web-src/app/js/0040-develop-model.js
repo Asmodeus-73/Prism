@@ -1,6 +1,6 @@
 /* ================= develop model ================= */
 const DEV0=()=>({temp:0,tint:0,exposure:0,contrast:0,highlights:0,shadows:0,whites:0,blacks:0,texture:0,clarity:0,dehaze:0,vibrance:0,saturation:0,
-  curve:{rgb:[[0,0],[1,1]],r:[[0,0],[1,1]],g:[[0,0],[1,1]],b:[[0,0],[1,1]]},hslH:[0,0,0,0,0,0,0,0],hslS:[0,0,0,0,0,0,0,0],hslL:[0,0,0,0,0,0,0,0],
+  curve:{rgb:[[0,0],[1,1]],r:[[0,0],[1,1]],g:[[0,0],[1,1]],b:[[0,0],[1,1]]},lcurve:[[0,0],[1,1]],pcurve:[0,0,0,0,25,50,75],hslH:[0,0,0,0,0,0,0,0],hslS:[0,0,0,0,0,0,0,0],hslL:[0,0,0,0,0,0,0,0],
   shH:215,shS:0,midH:30,midS:0,hiH:45,hiS:0,balance:0,sharpen:0,sharpRadius:1,noise:0,vignette:0,vigMid:50,vigFeather:50,grain:0,grainSize:25});
 const DEV_ID=JSON.stringify(DEV0());const devIsId=d=>JSON.stringify(d)===DEV_ID;
 function curveFn(pts){const p=pts.slice().sort((a,b)=>a[0]-b[0]),m=p.length,xs=p.map(q=>q[0]),ys=p.map(q=>q[1]);const dx=[],ms=[];for(let i=0;i<m-1;i++){dx[i]=xs[i+1]-xs[i];ms[i]=dx[i]>1e-6?(ys[i+1]-ys[i])/dx[i]:0}
@@ -8,6 +8,24 @@ function curveFn(pts){const p=pts.slice().sort((a,b)=>a[0]-b[0]),m=p.length,xs=p
   const c2=[],c3=[];for(let i=0;i<m-1;i++){const c=c1[i],inv=1/(dx[i]||1),cm=c+c1[i+1]-2*ms[i];c2[i]=(ms[i]-c-cm)*inv;c3[i]=cm*inv*inv}
   return x=>{if(x<=xs[0])return ys[0];if(x>=xs[m-1])return ys[m-1];let i=0;while(i<m-2&&x>xs[i+1])i++;const t=x-xs[i];return clamp(ys[i]+c1[i]*t+c2[i]*t*t+c3[i]*t*t*t,0,1)}}
 const isIdCurve=p=>p.length===2&&p[0][0]===0&&p[0][1]===0&&p[1][0]===1&&p[1][1]===1;
+/* courbe par zones (comme la courbe paramétrique de Lightroom) : pcurve = [ombres, tons sombres, tons clairs, hautes lumières (-100..100), séparations 1, 2, 3 (0..100)].
+   Chaque zone pousse une bosse douce centrée sur elle et qui déborde à moitié sur ses voisines ; noir et blanc restent en place, la courbe reste croissante. */
+const PC0=[0,0,0,0,25,50,75],pcMap=new Map();
+const pcBounds=p=>{const s1=clamp(p[4],5,90)/100,s2=clamp(Math.max(p[5],p[4]+5),10,90)/100,s3=clamp(Math.max(p[6],p[5]+5),15,95)/100;return[0,s1,s2,s3,1]};
+const isIdPC=p=>!p||!(p[0]||p[1]||p[2]||p[3]);
+function pcurveFn(p){if(isIdPC(p))return null;const key=p.join();let f=pcMap.get(key);if(f)return f;
+  const B=pcBounds(p),N=1024,T=new Float32Array(N+1);
+  for(let i=0;i<=N;i++){const x=i/N,e=1-Math.pow(1-2*x,4);let dy=0;for(let k=0;k<4;k++){if(!p[k])continue;const a=B[k],b=B[k+1],c=(a+b)/2,hw=Math.max(b-a,0.08),u=(x-c)/hw;if(Math.abs(u)<1){const w=1-u*u;dy+=p[k]/100*0.24*w*w}}
+    let y=clamp(x+dy*e,0,1);if(i&&y<T[i-1])y=T[i-1];T[i]=y}
+  f=x=>{if(x<=0)return T[0];if(x>=1)return T[N];const q=x*N,i=q|0;return T[i]+(T[i+1]-T[i])*(q-i)};
+  if(pcMap.size>24)pcMap.delete(pcMap.keys().next().value);pcMap.set(key,f);return f}
+/* courbe de luminosité : agit sur la luminance seule, sans déplacer saturation ni teinte.
+   Les canaux sont mis à l'échelle (rapport plafonné pour ne pas faire exploser le bruit de couleur des noirs), le reste s'ajoute en gris ;
+   un pixel qui dépasserait le blanc perd un peu de couleur au lieu de changer de teinte. Même calcul dans le shader (0050). */
+function lumaApply(c,y2){const y=0.2126*c[0]+0.7152*c[1]+0.0722*c[2],k=y>1e-5?Math.min(4,y2/y):1;let r=c[0]*k,g=c[1]*k,b=c[2]*k;const a=y2-(0.2126*r+0.7152*g+0.0722*b);r+=a;g+=a;b+=a;
+  const mx=Math.max(r,g,b);if(mx>1&&mx-y2>1e-6){const f=(1-y2)/(mx-y2);r=y2+(r-y2)*f;g=y2+(g-y2)*f;b=y2+(b-y2)*f}const mn=Math.min(r,g,b);if(mn<0&&y2-mn>1e-6){const f=y2/(y2-mn);r=y2+(r-y2)*f;g=y2+(g-y2)*f;b=y2+(b-y2)*f}c[0]=r;c[1]=g;c[2]=b;return c}
+/* tout ce qui entre dans les tables tonales (getLUTs) : sert de clé de cache, côté processeur comme côté carte graphique */
+const lutKeyOf=dv=>JSON.stringify([dv.temp,dv.tint,dv.exposure,dv.contrast,dv.highlights,dv.shadows,dv.whites,dv.blacks,dv.dehaze,dv.curve,dv.lcurve,dv.pcurve]);
 const lutMap=new Map();
 var getLUTs; /* défini dans 0830-reglages-developper-panel.js */
 const HSL_C=[0,30,60,120,180,240,275,310];const hslMap=new Map();
@@ -26,12 +44,13 @@ function devParams(dv,o){const short=Math.min(o.docW,o.docH),sc=o.scale;const p=
 function maxSigma(dv,docW,docH,scale){if(!dv)return 0;let s=0;if(dv.clarity)s=Math.max(s,Math.min(docW,docH)*0.012*scale);if(dv.texture)s=Math.max(s,3.5*scale);if(dv.sharpen)s=Math.max(s,dv.sharpRadius*scale);if(dv.noise)s=Math.max(s,1.6*scale);return s}
 /* CPU version (fallback and small thumbnails) */
 function lerpL(L,v){if(v<=0)return L[0];if(v>=1)return L[4095];const f=v*4095,i=f|0;return L[i]+(L[i+1]-L[i])*(f-i)}
-function developCPU(img,dv,o,mask,opacity){const FLT=img.data instanceof Float32Array,d=img.data,W=img.width,Hh=img.height,N=W*Hh;const orig=(mask||opacity<1)?d.slice():null;const [Lr,Lg,Lb]=getLUTs(dv),P=devParams(dv,o);
+function developCPU(img,dv,o,mask,opacity){const FLT=img.data instanceof Float32Array,d=img.data,W=img.width,Hh=img.height,N=W*Hh;const orig=(mask||opacity<1)?d.slice():null;const LT=getLUTs(dv),[Lr,Lg,Lb]=LT,LY=LT.luma,cc=[0,0,0],P=devParams(dv,o);
   let Y=null,Bc,Bt,Bs,Bn,Bnr,Bng,Bnb;if(P.cl||P.tx||P.sp||P.nr){Y=new Float32Array(N);for(let i=0,j=0;i<N;i++,j+=4)Y[i]=(0.2126*d[j]+0.7152*d[j+1]+0.0722*d[j+2])/255;if(P.cl)Bc=gaussF(Y,W,Hh,P.sigC);if(P.tx)Bt=gaussF(Y,W,Hh,P.sigT);if(P.sp)Bs=gaussF(Y,W,Hh,P.sigS);if(P.nr){Bn=gaussF(Y,W,Hh,P.sigN);const chn=k=>{const a=new Float32Array(N);for(let i=0,j=k;i<N;i++,j+=4)a[i]=d[j]/255;return gaussF(a,W,Hh,P.sigN)};Bnr=chn(0);Bng=chn(1);Bnb=chn(2)}}
   const HT=getHSLT(dv),doSat=P.sat||P.vib||P.dhs,sc=o.scale,hw=o.docW/2,hh=o.docH/2;
   for(let y=0,i=0;y<Hh;y++){const vy=((y+0.5-o.oy)/sc-hh)/hh,vy2=vy*vy,docY=(y+0.5-o.oy)/sc;for(let x=0;x<W;x++,i++){const j=i*4;let r=d[j]/255,g=d[j+1]/255,b=d[j+2]/255;
     if(Y){const yy=Y[i];let dy=0;if(P.cl){const m=1-Math.abs(2*yy-1);dy+=P.cl*1.1*(yy-Bc[i])*(0.25+0.75*m)}if(P.tx)dy+=P.tx*1.3*(yy-Bt[i]);if(P.sp)dy+=P.sp*1.8*(yy-Bs[i]);if(P.nr){const df=yy-Bn[i],e=Math.min(1,Math.abs(df)*14);dy-=P.nr*df*(1-e);const bl=0.2126*Bnr[i]+0.7152*Bng[i]+0.0722*Bnb[i],cr=r-yy,cg=g-yy,cb2=b-yy,br=Bnr[i]-bl,bg=Bng[i]-bl,bb=Bnb[i]-bl,dc=Math.hypot(cr-br,cg-bg,cb2-bb),tt=clamp((dc-0.04)/0.08,0,1),wn=Math.min(1,P.nr*1.2)*(1-tt*tt*(3-2*tt));r+=(br-cr)*wn;g+=(bg-cg)*wn;b+=(bb-cb2)*wn}r+=dy;g+=dy;b+=dy}
     r=lerpL(Lr,r);g=lerpL(Lg,g);b=lerpL(Lb,b);
+    if(LY){cc[0]=r;cc[1]=g;cc[2]=b;lumaApply(cc,lerpL(LY,0.2126*r+0.7152*g+0.0722*b));r=cc[0];g=cc[1];b=cc[2]}
     if(doSat){const l=0.2126*r+0.7152*g+0.0722*b;let f=1+P.sat+P.dhs;if(P.vib){const mx=Math.max(r,g,b),mn=Math.min(r,g,b);f+=P.vib*(1-(mx-mn))*(P.vib>0?1.1:1)}if(f<0)f=0;r=l+(r-l)*f;g=l+(g-l)*f;b=l+(b-l)*f}
     if(HT){r=clamp(r,0,1);g=clamp(g,0,1);b=clamp(b,0,1);const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;if(mx-mn>1e-4){const dd=mx-mn,s=l>0.5?dd/(2-mx-mn):dd/(mx+mn);let h=mx===r?(g-b)/dd+(g<b?6:0):mx===g?(b-r)/dd+2:(r-g)/dd+4;h*=60;const hi=Math.min(359,h|0),w=Math.min(1,s*2.2);
       let h2=h+HT.H[hi]*w;if(h2<0)h2+=360;if(h2>=360)h2-=360;const sa=HT.Sa[hi],c=hsl2rgbA(h2/360,clamp(s*(1+Math.max(sa,0)),0,1),clamp(l*(1+HT.Lu[hi]*w),0,1));r=c[0];g=c[1];b=c[2];if(sa<0){const yy=0.2126*r+0.7152*g+0.0722*b,f=1+sa;r=yy+(r-yy)*f;g=yy+(g-yy)*f;b=yy+(b-yy)*f}}}

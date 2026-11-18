@@ -24,6 +24,7 @@ void main(){vec4 s=texture(uSrc,vUv);vec3 c=s.rgb,orig=c;
   if((uF&8)!=0){vec3 bn=texture(uBn,vUv).rgb;float df=y-dot(bn,LW);float e=min(1.,abs(df)*14.);dy-=uNr*df*(1.-e);vec3 cc=c-y,bc=bn-dot(bn,LW);c+=(bc-cc)*min(1.,uNr*1.2)*(1.-smoothstep(.04,.12,length(cc-bc)));}
   c+=dy;}
  c=vec3(lut(0,c.r),lut(1,c.g),lut(2,c.b));
+ if((uF&1024)!=0){float y=dot(c,LW),y2=lut(3,y);float k=y>1e-5?min(4.,y2/y):1.;c*=k;c+=y2-dot(c,LW);float mx=max(c.r,max(c.g,c.b));if(mx>1.&&mx-y2>1e-6)c=y2+(c-y2)*((1.-y2)/(mx-y2));float mn=min(c.r,min(c.g,c.b));if(mn<0.&&y2-mn>1e-6)c=y2+(c-y2)*(y2/(y2-mn));}
  if((uF&16)!=0){float l=dot(c,LW);float f=1.+uSat+uDhs;if(uVib!=0.){float mx=max(c.r,max(c.g,c.b)),mn=min(c.r,min(c.g,c.b));f+=uVib*(1.-(mx-mn))*(uVib>0.?1.1:1.);}c=l+(c-l)*max(f,0.);}
  if((uF&32)!=0){c=clamp(c,0.,1.);vec3 h=rgb2hsl(c);if(h.y>0.){int hi=min(359,int(h.x*360.));vec4 t=texelFetch(uHsl,ivec2(hi,0),0);float w=min(1.,h.y*2.2);
    float h2=fract(h.x+t.r*w/360.);c=hsl2rgb(vec3(h2,clamp(h.y*(1.+max(t.g,0.)),0.,1.),clamp(h.z*(1.+t.b*w),0.,1.)));if(t.g<0.){float yy=dot(c,LW);c=mix(vec3(yy),c,1.+t.g);}}}
@@ -56,12 +57,12 @@ void main(){vec4 s=texture(uSrc,vUv);vec3 c=s.rgb,orig=c;
     bindT(0,tSrc);if(FL){gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,G.flin?gl.RGBA32F:gl.RGBA16F,W,H,0,gl.RGBA,gl.FLOAT,src.f32);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true)}else gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);
     if(mask){bindT(3,tMask);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,mask)}else bindT(3,tOne);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
-    const L=getLUTs(dv),lk=JSON.stringify([dv.temp,dv.tint,dv.exposure,dv.contrast,dv.highlights,dv.shadows,dv.whites,dv.blacks,dv.dehaze,dv.curve]);bindT(1,tLut);
-    if(lk!==lutKey){const a=new Float32Array(4096*4);for(let i=0;i<4096;i++){a[i*4]=L[0][i];a[i*4+1]=L[1][i];a[i*4+2]=L[2][i];a[i*4+3]=1}gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,4096,1,0,gl.RGBA,gl.FLOAT,a);lutKey=lk}
+    const L=getLUTs(dv),lk=lutKeyOf(dv);bindT(1,tLut);
+    if(lk!==lutKey){const a=new Float32Array(4096*4);for(let i=0;i<4096;i++){a[i*4]=L[0][i];a[i*4+1]=L[1][i];a[i*4+2]=L[2][i];a[i*4+3]=L.luma?L.luma[i]:i/4095}gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,4096,1,0,gl.RGBA,gl.FLOAT,a);lutKey=lk}
     const HT=getHSLT(dv);bindT(2,tHsl);const hk=dv.hslH.join()+'|'+dv.hslS.join()+'|'+dv.hslL.join();if(HT&&hk!==hslKey){const a=new Float32Array(360*4);for(let i=0;i<360;i++){a[i*4]=HT.H[i];a[i*4+1]=HT.Sa[i];a[i*4+2]=HT.Lu[i];a[i*4+3]=1}gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,360,1,0,gl.RGBA,gl.FLOAT,a);hslKey=hk}
     const p=devParams(dv,o);let F=0;const bl=[];
     if(p.cl){F|=1;bl[4]=blur(tSrc,W,H,p.sigC,'c')}if(p.tx){F|=2;bl[5]=blur(tSrc,W,H,p.sigT,'t')}if(p.sp){F|=4;bl[6]=blur(tSrc,W,H,p.sigS,'s')}if(p.nr){F|=8;bl[7]=blur(tSrc,W,H,p.sigN,'n')}
-    if(p.sat||p.vib||p.dhs)F|=16;if(HT)F|=32;if(p.grade)F|=64;if(p.vg)F|=128;if(p.gr)F|=256;if(mask)F|=512;
+    if(p.sat||p.vib||p.dhs)F|=16;if(HT)F|=32;if(p.grade)F|=64;if(p.vg)F|=128;if(p.gr)F|=256;if(mask)F|=512;if(L.luma)F|=1024;
     bindT(0,tSrc);bindT(1,tLut);bindT(2,tHsl);bindT(3,mask?tMask:tOne);for(let u=4;u<8;u++)bindT(u,bl[u]||tOne);
     const pr=P.dev,U=pr.u;gl.useProgram(pr);['uSrc','uLut','uHsl','uMask','uBc','uBt','uBs','uBn'].forEach((n,i)=>U[n]&&gl.uniform1i(U[n],i));
     gl.uniform1i(U.uF,F);const f1=(n,v)=>U[n]&&gl.uniform1f(U[n],v);f1('uCl',p.cl);f1('uTx',p.tx);f1('uSp',p.sp);f1('uNr',p.nr);f1('uSat',p.sat);f1('uVib',p.vib);f1('uDhs',p.dhs);f1('uBal',p.bal);f1('uVg',p.vg);f1('uR0',p.r0);f1('uR1',p.r1);f1('uGr',p.gr);f1('uGs',p.gs);f1('uOp',opacity);f1('uSc',o.scale);

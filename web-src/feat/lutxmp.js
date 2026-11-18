@@ -18,7 +18,8 @@
        SplitToningShadowHue/Saturation, SplitToningHighlightHue/Saturation, SplitToningBalance -> shH/shS, hiH/hiS, balance
        ColorGradeMidtoneHue/Sat -> midH/midS
        PostCropVignetteAmount/Midpoint/Feather -> vignette, vigMid, vigFeather      GrainAmount/GrainSize -> grain, grainSize
-     Everything else (parametric curve, colour-grade luminance/global/blending, lens, calibration, masks, embedded RGBTable looks...) is counted as ignored. */
+     Parametric* -> pcurve (courbe par zones).
+     Everything else (colour-grade luminance/global/blending, lens, calibration, masks, embedded RGBTable looks...) is counted as ignored. */
 (function(){
 'use strict';
 const LK={items:new Map(),loaded:false,_p:null,warned:new Set()};
@@ -167,6 +168,8 @@ function parseXmp(text,fname){
   const curve=(key,ch)=>{const v=kv.get(key);if(!Array.isArray(v))return;const pts=v.map(s=>s.split(/[,\s]+/).map(Number)).filter(p=>p.length>=2&&isFinite(p[0])&&isFinite(p[1])).map(p=>[clamp(p[0]/255,0,1),clamp(p[1]/255,0,1)]).sort((a,b)=>a[0]-b[0]);
     const u=[];for(const p of pts)if(!u.length||p[0]>u[u.length-1][0]+1e-4)u.push(p);if(u.length>=2){dv.curve[ch]=u;done.add(key)}};
   curve('ToneCurvePV2012','rgb');curve('ToneCurvePV2012Red','r');curve('ToneCurvePV2012Green','g');curve('ToneCurvePV2012Blue','b');
+  /* courbe paramétrique -> courbe par zones (mêmes curseurs, mêmes séparations) */
+  [['ParametricShadows',0,-100,100],['ParametricDarks',1,-100,100],['ParametricLights',2,-100,100],['ParametricHighlights',3,-100,100],['ParametricShadowSplit',4,5,90],['ParametricMidtoneSplit',5,10,90],['ParametricHighlightSplit',6,15,95]].forEach(([k,i,lo,hi])=>{const x=f(k);if(x!=null){dv.pcurve[i]=clamp(x,lo,hi);done.add(k)}});
   BANDS.forEach((b,i)=>{[['HueAdjustment','hslH'],['SaturationAdjustment','hslS'],['LuminanceAdjustment','hslL']].forEach(([p,a])=>{const k=p+b,x=f(k);if(x!=null){dv[a][i]=clamp(x,-100,100);done.add(k)}})});
   set('SplitToningShadowHue','shH',1,0,360);set('SplitToningShadowSaturation','shS',1,0,100);set('SplitToningHighlightHue','hiH',1,0,360);set('SplitToningHighlightSaturation','hiS',1,0,100);set('SplitToningBalance','balance');
   set('ColorGradeMidtoneHue','midH',1,0,360);set('ColorGradeMidtoneSat','midS',1,0,100);
