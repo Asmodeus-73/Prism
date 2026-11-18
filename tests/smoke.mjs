@@ -685,10 +685,23 @@ await test('lueur : les cinq styles éclairent les zones claires, sans erreur, e
   const r=await ev(async()=>{insertLayer(newAdjust('Lueur'),'Lueur',true);const L=AL();const mean=async b=>{const old=S.doc.bits;S.doc.bits=b;S.docVer++;try{const c=b===16?await renderDoc16(0.2):await renderDoc(0.2);const d=c.data||(c.canvas||c).getContext('2d').getImageData(0,0,c.width,c.height).data,k=d instanceof Float32Array?255:d instanceof Uint16Array?1/257:1;let s=0;for(let i=0;i<d.length;i+=4)s+=d[i]+d[i+1]+d[i+2];return s/(d.length/4)*k}finally{S.doc.bits=old}};
     const a=await mean(8),out=[];for(let st=0;st<5;st++){L.dev.fx={glow:{on:true,style:st,k:80,dir:30}};out.push(await mean(8)-a)}L.dev.fx={glow:{on:true,style:0,k:80}};const b16=await mean(16)-a;return{out,b16}});
   if(r.out.some(v=>!(v>0.2))||!(r.b16>0.2))throw new Error(JSON.stringify(r))});
-await test('vectorscope : un clic sur l’histogramme l’affiche, compte les pixels, un autre clic revient',async()=>{await fresh();await sample();await ev(()=>{try{setHisto(true)}catch(e){}});
-  await page.click('#histo');await page.waitForTimeout(400);const a=await ev(()=>({on:PrismScope.on,tot:PrismScope.pts&&PrismScope.pts.tot,h:document.getElementById('histo').height}));
-  await page.click('#histo');await page.waitForTimeout(200);const b=await ev(()=>({on:PrismScope.on,h:document.getElementById('histo').height}));
-  if(!a.on||!(a.tot>100)||a.h!==400||b.on||b.h!==172)throw new Error(JSON.stringify({a,b}))});
+await test('histogramme : dessiné à sa taille affichée, couches et écrêtage justes',async()=>{await fresh();await sample();await ev(()=>{try{setHisto(true)}catch(e){}});
+  /* une image connue : moitié noire, moitié rouge pur ; le décompte doit tomber juste */
+  const r=await ev(()=>{const c=document.createElement('canvas');c.width=40;c.height=10;const g=c.getContext('2d');g.fillStyle='#000';g.fillRect(0,0,20,10);g.fillStyle='#ff0000';g.fillRect(20,0,20,10);
+    const h=histoCount(g.getImageData(0,0,40,10)),cv=document.getElementById('histo'),pr=Math.min(3,devicePixelRatio||1);histoNow();
+    return{n:h.n,lo:h.lo,r255:h.R[255],g0:h.G[0],L54:h.L[54],size:[cv.width,cv.height],want:[Math.round(cv.clientWidth*pr),Math.round(cv.clientHeight*pr)]}});
+  if(r.n!==400||r.lo!==200||r.r255!==200||r.g0!==400||r.L54!==200||r.size.join()!==r.want.join())throw new Error(JSON.stringify(r))});
+await test('histogramme : un clic ouvre la fiche d’infos (couches, survol, Échap), le bouton rond affiche le vectorscope',async()=>{await fresh();await sample();await ev(()=>{try{setHisto(true)}catch(e){}});await page.waitForTimeout(300);
+  await page.click('#histo');await page.waitForTimeout(300);
+  const a=await ev(()=>{const el=document.getElementById('histoInfo'),r=el.getBoundingClientRect(),t=el.querySelector('table');return{open:!el.hidden,vs:PrismScope.on,rows:el.querySelectorAll('tbody tr').length,mean:el.querySelector('tbody td').textContent,
+    inside:r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight,fits:t.scrollWidth<=el.clientWidth}});
+  const box=await page.locator('#histoInfo canvas').boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.waitForTimeout(150);
+  const read=await ev(()=>document.querySelector('#histoInfo .hi-read').textContent);
+  await page.click('#histoInfo [data-hi-ch=L]');const tab=await ev(()=>document.querySelector('#histoInfo [data-hi-ch=L]').classList.contains('on'));
+  await page.keyboard.press('Escape');const closed=await ev(()=>document.getElementById('histoInfo').hidden);
+  await page.click('#vsToggle');await page.waitForTimeout(400);const b=await ev(()=>{const c=document.getElementById('histo');return{on:PrismScope.on,tot:PrismScope.pts&&PrismScope.pts.tot,round:Math.abs(c.width/c.height-c.clientWidth/c.clientHeight)<0.02}});
+  await page.click('#vsToggle');await page.waitForTimeout(300);const c=await ev(()=>PrismScope.on);
+  if(!a.open||a.vs||a.rows!==6||!/\d/.test(a.mean)||!a.inside||!a.fits||!/^Niveau 12[78]/.test(read)||!tab||!closed||!b.on||!(b.tot>100)||!b.round||c)throw new Error(JSON.stringify({a,read,tab,closed,b,c}))});
 await test('points AF : FocusLocation Sony lu dans l’EXIF et ramené à l’orientation de la photo',async()=>{const r=await ev(()=>{
     /* un EXIF minimal (II) : IFD0 Make, Model, Orientation=6, ExifIFD -> MakerNote « SONY DSC » avec 0x2027 = 6000, 4000, 1500, 1000 */
     const b=[],u16=v=>b.push(v&255,v>>8),u32=v=>b.push(v&255,(v>>8)&255,(v>>16)&255,v>>>24);b.push(0x49,0x49,42,0);u32(8);
