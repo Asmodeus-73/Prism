@@ -96,10 +96,13 @@ function tatEnd(dr){const d=dev();S.curveClip=false;window.PC_HOT=null;if(!d){re
 
 function armUI(){if(!ADJ()){S.curveTAT=false;S.curvePick=null}curveToolsUI();setCursor();requestRender();if(!S.curveTAT&&!S.curvePick){HOV=null;drawCurve()}}
 const armed=()=>(S.curveTAT||S.curvePick)&&ADJ()&&!S.wbPick;
-const _od=onDown;onDown=function(e,p){if(armed()&&e.button===0&&!S.spaceDown){if(S.curvePick){pickAt(p);S.curvePick=null;armUI();return}tatStart(e,p);return}return _od.apply(this,arguments)};
-const _om=onMove;onMove=function(e,p){const dr=S.drag;if(dr&&dr.type==='curvetat'){tatMove(e,p);return}
-  if(!dr&&armed()){const now=performance.now();if(now-hovT>40){hovT=now;try{const s=sampleAt(p);HOV=s?s.tab[curveCh]:null;drawCurve()}catch(_){}}}return _om.apply(this,arguments)};
-const _ou=onUp;onUp=function(){const dr=S.drag;if(dr&&dr.type==='curvetat'){S.drag=null;tatEnd(dr);return}return _ou.apply(this,arguments)};
+/* écouteurs du canevas en capture : passent avant les outils (zoom, pinceau…) dont les enveloppes de onDown seraient servies d'abord */
+view.addEventListener('pointerdown',e=>{if(!S.doc||!armed()||e.button!==0||S.spaceDown)return;e.stopImmediatePropagation();e.preventDefault();try{view.setPointerCapture(e.pointerId)}catch(_){}const p=evPos(e);
+  if(S.curvePick){pickAt(p);S.curvePick=null;armUI();return}tatStart(e,p);requestRender()},true);
+view.addEventListener('pointermove',e=>{const dr=S.drag;if(dr&&dr.type==='curvetat'){e.stopImmediatePropagation();const p=evPos(e);S.pointer={cx:p.cx,cy:p.cy,dx:p.x,dy:p.y,inside:true};tatMove(e,p);requestRender();return}
+  if(!dr&&S.doc&&armed()){const now=performance.now();if(now-hovT>40){hovT=now;try{const s=sampleAt(evPos(e));HOV=s?s.tab[curveCh]:null;drawCurve()}catch(_){}}}},true);
+const tatUp=e=>{const dr=S.drag;if(dr&&dr.type==='curvetat'){e.stopImmediatePropagation();S.drag=null;tatEnd(dr)}};
+view.addEventListener('pointerup',tatUp,true);view.addEventListener('pointercancel',tatUp,true);
 const _sc=setCursor;setCursor=function(){_sc.apply(this,arguments);if(armed())view.style.cursor=S.curvePick?'crosshair':'ns-resize'};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(S.curveTAT||S.curvePick)){S.curveTAT=false;S.curvePick=null;armUI()}},true);
 /* changer de calque ou de document désarme les outils */

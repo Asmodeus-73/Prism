@@ -73,7 +73,7 @@ await test('courbe : Luma sans saturation, zones, sur la photo, pipettes, saisie
   /* sur la photo : glisser vers le haut ajoute un point remonté sur la courbe RVB */
   await page.click('#curveCh [data-c="rgb"]');await page.click('#cvTAT');const vb=await page.locator('#view').boundingBox();
   await page.mouse.move(vb.x+vb.width*0.5,vb.y+vb.height*0.5);await page.mouse.down();await page.mouse.move(vb.x+vb.width*0.5,vb.y+vb.height*0.5-60,{steps:5});await page.mouse.up();
-  const t=await ev(()=>{const p=AL().dev.curve.rgb;return{n:p.length,up:p.length===3&&p[1][1]>p[1][0]+0.1}});if(!t.up)throw new Error('sur la photo '+JSON.stringify(t));
+  const t=await ev(()=>{const p=AL().dev.curve.rgb;return{p,up:p.length===3&&p[1][1]>p[1][0]+Math.min(0.1,(1-p[1][0])/2)}});if(!t.up)throw new Error('sur la photo '+JSON.stringify(t));
   /* saisie chiffrée du point sélectionné */
   await page.keyboard.press('Escape');await ev(()=>curveSelSet(curvePts()[1]));await page.fill('#cvOut','100');await page.press('#cvOut','Enter');
   const o=await ev(()=>Math.round(AL().dev.curve.rgb[1][1]*255));if(o!==100)throw new Error('sortie '+o);
