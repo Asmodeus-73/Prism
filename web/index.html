@@ -1929,7 +1929,10 @@ async function readZip(blob){const b=new Uint8Array(await blob.arrayBuffer()),v=
   for(let i=0;i<n;i++){const method=v.getUint16(p+10,true),csz=v.getUint32(p+20,true),nl=v.getUint16(p+28,true),xl=v.getUint16(p+30,true),cl=v.getUint16(p+32,true),lo=v.getUint32(p+42,true);const name=dec.decode(b.subarray(p+46,p+46+nl));
     const lnl=v.getUint16(lo+26,true),lxl=v.getUint16(lo+28,true),st=lo+30+lnl+lxl,raw=b.subarray(st,st+csz);out[name]={method,raw};p+=46+nl+xl+cl}
   return{names:Object.keys(out),async get(name){const f=out[name];if(!f)return null;return f.method===8?inflateRaw(f.raw):f.raw.slice()}}}
-async function saveFile(blob,fname){await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Fichier enregistré : '+fname);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}}}
+/* nom de fichier valable partout : un nom de document peut contenir / : * ? (Renommer le document…), que Windows et le Mac refusent dans la fenêtre d'enregistrement */
+function safeFileName(n){let s=String(n||'').replace(/[\\/:*?"<>|\u0000-\u001f]+/g,'-').trim().replace(/[\s.]+$/,'');if(!s)s='photo';if(s.startsWith('.'))s='photo'+s;
+  if(/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(s))s='_'+s;if(s.length>200){const e=(/\.[a-z0-9]{1,5}$/i.exec(s)||[''])[0];s=s.slice(0,200-e.length)+e}return s}
+async function saveFile(blob,fname){fname=safeFileName(fname);await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Fichier enregistré : '+fname);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}}}
   const url=URL.createObjectURL(blob);dialog({title:'Votre fichier est prêt',body:`<p><a class="btn primary" href="${url}" download="${esc(fname)}">Télécharger ${esc(fname)}</a></p><p class="muted">${fmtMo(blob.size)}</p>`,buttons:[{label:'Fermer',onClick:()=>setTimeout(()=>URL.revokeObjectURL(url),1000)}]})}
 async function exportProjectFile(){const d=S.doc;if(!d)return;busy(true,'Préparation du projet…',null);try{d.nosave=false;await flushSave();await saveNow();const m=await IDB.get('projects',d.pid);if(!m)throw new Error('projet non enregistré');const files=[];const seen=new Set();
     for(const k of manifestKeys(m)){if(seen.has(k))continue;seen.add(k);files.push({name:'tiles/'+k+(k===m.thumb?'.jpg':'.png'),data:await IDB.get('blobs',k)})}
@@ -3020,7 +3023,7 @@ exportDialog=async function(){const d=S.doc;if(!d)return;await Promise.all(['ima
       $$('.exf',el).forEach(b=>b.onclick=()=>{if(b.classList.contains('off'))return;st.fmt=b.dataset.f;draw()});$('#exFs',el).onchange=e=>{st.fmt=e.target.value;draw()};draw()},
     buttons:[{label:'Annuler'},{label:'Exporter',primary:true,onClick:el=>{const f=EXF.find(x=>x.id===st.fmt);PREF.set('exFmt',st.fmt);PREF.set('exChroma',st.chroma);PREF.set('exMeta',st.meta);if(f.q)PREF.set('exQ_'+f.id,st.q[f.id]);
       exportAs({...st,q:f.q?st.q[f.id]/100:1},el._scale(),($('#exN',el).value||'photo').replace(/[\\/:*?"<>|]+/g,'-'))}}]})};
-async function saveOut(blob,fname){await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Enregistré : '+fname+' · '+fmtMo(blob.size));return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}console.warn('save',e)}
+async function saveOut(blob,fname){fname=safeFileName(fname);await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Enregistré : '+fname+' · '+fmtMo(blob.size));return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}console.warn('save',e)}
     try{const z=await makeZip([{name:fname,data:new Uint8Array(await blob.arrayBuffer())}]);await dlNS.save({filename:fname+'.zip',data:z});toast('Enregistré dans un .zip : '+fname);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}}}
   await saveFile(blob,fname)}
 async function exportAs(st,scale,name){const d=S.doc,f=EXF.find(x=>x.id===st.fmt),fname=name+'.'+f.ext;
@@ -4476,7 +4479,7 @@ const _sf=stampFor;stampFor=function(size,hard,color){const t=S.tool;if(t!=='bru
  else if(tip==='chalk'||tip==='splat'){const R=rnd(tip==='chalk'?11:5);g.fillStyle='#000';const n=tip==='chalk'?Math.round(s*s*.5):14;for(let i=0;i<n;i++){const a=R()*6.283,rr=Math.sqrt(R())*s*.45,r=tip==='chalk'?Math.max(.6,s*.012):s*(.04+R()*.1);g.globalAlpha=tip==='chalk'?.25+R()*.75:1;g.beginPath();g.arc(s/2+Math.cos(a)*rr,s/2+Math.sin(a)*rr,r,0,7);g.fill()}}
  else if(String(tip).startsWith('c:')){const im=tipLoad(+tip.slice(2));if(im)g.drawImage(im,0,0,s,s);else{g.fillStyle='#000';g.beginPath();g.arc(s/2,s/2,s/2,0,7);g.fill()}}
  else{g.fillStyle='#000';g.beginPath();g.arc(s/2,s/2,s/2,0,7);g.fill()}
- g.restore();if(hard<.95&&!String(tip).startsWith('c:')&&'filter'in g&&tip!=='chalk'&&tip!=='splat'){const t2=mk(s,s),g2=cx(t2);g2.filter=`blur(${Math.round((1-hard)*s*.12)}px)`;g2.drawImage(c,0,0);g.clearRect(0,0,s,s);g.drawImage(t2,0,0)}
+ g.restore();if(hard<.95&&!String(tip).startsWith('c:')&&tip!=='chalk'&&tip!=='splat'){const t2=blurCanvas(c,Math.round((1-hard)*s*.12));g.clearRect(0,0,s,s);g.drawImage(t2,0,0)}
  g.globalCompositeOperation='source-in';g.fillStyle=col;g.fillRect(0,0,s,s);return c};
 /* Photoshop brushes (.abr, versions 1, 2, 6 and later): the sampled tips, as grey levels (255 = paint). Computed round tips are skipped. */
 function parseABR(u8){const v=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),out=[];let p=0,px=0;const room=(w,h)=>out.length<12&&(px+=w*h)<=64e6;const u16=()=>{const x=v.getUint16(p);p+=2;return x},u32=()=>{const x=v.getUint32(p);p+=4;return x},i32=()=>{const x=v.getInt32(p);p+=4;return x};
@@ -5051,9 +5054,14 @@ Object.assign(FILTERS,{
  oil:{name:'Peinture à l’huile',params:[P('r','Taille du pinceau',1,20,1,6,' px',1),P('n','Niveaux',4,40,1,20,'')],
   run:(s,p)=>{const w0=s.width,h0=s.height,k=Math.min(1,2400/Math.max(w0,h0)),src=k<1?resample(s,Math.round(w0*k),Math.round(h0*k)):s,w=src.width,h=src.height,r=Math.max(1,Math.round(p.r*k)),L=p.n,sd=px(src).data,o=new ImageData(w,h),a=o.data;
    const lev=new Uint8Array(w*h);for(let i=0;i<w*h;i++)lev[i]=Math.min(L-1,Math.floor(luma(sd,i*4)/256*L));const cnt=new Uint32Array(L),sr=new Uint32Array(L),sg=new Uint32Array(L),sb=new Uint32Array(L);
-   for(let y=0;y<h;y++)for(let x=0;x<w;x++){cnt.fill(0);sr.fill(0);sg.fill(0);sb.fill(0);
-     for(let yy=Math.max(0,y-r);yy<=Math.min(h-1,y+r);yy++)for(let xx=Math.max(0,x-r);xx<=Math.min(w-1,x+r);xx++){const q=yy*w+xx,l=lev[q],j=q*4;cnt[l]++;sr[l]+=sd[j];sg[l]+=sd[j+1];sb[l]+=sd[j+2]}
-     let bl=0;for(let l=1;l<L;l++)if(cnt[l]>cnt[bl])bl=l;const j=(y*w+x)*4,n=cnt[bl]||1;a[j]=sr[bl]/n;a[j+1]=sg[bl]/n;a[j+2]=sb[bl]/n;a[j+3]=sd[j+3]}
+   /* fenêtre glissante : en avançant d'un pixel, on ajoute la colonne qui entre et on retire celle qui sort
+      (2r+1 pixels au lieu de (2r+1)², même résultat ; à 20 px l'ancien calcul bloquait l'éditeur plusieurs dizaines de secondes) */
+   const col=(xx,y0,y1,sg1)=>{for(let yy=y0;yy<=y1;yy++){const q=yy*w+xx,l=lev[q],j=q*4;cnt[l]+=sg1;sr[l]+=sg1*sd[j];sg[l]+=sg1*sd[j+1];sb[l]+=sg1*sd[j+2]}};
+   for(let y=0;y<h;y++){cnt.fill(0);sr.fill(0);sg.fill(0);sb.fill(0);const y0=Math.max(0,y-r),y1=Math.min(h-1,y+r);
+     for(let xx=0;xx<=Math.min(w-1,r);xx++)col(xx,y0,y1,1);
+     for(let x=0;x<w;x++){
+       let bl=0;for(let l=1;l<L;l++)if(cnt[l]>cnt[bl])bl=l;const j=(y*w+x)*4,n=cnt[bl]||1;a[j]=sr[bl]/n;a[j+1]=sg[bl]/n;a[j+2]=sb[bl]/n;a[j+3]=sd[j+3];
+       if(x-r>=0)col(x-r,y0,y1,-1);if(x+r+1<w)col(x+r+1,y0,y1,1)}}
    const out=put(w,h,o);return k<1?resample(out,w0,h0):out}},
 });
 /* « Mélange » se choisit dans une liste, pas avec un curseur */
@@ -5769,8 +5777,9 @@ function blendIfDialog(){const d=S.doc,L=AL();if(!L||L.kind!=='pixel'){toast('Ch
 /* ---------- shape mask ---------- */
 function shapeMask(o){const d=S.doc,L=AL();if(!L)return;const W=d.w,H=d.h,m=mk(W,H),g=cx(m);
   const w=W*o.w/100,h=H*o.h/100,x=W*o.x/100-w/2,y=H*o.y/100-h/2;
-  g.fillStyle='#fff';if(o.feather>0)g.filter='blur('+(Math.max(W,H)*o.feather/400)+'px)';
-  g.beginPath();if(o.shape==='ellipse')g.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2);else if(o.shape==='round'){const r=Math.min(w,h)*.22;g.roundRect(x,y,w,h,r)}else g.rect(x,y,w,h);g.fill();g.filter='none';
+  g.fillStyle='#fff';
+  g.beginPath();if(o.shape==='ellipse')g.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2);else if(o.shape==='round'){const r=Math.min(w,h)*.22;g.roundRect(x,y,w,h,r)}else g.rect(x,y,w,h);g.fill();
+  if(o.feather>0){const b=blurCanvas(m,Math.max(W,H)*o.feather/400);g.clearRect(0,0,W,H);g.drawImage(b,0,0)} /* le flou du canevas manque dans Safari avant la 18 : blurCanvas a un repli */
   if(o.invert){const t=mk(W,H),tg=cx(t);tg.fillStyle='#fff';tg.fillRect(0,0,W,H);tg.globalCompositeOperation='destination-out';tg.drawImage(m,0,0);g.clearRect(0,0,W,H);g.drawImage(t,0,0)}
   if(L.mask){g.globalCompositeOperation='destination-in';g.drawImage(L.mask,0,0)}
   delete L.moff;L.mask=m;markComp();pushHistory('Masque de forme');syncAll()}
@@ -7424,13 +7433,13 @@ const _sfP=stampFor;stampFor=function(size,hard,color){const t=S.tool;
  const o=S.opts[t],tip=String(o.tip||'round'),ang=+o.angle||0,rd=+o.round||100;
  if(!(tip==='round'||tip==='square'||tip==='line')||(tip==='round'&&!ang&&rd>=100))return _sfP.apply(this,arguments);
  const s=Math.max(2,Math.ceil(size)),a=ang*Math.PI/180,f=Math.max(.08,rd/100),ca=Math.abs(Math.cos(a)),sa=Math.abs(Math.sin(a));
- const bl=hard<.95&&'filter' in cx(mk(1,1))?Math.round((1-hard)*s*.12):0;
+ const bl=hard<.95?Math.round((1-hard)*s*.12):0;
  const hx=tip==='square'?s*.44:tip==='line'?s*.46:s/2,hy=(tip==='square'?s*.44:tip==='line'?s*.12:s/2)*f;
  const N=Math.max(s,Math.ceil(2*(Math.max(hx*ca+hy*sa,hx*sa+hy*ca)+bl*2.5))+4),c=mk(N,N),g=cx(c);
  g.save();g.translate(N/2,N/2);g.rotate(a);g.scale(1,f);g.fillStyle='#000';
  if(tip==='square')g.fillRect(-s*.44,-s*.44,s*.88,s*.88);else{g.beginPath();if(tip==='line')g.ellipse(0,0,s*.46,s*.12,0,0,7);else g.arc(0,0,s/2,0,7);g.fill()}
  g.restore();
- if(bl){const t2=mk(N,N),g2=cx(t2);g2.filter=`blur(${bl}px)`;g2.drawImage(c,0,0);g.clearRect(0,0,N,N);g.drawImage(t2,0,0)}
+ if(bl){const t2=blurCanvas(c,bl);g.clearRect(0,0,N,N);g.drawImage(t2,0,0)} /* blurCanvas : le filtre du canevas, ou un flou calculé là où il manque (Safari avant la 18) */
  g.globalCompositeOperation='source-in';g.fillStyle=color||'#000000';g.fillRect(0,0,N,N);return c};
 
 /* ---------- "Spray…" dialog: the values were only read when closing (lost with Échap) and the numbers beside the sliders never moved ---------- */
@@ -15728,7 +15737,7 @@ function hideFaces(L,faces,p){const d=S.doc,out=cloneC(L.canvas),g=cx(out),src=L
     else if(p.style==='fill'){fx=mk(cw,ch);const fg=cx(fx);fg.fillStyle=p.fill;fg.fillRect(0,0,cw,ch)}
     else{let b=piece;const r=Math.max(2,Math.max(w,h)*p.strength/100*0.25);b=blurCanvas(b,r);b=blurCanvas(b,r*0.6);fx=b}
     // soft ellipse: the edge fades over a tenth of the face
-    const mask=mk(cw,ch),mg=cx(mask),fe=p.style==='fill'?1:Math.max(1,Math.max(w,h)*0.08);mg.filter=`blur(${fe}px)`;mg.fillStyle='#fff';mg.beginPath();mg.ellipse(x-X+w/2,y-Y+h/2,w/2,h/2,0,0,Math.PI*2);mg.fill();mg.filter='none';
+    const mask=mk(cw,ch),mg=cx(mask),fe=p.style==='fill'?1:Math.max(1,Math.max(w,h)*0.08);mg.fillStyle='#fff';mg.beginPath();mg.ellipse(x-X+w/2,y-Y+h/2,w/2,h/2,0,0,Math.PI*2);mg.fill();{const b=blurCanvas(mask,fe);mg.clearRect(0,0,cw,ch);mg.drawImage(b,0,0)}
     const fg=cx(fx);fg.globalCompositeOperation='destination-in';fg.drawImage(mask,0,0);g.drawImage(fx,X,Y)}
   return out}
 async function facesDialog(p0){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}

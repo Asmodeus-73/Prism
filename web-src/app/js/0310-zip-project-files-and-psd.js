@@ -15,7 +15,10 @@ async function readZip(blob){const b=new Uint8Array(await blob.arrayBuffer()),v=
   for(let i=0;i<n;i++){const method=v.getUint16(p+10,true),csz=v.getUint32(p+20,true),nl=v.getUint16(p+28,true),xl=v.getUint16(p+30,true),cl=v.getUint16(p+32,true),lo=v.getUint32(p+42,true);const name=dec.decode(b.subarray(p+46,p+46+nl));
     const lnl=v.getUint16(lo+26,true),lxl=v.getUint16(lo+28,true),st=lo+30+lnl+lxl,raw=b.subarray(st,st+csz);out[name]={method,raw};p+=46+nl+xl+cl}
   return{names:Object.keys(out),async get(name){const f=out[name];if(!f)return null;return f.method===8?inflateRaw(f.raw):f.raw.slice()}}}
-async function saveFile(blob,fname){await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Fichier enregistré : '+fname);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}}}
+/* nom de fichier valable partout : un nom de document peut contenir / : * ? (Renommer le document…), que Windows et le Mac refusent dans la fenêtre d'enregistrement */
+function safeFileName(n){let s=String(n||'').replace(/[\\/:*?"<>|\u0000-\u001f]+/g,'-').trim().replace(/[\s.]+$/,'');if(!s)s='photo';if(s.startsWith('.'))s='photo'+s;
+  if(/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(s))s='_'+s;if(s.length>200){const e=(/\.[a-z0-9]{1,5}$/i.exec(s)||[''])[0];s=s.slice(0,200-e.length)+e}return s}
+async function saveFile(blob,fname){fname=safeFileName(fname);await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Fichier enregistré : '+fname);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}}}
   const url=URL.createObjectURL(blob);dialog({title:'Votre fichier est prêt',body:`<p><a class="btn primary" href="${url}" download="${esc(fname)}">Télécharger ${esc(fname)}</a></p><p class="muted">${fmtMo(blob.size)}</p>`,buttons:[{label:'Fermer',onClick:()=>setTimeout(()=>URL.revokeObjectURL(url),1000)}]})}
 async function exportProjectFile(){const d=S.doc;if(!d)return;busy(true,'Préparation du projet…',null);try{d.nosave=false;await flushSave();await saveNow();const m=await IDB.get('projects',d.pid);if(!m)throw new Error('projet non enregistré');const files=[];const seen=new Set();
     for(const k of manifestKeys(m)){if(seen.has(k))continue;seen.add(k);files.push({name:'tiles/'+k+(k===m.thumb?'.jpg':'.png'),data:await IDB.get('blobs',k)})}

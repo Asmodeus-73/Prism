@@ -744,6 +744,27 @@ await test('gomme magique : la méthode « IA rapide » (MI-GAN) efface l’obje
     const a=L.canvas.getContext('2d').getImageData(0,0,W,H).data;let ch=0;for(let i=0;i<a.length;i+=4)if(a[i]!==b0[i])ch++;const dir1=LM.dir;
     S.opts.remove.method='ai';await LM.avail();return{pill,ch,dir1,dir2:LM.dir,last:LM.last}});
   if(!/IA rapide/.test(r.pill)||r.dir1!=='migan'||r.dir2!=='lama'||r.ch<100||!r.last||r.last.w!==512)throw new Error(JSON.stringify(r))});
+await test('peinture à l’huile : même résultat que le calcul pixel par pixel, et rapide à 20 px',async()=>{await sample();
+  const r=await ev(()=>{const w=240,h=160,r=7,L=12,s=mk(w,h);cx(s).drawImage(S.doc.layers[0].canvas,0,0,w,h);const od=rx(FILTERS.oil.run(s,{r,n:L})).getImageData(0,0,w,h).data;
+    const sd=rx(s).getImageData(0,0,w,h).data,lev=new Uint8Array(w*h);for(let i=0;i<w*h;i++)lev[i]=Math.min(L-1,Math.floor((sd[i*4]*.299+sd[i*4+1]*.587+sd[i*4+2]*.114)/256*L));
+    const cnt=new Uint32Array(L),sr=new Uint32Array(L),sg=new Uint32Array(L),sb=new Uint32Array(L),ref=new Uint8ClampedArray(w*h*4);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){cnt.fill(0);sr.fill(0);sg.fill(0);sb.fill(0);for(let yy=Math.max(0,y-r);yy<=Math.min(h-1,y+r);yy++)for(let xx=Math.max(0,x-r);xx<=Math.min(w-1,x+r);xx++){const q=yy*w+xx,l=lev[q],j=q*4;cnt[l]++;sr[l]+=sd[j];sg[l]+=sd[j+1];sb[l]+=sd[j+2]}
+      let bl=0;for(let l=1;l<L;l++)if(cnt[l]>cnt[bl])bl=l;const j=(y*w+x)*4,n=cnt[bl]||1;ref[j]=sr[bl]/n;ref[j+1]=sg[bl]/n;ref[j+2]=sb[bl]/n;ref[j+3]=sd[j+3]}
+    let diff=0;for(let i=0;i<od.length;i++)if(od[i]!==ref[i])diff++;
+    const big=mk(1200,800);cx(big).drawImage(S.doc.layers[0].canvas,0,0,1200,800);const t0=performance.now();FILTERS.oil.run(big,{r:20,n:20});return{diff,ms:Math.round(performance.now()-t0)}});
+  if(r.diff||r.ms>4000)throw new Error(JSON.stringify(r))});
+await test('sans filtre de canevas (Safari avant la 18) : pointes douces et masque de forme progressif restent flous',async()=>{await fresh();
+  await ev(()=>{delete CanvasRenderingContext2D.prototype.filter;delete OffscreenCanvasRenderingContext2D.prototype.filter;_FO=undefined});await sample();
+  const r=await ev(()=>{const soft=c=>{const a=rx(c).getImageData(0,0,c.width,c.height).data;let part=0,on=0;for(let i=3;i<a.length;i+=4){if(a[i]>8)on++;if(a[i]>8&&a[i]<230)part++}return on?part/on:0};
+    setTool('brush');const o=S.opts.brush,old={tip:o.tip,angle:o.angle};o.tip='square';o.angle=20;const st=stampFor(80,0.2,'#000000');o.tip=old.tip;o.angle=old.angle;
+    const i=S.doc.layers.findIndex(l=>l.kind==='pixel');S.doc.active=i;PrismC.shapeMask({shape:'ellipse',w:50,h:50,x:50,y:50,feather:20,invert:false});
+    return{fo:filterOK(),stamp:soft(st),mask:soft(AL().mask)}});
+  await fresh();if(r.fo||r.stamp<0.3||r.mask<0.2)throw new Error(JSON.stringify(r))});
+await test('export : un nom de document avec / : ? donne un nom de fichier valable (Windows, Mac)',async()=>{await sample();
+  const r=await ev(async()=>{const got=[];const keep=saveFile;saveFile=async(b,n)=>{got.push(n)};try{S.doc.name='Vacances 12/08: lac?';quickExport('png');await new Promise(r=>setTimeout(r,2500))}finally{saveFile=keep}
+    return{got,names:['a/b:c*?.jpg','  .png',' CON.jpg','x'.repeat(300)+'.tif','Été – lac.jpg'].map(safeFileName)}});
+  const ok=r.got[0]==='Vacances 12-08- lac-.png'&&r.names[0]==='a-b-c-.jpg'&&r.names[1]==='photo.png'&&r.names[2]==='_CON.jpg'&&r.names[3].length===200&&r.names[3].endsWith('.tif')&&r.names[4]==='Été – lac.jpg';
+  if(!ok)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

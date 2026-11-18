@@ -263,8 +263,9 @@ function blendIfDialog(){const d=S.doc,L=AL();if(!L||L.kind!=='pixel'){toast('Ch
 /* ---------- shape mask ---------- */
 function shapeMask(o){const d=S.doc,L=AL();if(!L)return;const W=d.w,H=d.h,m=mk(W,H),g=cx(m);
   const w=W*o.w/100,h=H*o.h/100,x=W*o.x/100-w/2,y=H*o.y/100-h/2;
-  g.fillStyle='#fff';if(o.feather>0)g.filter='blur('+(Math.max(W,H)*o.feather/400)+'px)';
-  g.beginPath();if(o.shape==='ellipse')g.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2);else if(o.shape==='round'){const r=Math.min(w,h)*.22;g.roundRect(x,y,w,h,r)}else g.rect(x,y,w,h);g.fill();g.filter='none';
+  g.fillStyle='#fff';
+  g.beginPath();if(o.shape==='ellipse')g.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2);else if(o.shape==='round'){const r=Math.min(w,h)*.22;g.roundRect(x,y,w,h,r)}else g.rect(x,y,w,h);g.fill();
+  if(o.feather>0){const b=blurCanvas(m,Math.max(W,H)*o.feather/400);g.clearRect(0,0,W,H);g.drawImage(b,0,0)} /* le flou du canevas manque dans Safari avant la 18 : blurCanvas a un repli */
   if(o.invert){const t=mk(W,H),tg=cx(t);tg.fillStyle='#fff';tg.fillRect(0,0,W,H);tg.globalCompositeOperation='destination-out';tg.drawImage(m,0,0);g.clearRect(0,0,W,H);g.drawImage(t,0,0)}
   if(L.mask){g.globalCompositeOperation='destination-in';g.drawImage(L.mask,0,0)}
   delete L.moff;L.mask=m;markComp();pushHistory('Masque de forme');syncAll()}
