@@ -10,7 +10,11 @@ function mipRegion(src,x,y,w,h){const e=MIP.get(src);if(!e||!e.length)return;let
     if(nx1<=nx0||ny1<=ny0)break;const g=cx(n);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.imageSmoothingEnabled=true;g.imageSmoothingQuality='low';
     g.clearRect(nx0,ny0,nx1-nx0,ny1-ny0);g.drawImage(cur,nx0*fx,ny0*fy,(nx1-nx0)*fx,(ny1-ny0)*fy,nx0,ny0,nx1-nx0,ny1-ny0);
     cur=n;x0=nx0;y0=ny0;x1=nx1;y1=ny1}}
+/* les outils qui retouchent le calque sur place (doigt, fluidité, densité) disent quelle zone ils ont changée : la pyramide n'est alors
+   remise à jour que là, au lieu d'être jetée et refaite en entier (sur 24 Mpx, c'est la différence entre 150 ms et 2 ms par coup d'outil). */
+const MIPD=new Map();
+function mipDirty(c,x,y,w,h){if(!c||w<=0||h<=0)return;const d=MIPD.get(c);if(d){d.x0=Math.min(d.x0,x);d.y0=Math.min(d.y0,y);d.x1=Math.max(d.x1,x+w);d.y1=Math.max(d.y1,y+h)}else MIPD.set(c,{x0:x,y0:y,x1:x+w,y1:y+h})}
 function drawMip(g,src,x,y,scale,ok){if(src.__sp){x+=src.__sx;y+=src.__sy}const s=ok?mipLevel(src,scale):src,q=src.__live?g.imageSmoothingQuality:null;if(q)g.imageSmoothingQuality='low';
   if(s===src)g.drawImage(src,x,y);else g.drawImage(s,0,0,s.width,s.height,x,y,src.width,src.height);if(q)g.imageSmoothingQuality=q}
-function mipForget(){const L=AL();if(L&&L.kind==='pixel'){lcv(L)&&MIP.delete(lcv(L));L.mask&&MIP.delete(L.mask)}const st=S.stroke;if(st&&st.layer){lcv(st.layer)&&MIP.delete(lcv(st.layer));st.layer.mask&&MIP.delete(st.layer.mask)}}
+function mipForget(){const kept=new Set();for(const[c,d]of MIPD){if(MIP.has(c)){mipRegion(c,d.x0,d.y0,d.x1-d.x0,d.y1-d.y0);kept.add(c)}}MIPD.clear();const L=AL();if(L&&L.kind==='pixel'){lcv(L)&&!kept.has(lcv(L))&&MIP.delete(lcv(L));L.mask&&!kept.has(L.mask)&&MIP.delete(L.mask)}const st=S.stroke;if(st&&st.layer){lcv(st.layer)&&!kept.has(lcv(st.layer))&&MIP.delete(lcv(st.layer));st.layer.mask&&!kept.has(st.layer.mask)&&MIP.delete(st.layer.mask)}}
 

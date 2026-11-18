@@ -29,3 +29,31 @@ const _rd16=renderDoc16;renderDoc16=function(...a){clearMutes();return _rd16(...
 const _sn11=saveNow;saveNow=function(...a){if(Object.keys(MUTE).length){setTimeout(()=>saveNow(...a),1500);return Promise.resolve()}return _sn11(...a)};
 const _sd11=syncDev;syncDev=function(){/* a muted group belongs to one layer */for(const id of Object.keys(MUTE)){if(MUTE[id].layer!==(S.doc&&AL()))unmute(id)}_sd11()};
 
+
+/* ================= confort des curseurs (tous les curseurs de la page, panneaux et fenêtres) =================
+   Maj + glisser : réglage fin (le curseur suit la souris dix fois moins vite), comme Photoshop et Affinity.
+   Maj + flèche : pas multiplié par 10. Alt + molette sur un curseur : le déplace d'un pas (Maj : x10).
+   Le glissé reste un seul « input » continu : l'historique et l'aperçu rapide ne voient aucune différence. */
+(()=>{
+const isR=t=>t&&t.matches&&t.matches('input[type=range]');
+const fire=(i,final)=>{i.dispatchEvent(new Event('input',{bubbles:true}));if(final)i.dispatchEvent(new Event('change',{bubbles:true}))};
+const stepOf=i=>{const s=parseFloat(i.step);return s>0?s:1};
+let drag=null;
+document.addEventListener('pointerdown',e=>{const i=e.target;if(isR(i)&&!i.disabled){const v=+i.value;drag={i,mine:v,last:v,fine:e.shiftKey}}},true);
+const end=()=>{drag=null};
+document.addEventListener('pointerup',end,true);document.addEventListener('pointercancel',end,true);
+document.addEventListener('pointermove',e=>{if(drag)drag.fine=e.shiftKey},true);
+document.addEventListener('input',e=>{const i=e.target;if(!drag||drag.i!==i||!e.isTrusted)return;
+  const nat=+i.value,d=nat-drag.last;drag.last=nat;
+  if(drag.fine){drag.mine=Math.min(+i.max,Math.max(+i.min,drag.mine+d*0.1));i.value=drag.mine}
+  else drag.mine=nat},true);
+document.addEventListener('keydown',e=>{const i=e.target;if(!isR(i)||!e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
+  const dir=e.key==='ArrowRight'||e.key==='ArrowUp'?1:e.key==='ArrowLeft'||e.key==='ArrowDown'?-1:0;if(!dir)return;
+  e.preventDefault();e.stopPropagation();const v=Math.min(+i.max,Math.max(+i.min,+i.value+dir*stepOf(i)*10));i.value=v;fire(i,true)},true);
+let wt=null,wi=null;
+const flushW=()=>{if(wi){clearTimeout(wt);const i=wi;wi=null;i.dispatchEvent(new Event('change',{bubbles:true}))}};
+document.addEventListener('pointerdown',flushW,true);document.addEventListener('keydown',flushW,true);
+document.addEventListener('wheel',e=>{const i=e.target;if(!isR(i)||!e.altKey||i.disabled)return;
+  e.preventDefault();const d=(e.deltaY||e.deltaX)<0?1:-1;i.value=Math.min(+i.max,Math.max(+i.min,+i.value+d*stepOf(i)*(e.shiftKey?10:1)));fire(i,false);
+  if(wi&&wi!==i)flushW();wi=i;clearTimeout(wt);wt=setTimeout(flushW,350)},{capture:true,passive:false});
+})();
