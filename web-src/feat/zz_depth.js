@@ -48,7 +48,7 @@ function mapTo(M,W,H,L,enc){const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=
 const layerPx=L=>rx(L.canvas).getImageData(0,0,L.canvas.width,L.canvas.height);
 
 /* ---------- brume selon la distance ---------- */
-function farColor(dm,L){const {D,W,H}=dm,s=Float32Array.from(D).sort(),cut=s[Math.floor(s.length*0.06)],d=S.doc,c=mk(W,H),g=rx(c);g.drawImage(flatSync(),0,0,W,H);const a=g.getImageData(0,0,W,H).data;
+function farColor(dm,L){const {D,W,H}=dm,s=Float32Array.from(D).sort(),cut=s[Math.floor(s.length*0.06)],c=mk(W,H),g=rx(c);g.drawImage(flatSync(),0,0,W,H);const a=g.getImageData(0,0,W,H).data;
   let r=0,gg=0,b=0,n=0;for(let i=0;i<W*H;i++)if(D[i]<=cut){r+=a[i*4];gg+=a[i*4+1];b+=a[i*4+2];n++}if(!n)return[200,205,212];
   // the far tones, lifted toward a pale grey: haze is lighter than what it covers
   return[r/n*0.5+110,gg/n*0.5+112,b/n*0.5+116]}
@@ -152,7 +152,7 @@ async function facesOn(src,W,H){const sess=await session('ai/face1/','des visage
     const long=Math.max(d.w,d.h);if(long>1000){const T=Math.round(long/2),step=Math.round(T*0.75);
       for(let y=0;y<d.h;y+=step){for(let x=0;x<d.w;x+=step){await pass(x,y,Math.min(T,d.w-x),Math.min(T,d.h-y));if(x+T>=d.w)break}if(y+T>=d.h)break}}
     return nms(F).filter(f=>f.w>6&&f.h>6)}}
-function hideFaces(L,faces,p){const d=S.doc,out=cloneC(L.canvas),g=cx(out),src=L.canvas,ox=L.x|0,oy=L.y|0,m=p.margin/100;
+function hideFaces(L,faces,p){const out=cloneC(L.canvas),g=cx(out),src=L.canvas,ox=L.x|0,oy=L.y|0,m=p.margin/100;
   for(const f of faces){if(f.off)continue;const w=f.w*(1+m),h=f.h*(1+m)*1.15,x=f.x+f.w/2-w/2-ox,y=f.y+f.h/2-h/2-oy-f.h*0.05,pad=Math.ceil(Math.max(w,h)*0.3);
     const X=Math.max(0,Math.floor(x-pad)),Y=Math.max(0,Math.floor(y-pad)),X1=Math.min(src.width,Math.ceil(x+w+pad)),Y1=Math.min(src.height,Math.ceil(y+h+pad)),cw=X1-X,ch=Y1-Y;if(cw<2||ch<2)continue;
     const piece=mk(cw,ch),pg=cx(piece);pg.drawImage(src,X,Y,cw,ch,0,0,cw,ch);let fx;

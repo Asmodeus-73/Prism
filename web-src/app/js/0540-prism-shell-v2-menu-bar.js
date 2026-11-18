@@ -226,7 +226,7 @@ function decorateTools(){$$('#dock [data-tool]').forEach(b=>{const t=TOOLS.find(
 decorateTools();
 const _setTool=setTool;setTool=function(t){_setTool(t);$$('#dock [data-tool]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.tool===t));const x=TOOLS.find(y=>y&&y[0]===t);const ot=$('#optTool');if(ot&&x){const src=$(`#dock [data-tool="${t}"] svg`);ot.innerHTML=(src?src.outerHTML:'')+`<b>${esc(x[1])}</b>`}};
 /* status bar: document facts on the right */
-function updateStDoc(){const d=S.doc,el=$('#stDoc');if(!el)return;if(!d){el.innerHTML='';return}const px=(d.w*d.h/1e6).toFixed(1).replace('.',',');const L=AL();
+function updateStDoc(){const d=S.doc,el=$('#stDoc');if(!el)return;if(!d){el.innerHTML='';return}const px=(d.w*d.h/1e6).toFixed(1).replace('.',',');
   el.innerHTML=`<span>${d.w|0} × ${d.h|0} px · ${px} Mpx</span><span>${d.space==='display-p3'?'Display P3':'sRGB'}</span><span>${PREC.on&&typeof docHasHi==='function'&&docHasHi()?'16 bits':'8 bits'}</span><span>${d.layers.length} calque${d.layers.length>1?'s':''}</span>`}
 const _updateStatus=updateStatus;updateStatus=function(){_updateStatus();updateStDoc()};
 const _udn2=updateDocName;updateDocName=function(){_udn2();updateStDoc()};

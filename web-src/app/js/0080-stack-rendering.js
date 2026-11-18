@@ -36,6 +36,5 @@ async function renderDoc(scale,o={}){const d=S.doc,W=Math.max(1,Math.round(d.w*s
     og.drawImage(t,x-x0,y-y0,tw,th,x,y,tw,th);if(nT>1){k++;o.progress&&o.progress(k/nT);await tick()}}
   return out}
 let flatCache={key:'',c:null};
-async function flat(withAdjust){const key=S.docVer+'|'+withAdjust;if(flatCache.key===key)return flatCache.c;const c=await renderDoc(1,{before:!withAdjust});flatCache={key,c};return c}
 function flatSync(){const d=S.doc;const key=S.docVer+'|px';if(flatCache.key===key)return flatCache.c;const c=mk(d.w,d.h);renderStack(cx(c),d.w,d.h,[1,0,0,1,0,0],{scale:1,ox:0,oy:0,before:true});flatCache={key,c};return c}
 

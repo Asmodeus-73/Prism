@@ -17,7 +17,7 @@ async function batchDialog(preIds){const locals=await IDB.all('projects').catch(
   upd()}
 async function runBatch(st){const n=st.files.length+st.ids.length;if(!n){toast('Ajoutez des photos à traiter');return}if(st.src==='style'&&!STYLE_REF){toast('Choisissez d’abord la photo de référence');return}
   const look=st.src==='look'?captureLook(st.local):null;if(look&&!look.layers.length){toast('La photo ouverte n’a aucun réglage à reporter');return}
-  await flushSave();const backPid=S.doc&&S.doc.pid,backDoc=S.doc,backState=backDoc?{history:S.history,hi:S.hi,meta:S.meta,sample:S.sample,maxHist:S.maxHist}:null;try{const outs=[],fails=[];let i=0;const stop={v:false};
+  await flushSave();const backPid=S.doc&&S.doc.pid,backDoc=S.doc,backState=backDoc?{history:S.history,hi:S.hi,meta:S.meta,sample:S.sample,maxHist:S.maxHist}:null;try{const outs=[],fails=[];let i=0;
   const step=async(name,load)=>{busy(true,`Traitement ${i+1} / ${n} : ${name}`,i/n);await tick();try{await load();busy(true,`Traitement ${i+1} / ${n} : ${name}`,i/n); // the loaders hide the overlay when done
       if(st.out==='jpeg')S.doc.nosave=true;
       if(look)pasteLook(look,{silent:true});else await applyStyleToDoc(STYLE_REF,{silent:true});pushHistory(look?'Réglages collés (lot)':'Style appliqué (lot)');

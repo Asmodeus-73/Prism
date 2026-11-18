@@ -34,7 +34,7 @@ Cloud.push=async function(m){if(!this.ok){setSaveState('saved');return}if(this.p
 Cloud.forkLocal=async function(m){const d=S.doc;if(!d||d.pid!==m.id)return;const oldId=m.id,stamp=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
   try{await this.download(oldId)}catch(e){console.warn(e)}
   d.pid=uid8();d.name=`${d.name.replace(/ \(version .*\)$/,'')} (version ${DEVNAME} ${stamp})`;d.updatedAt=0;d.sync=true;d.saved=false;updateDocName();
-  await saveNow();const keepName=d.name,newId=d.pid;
+  await saveNow();const keepName=d.name;
   toastAction(`Ce projet avait été modifié sur un autre appareil. Votre version est gardée à part : « ${keepName} ».`,'Voir l’autre version',async()=>{await flushSave();Cloud.open(oldId)});
   if(LIB.open){await libLoad();renderLibrary()}};
 Cloud.download=async function(id){const cm=this.list.find(p=>p.id===id);if(!cm)throw new Error('Projet introuvable');

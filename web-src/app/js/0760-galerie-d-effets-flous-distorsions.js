@@ -2,7 +2,7 @@
 (()=>{
 const px=s=>rx(s).getImageData(0,0,s.width,s.height);
 const put=(w,h,im)=>{const c=mk(w,h);rx(c).putImageData(im,0,0);return c};
-const rad=a=>a*Math.PI/180;
+
 function padEdge(src,p){const w=src.width,h=src.height,big=mk(w+2*p,h+2*p),b=cx(big);b.drawImage(src,p,p);b.drawImage(src,0,0,1,h,0,p,p,h);b.drawImage(src,w-1,0,1,h,w+p,p,p,h);b.drawImage(big,0,p,w+2*p,1,0,0,w+2*p,p);b.drawImage(big,0,h+p-1,w+2*p,1,0,h+p,w+2*p,p);return big}
 function accum(w,h,n,draw){const o=mk(w,h),g=cx(o);for(let i=0;i<n;i++){g.globalAlpha=1/(i+1);draw(g,n>1?i/(n-1):0)}g.globalAlpha=1;return o}
 function warp(src,map){const w=src.width,h=src.height,sd=px(src).data,o=new ImageData(w,h),od=o.data,q=[0,0];

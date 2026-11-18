@@ -253,7 +253,7 @@ layerSrc=function(L){const s=_ls.apply(this,arguments);const b=L.bif;if(!b||s!==
     if(l>c0)k*=c1>c0?Math.max(0,(c1-l)/(c1-c0)):(l>c0?0:1);
     p[i+3]=p[i+3]*k}
   g.putImageData(id,0,0);c.__fx=true;BC.set(s,{key,c});return c};
-function blendIfDialog(){const d=S.doc,L=AL();if(!L||L.kind!=='pixel'){toast('Choisissez un calque de pixels');return}
+function blendIfDialog(){const L=AL();if(!L||L.kind!=='pixel'){toast('Choisissez un calque de pixels');return}
   const b=L.bif||{lo:[0,0],hi:[255,255]},old=L.bif?{lo:[...b.lo],hi:[...b.hi]}:null;
   dialog({title:'Fusion selon la luminosité',light:true,body:`<p class="muted" style="margin:0 0 8px">Rend transparentes les zones sombres ou claires de ce calque. Utile pour une texture ou un ciel superposé. Ne tient pas compte des calques du dessous.</p>
   ${rangeRow('biB','Ombres masquées sous',0,255,1,b.lo[0],'')}${rangeRow('biA','Ombres visibles dès',0,255,1,b.lo[1],'')}${rangeRow('biC','Hautes lumières visibles jusqu’à',0,255,1,b.hi[0],'')}${rangeRow('biD','Hautes lumières masquées au-dessus de',0,255,1,b.hi[1],'')}`,
@@ -306,7 +306,7 @@ window.PrismC={shapeMask,playAction,REC,acts,blendIfDialog,shapeMaskDialog,brush
 /* wave40: grayscale/indexed modes, ICC export, exposure fusion, panorama, puppet warp */
 (()=>{
 const pixLayers=()=>S.doc.layers.filter(L=>L.kind==='pixel'&&L.canvas);
-function mapPix(fn,label){const d=S.doc;for(const L of pixLayers()){if(L.txt||L.shp){L.txt=null;L.shp=null}if(L.fbase){L.fbase=null;L.filters=null;L.fout=null}const c=cloneC(L.canvas),g=cx(c),id=g.getImageData(0,0,c.width,c.height);fn(id.data);g.putImageData(id,0,0);L.canvas=c}
+function mapPix(fn,label){for(const L of pixLayers()){if(L.txt||L.shp){L.txt=null;L.shp=null}if(L.fbase){L.fbase=null;L.filters=null;L.fout=null}const c=cloneC(L.canvas),g=cx(c),id=g.getImageData(0,0,c.width,c.height);fn(id.data);g.putImageData(id,0,0);L.canvas=c}
   markComp();pushHistory(label);syncAll()}
 function toGray(){if(!S.doc)return;if(S.doc.layers.some(L=>L.hi)){toast('Les calques 16 bits passent aussi en niveaux de gris, calculés en 8 bits')}
   mapPix(p=>{for(let i=0;i<p.length;i+=4){const l=Math.round(.2126*p[i]+.7152*p[i+1]+.0722*p[i+2]);p[i]=p[i+1]=p[i+2]=l}},'Mode niveaux de gris')}
@@ -440,7 +440,7 @@ function raster(){const L=AL();if(!L||!L.so){toast('Ce calque n’est pas un obj
 function dialog_(){const d=S.doc,L=AL();if(!d||!L||L.kind!=='pixel'){toast('Choisissez un calque de pixels');return}
   if(L.so&&!valid(L)){L.so=null;toast('Le calque a été retouché depuis sa conversion : il repart des pixels actuels')}
   if(!L.so)convert();if(!L.so)return;
-  const so=L.so,m0={...so.m},orig=L.canvas;let m={...so.m};
+  const so=L.so;let m={...so.m};
   const prev=()=>{L.preview=render(so,m);markComp()};
   dialog({title:'Objet dynamique',light:true,body:`<p class="muted" style="margin:0 0 8px">Chaque réglage repart des pixels d’origine : vous pouvez réduire puis agrandir sans perte de qualité.</p>
   ${rangeRow('soS','Échelle',5,400,1,m.s,' %')}${rangeRow('soR','Rotation',-180,180,1,m.rot,'°')}${rangeRow('soX','Décalage horizontal',-100,100,1,m.dx,' %')}${rangeRow('soY','Décalage vertical',-100,100,1,m.dy,' %')}

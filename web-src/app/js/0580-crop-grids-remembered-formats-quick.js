@@ -7,8 +7,8 @@ function cropGrid(c,a,b,w,h){const g=PREF.get('cropGrid','thirds');if(g==='none'
   else if(g==='grid'){for(let k=1;k<6;k++){V(k/6);H(k/6)}}
   else if(g==='golden'){V(.382);V(.618);H(.382);H(.618)}
   else if(g==='diag'){c.moveTo(a,b);c.lineTo(a+w,b+h);c.moveTo(a+w,b);c.lineTo(a,b+h)}
-  else if(g==='tri'){c.moveTo(a,b+h);c.lineTo(a+w,b);const k=h*h+w*w,t=(w*w)/k,px=a+t*w,py=b+h-t*h; /* foot of the perpendicular from the two other corners */
-    const f1=((a-a)*w+(b-(b+h))*(-h))/k; c.moveTo(a,b);const u=((0)*w+(-h)*(-h))/k;c.lineTo(a+u*w,b+h-u*h);c.moveTo(a+w,b+h);const v=((w)*w+(0)*(-h))/k;c.lineTo(a+v*w,b+h-v*h)}
+  else if(g==='tri'){c.moveTo(a,b+h);c.lineTo(a+w,b);const k=h*h+w*w; /* foot of the perpendicular from the two other corners */
+    c.moveTo(a,b);const u=h*h/k;c.lineTo(a+u*w,b+h-u*h);c.moveTo(a+w,b+h);const v=w*w/k;c.lineTo(a+v*w,b+h-v*h)}
   else if(g==='spiral'){c.stroke();c.beginPath();c.strokeStyle='rgba(255,255,255,.75)';c.lineWidth=1.3;c.save();let W=w,Hh=h,port=h>w;if(port){c.transform(0,1,1,0,a,b);W=h;Hh=w}else c.translate(a,b);c.scale(W/1.618,Hh);
     let x=0,y=0,rw=1.618,rh=1;for(let i=0;i<10&&rw>.012&&rh>.012;i++){const o=i%4,PI=Math.PI;
       if(o===0){const s=rh;c.arc(x+s,y+rh,s,PI,PI*1.5);x+=s;rw-=s}
