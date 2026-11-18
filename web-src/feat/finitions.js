@@ -17,10 +17,13 @@ const FX_SECS=[
   {id:'mono',after:'fx-bw',title:'Couleur monochrome',colors:[['col','Couleur','#8d7454']],rows:()=>[['k','Intensité',0,100,1,100]]},
   {id:'sepia',after:'fx-mono',title:'Sépia',rows:()=>[['k','Intensité',0,100,1,100]]},
   {id:'mix',after:'fx-sepia',title:'Mélangeur de couches',tabs:['Rouge','Vert','Bleu'],rows:i=>{const o='rgb'[i];return[[o+'r','Rouge',-200,200,1,i===0?100:0],[o+'g','Vert',-200,200,1,i===1?100:0],[o+'b','Bleu',-200,200,1,i===2?100:0],[o+'c','Constante',-200,200,1,0]]}},
-  {id:'inv',after:'fx-mix',title:'Inverser',rows:()=>[['k','Intensité',0,100,1,100]]}];
+  {id:'inv',after:'fx-mix',title:'Inverser',rows:()=>[['k','Intensité',0,100,1,100]]},
+  /* lueur : une lumière qui déborde des zones claires, en cinq styles (choix « style »). Les deux derniers curseurs ne servent qu'aux styles filé et traînée. */
+  {id:'glow',after:'effects',title:'Lueur',choice:['style','Style',['Éclat','Diffusion','Halo','Filé','Traînée']],
+   rows:()=>[['k','Intensité',0,100,1,40],['thr','Seuil',0,100,1,60],['spread','Étendue',0,100,1,40],['warm','Chaleur',-100,100,1,0,'linear-gradient(90deg,#4f7fd8,#d8d0b8,#e2b23c)'],['dir','Direction',0,180,1,0,null,[3,4]],['soft','Douceur',0,100,1,40,null,[3,4]]]}];
 /* valeurs par défaut et bornes, par groupe */
 const FXD={},FXR={},FXT={};
-for(const s of FX_SECS){const d={},r={};const pages=s.tabs?s.tabs.map((_,i)=>s.rows(i)):[s.rows(0)];for(const rows of pages)for(const q of rows){d[q[0]]=q[5];r[q[0]]=q}for(const c of s.colors||[])d[c[0]]=c[2];FXD[s.id]=d;FXR[s.id]=r;FXT[s.id]=s.title}
+for(const s of FX_SECS){const d={},r={};const pages=s.tabs?s.tabs.map((_,i)=>s.rows(i)):[s.rows(0)];for(const rows of pages)for(const q of rows){d[q[0]]=q[5];r[q[0]]=q}for(const c of s.colors||[])d[c[0]]=c[2];if(s.choice)d[s.choice[0]]=0;FXD[s.id]=d;FXR[s.id]=r;FXT[s.id]=s.title}
 const fxv=(fx,s,k)=>{const o=fx&&fx[s];return o&&o[k]!==undefined?o[k]:FXD[s][k]};
 const fxOn=(fx,s)=>!!(fx&&fx[s]&&fx[s].on);
 function fxAny(fx){if(!fx)return false;for(const s in fx)if(fx[s]&&fx[s].on)return true;return false}
@@ -28,6 +31,40 @@ const hexRGB=h=>{const v=parseInt(String(h).slice(1),16);return[((v>>16)&255)/25
 const sm=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
 function rgb2hsl(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;if(mx-mn<1e-6)return[0,0,l];const d=mx-mn,s=l>0.5?d/(2-mx-mn):d/(mx+mn);
   let h=mx===r?(g-b)/d+(g<b?6:0):mx===g?(b-r)/d+2:(r-g)/d+4;return[h/6,s,l]}
+
+/* ---------------------------------------------------------------- lueur */
+/* Taille de la lueur en pixels de la photo : Étendue 0..100 -> 0,4 % à 8 % du petit côté. Filé et traînée s'étirent plus loin. */
+function glowSigma(fx,docW,docH){const s=fxv(fx,'glow','spread')/100,st=fxv(fx,'glow','style'),base=Math.min(docW,docH)*(0.004+0.076*s*s);return Math.min(Math.min(docW,docH)*0.1,st===3?base*2.2:st===4?base*6:base)}
+/* flou le long d'une direction (dx,dy), par passes de pas croissant (1, 4, 16...) : coût indépendant de la longueur */
+function dirBlur(P,w,h,dx,dy,len){let a=P,b=new Float32Array(P.length);const T=[-3,-2,-1,0,1,2,3],Wt=T.map(t=>Math.exp(-t*t/4.5)),ws=Wt.reduce((x,y)=>x+y,0);
+  for(let st=1;st<=len/3;st*=4){for(let y=0,i=0;y<h;y++)for(let x=0;x<w;x++,i++){let acc=0;for(let k=0;k<7;k++){let sx=x+T[k]*st*dx,sy=y+T[k]*st*dy;sx=sx<0?0:sx>w-1?w-1:sx;sy=sy<0?0:sy>h-1?h-1:sy;
+      const x0=sx|0,y0=sy|0,x1=x0<w-1?x0+1:x0,y1=y0<h-1?y0+1:y0,fx_=sx-x0,fy=sy-y0,r0=y0*w,r1=y1*w;acc+=Wt[k]*((a[r0+x0]*(1-fx_)+a[r0+x1]*fx_)*(1-fy)+(a[r1+x0]*(1-fx_)+a[r1+x1]*fx_)*fy)}
+    b[i]=acc/ws}const t=a;a=b;b=t===P?new Float32Array(P.length):t}return a}
+/* calcule la lumière ajoutée, à une définition réduite (la lueur est floue : inutile de la calculer pixel par pixel) */
+function glowBuf(data,W,H,mul,flip,fx,o){const k=fxv(fx,'glow','k')/100;if(!k)return null;const sc=o.scale||1,st=fxv(fx,'glow','style'),dW=S.doc?S.doc.w:W,dH=S.doc?S.doc.h:H;
+  const sig=Math.max(1,glowSigma(fx,dW,dH)*sc),thr=fxv(fx,'glow','thr')/100,dirl=st>=3,soft=fxv(fx,'glow','soft')/100;
+  const perp=dirl?Math.max(0.6,sig*(0.01+0.1*soft)):sig;const f=Math.max(sig>6?2:1,Math.min(24,Math.floor(dirl?Math.max(perp/2,sig/10):st===2?sig*0.12:sig/4))),w=Math.max(1,Math.ceil(W/f)),h=Math.max(1,Math.ceil(H/f)),inv=1/mul;
+  const R=new Float32Array(w*h),G=new Float32Array(w*h),B=new Float32Array(w*h),cnt=new Float32Array(w*h);
+  const t0=st===1?0:thr*0.9,t1=st===1?1:Math.min(1.02,thr*0.9+0.25);
+  for(let y=0;y<H;y++){const yy=flip?H-1-y:y,row=((yy/f)|0)*w;for(let x=0,j=y*W*4;x<W;x++,j+=4){const r=data[j]*inv,g=data[j+1]*inv,b=data[j+2]*inv,a=data[j+3]*inv,l=0.2126*r+0.7152*g+0.0722*b;
+    let m=st===1?(0.2+0.8*l*l):sm((l-t0)/(t1-t0));m*=a;const q=row+((x/f)|0);R[q]+=r*m;G[q]+=g*m;B[q]+=b*m;cnt[q]++}}
+  for(let i=0;i<w*h;i++){const c=cnt[i]||1;R[i]/=c;G[i]/=c;B[i]/=c}
+  const s=sig/f;let out;
+  if(dirl){const an=fxv(fx,'glow','dir')*Math.PI/180,dx=Math.cos(an),dy=-Math.sin(an),ps=perp/f;out=[R,G,B].map(P=>{let q=dirBlur(P,w,h,dx,dy,s*3);if(ps>0.5)q=gaussF(q,w,h,ps);return q});
+    if(st===4){const q=out.map(P=>dirBlur(P,w,h,dx,dy,s*0.8));out=out.map((P,c)=>{for(let i=0;i<P.length;i++)P[i]=P[i]*0.6+q[c][i]*0.8;return P})}}
+  else if(st===2){const a=[R,G,B].map(P=>gaussF(P,w,h,s*0.5)),b=[R,G,B].map(P=>gaussF(P,w,h,Math.max(0.5,s*0.12)));
+    /* halo : la frange autour des zones claires, rouge orangé comme la lumière renvoyée par le dos d'un film */
+    out=[0,1,2].map(()=>new Float32Array(w*h));const T=[1,0.32,0.1];for(let i=0;i<w*h;i++){const la=0.2126*a[0][i]+0.7152*a[1][i]+0.0722*a[2][i],lb=0.2126*b[0][i]+0.7152*b[1][i]+0.0722*b[2][i],v=Math.max(0,la-lb)*2.4;for(let c=0;c<3;c++)out[c][i]=v*T[c]}}
+  else out=[R,G,B].map(P=>gaussF(P,w,h,st===1?s*0.6:s));
+  const wm=fxv(fx,'glow','warm')/100,tint=[1+0.35*wm,1+0.05*wm,1-0.35*wm],gain=st===1?1:st===2?1.4:st===4?3:st===3?1.8:2.4;
+  for(let c=0;c<3;c++){const P=out[c],g=tint[c]*gain*k;for(let i=0;i<P.length;i++)P[i]*=g}
+  const Q={f,w,h,R:out[0],G:out[1],B:out[2],diff:st===1?k*0.5:0};glowTabs(Q,W,H);return Q}
+/* tables d'interpolation (colonnes et lignes) de la définition réduite vers la photo : calculées une fois par rendu */
+function glowTabs(Q,W,H){const ax=(n,N,f)=>{const i0=new Int32Array(n),i1=new Int32Array(n),t=new Float32Array(n);for(let x=0;x<n;x++){const u=(x+0.5)/f-0.5,a=Math.max(0,Math.min(N-1,Math.floor(u)));i0[x]=a;i1[x]=Math.min(N-1,a+1);t[x]=Math.max(0,Math.min(1,u-a))}return{i0,i1,t}};
+  Q.X=ax(W,Q.w,Q.f);Q.Y=ax(H,Q.h,Q.f);Q.row=new Float32Array(W*3);Q.ry=-1}
+/* une ligne de la lueur, interpolée, mise en cache tant qu'on reste sur la même ligne */
+function glowRow(Q,y){if(Q.ry===y)return Q.row;Q.ry=y;const r0=Q.Y.i0[y]*Q.w,r1=Q.Y.i1[y]*Q.w,ty=Q.Y.t[y],X=Q.X,o=Q.row,P=[Q.R,Q.G,Q.B];
+  for(let c=0;c<3;c++){const A=P[c];for(let x=0,k=c;x<X.i0.length;x++,k+=3){const a=X.i0[x],b=X.i1[x],t=X.t[x],top=A[r0+a]+(A[r0+b]-A[r0+a])*t,bot=A[r1+a]+(A[r1+b]-A[r1+a])*t;o[k]=top+(bot-top)*ty}}return o}
 
 /* ---------------------------------------------------------------- calcul */
 /* data : RVBA (0..mul), W x H ; flip : lignes de bas en haut (pile flottante) alors que le masque est de haut en bas */
@@ -57,7 +94,8 @@ function fxRun(data,W,H,mul,flip,fx,amt,mask,o){
   const SP=fxOn(fx,'sepia')?fxv(fx,'sepia','k')/100:0;
   let MX=null;if(fxOn(fx,'mix')){MX=[];for(const o of 'rgb')for(const i of 'rgbc')MX.push(fxv(fx,'mix',o+i)/100);if(MX.join()==='1,0,0,0,0,1,0,0,0,0,1,0')MX=null}
   const IV=fxOn(fx,'inv')?fxv(fx,'inv','k')/100:0;
-  if(!Y&&!HM&&!bril&&bgam===1&&!LV&&!RP&&!RM&&!FD&&!BW&&!MO&&!SP&&!MX&&!IV)return false;
+  const GL=fxOn(fx,'glow')?glowBuf(data,W,H,mul,flip,fx,o):null;
+  if(!Y&&!HM&&!bril&&bgam===1&&!LV&&!RP&&!RM&&!FD&&!BW&&!MO&&!SP&&!MX&&!IV&&!GL)return false;
   for(let y=0,i=0;y<H;y++){const my=flip?H-1-y:y;for(let x=0;x<W;x++,i++){const j=i*4;
     const r0=data[j]*inv,g0=data[j+1]*inv,b0=data[j+2]*inv,a0=data[j+3]*inv;let r=r0,g=g0,b=b0,a=a0;
     if(Y){const yy=Y[i],ws=(1-yy)*(1-yy),wh=yy*yy,wm=1-ws-wh;let dy=0;
@@ -78,6 +116,8 @@ function fxRun(data,W,H,mul,flip,fx,amt,mask,o){
     if(SP){const nr=0.393*r+0.769*g+0.189*b,ng=0.349*r+0.686*g+0.168*b,nb=0.272*r+0.534*g+0.131*b;r+=(nr-r)*SP;g+=(ng-g)*SP;b+=(nb-b)*SP}
     if(MX){const nr=MX[0]*r+MX[1]*g+MX[2]*b+MX[3],ng=MX[4]*r+MX[5]*g+MX[6]*b+MX[7],nb=MX[8]*r+MX[9]*g+MX[10]*b+MX[11];r=nr;g=ng;b=nb}
     if(IV){r+=(1-2*r)*IV;g+=(1-2*g)*IV;b+=(1-2*b)*IV}
+    if(GL){const gw=glowRow(GL,my),gr=gw[x*3],gg=gw[x*3+1],gb=gw[x*3+2];if(GL.diff){const d=GL.diff;r+=(0.5-r)*d*0.12;g+=(0.5-g)*d*0.12;b+=(0.5-b)*d*0.12}
+      r=1-(1-r)*(1-Math.min(1,gr));g=1-(1-g)*(1-Math.min(1,gg));b=1-(1-b)*(1-Math.min(1,gb))}
     const m=amt*(mask?mask[(my*W+x)*4+3]/255:1);if(m<1){r=r0+(r-r0)*m;g=g0+(g-g0)*m;b=b0+(b-b0)*m;a=a0+(a-a0)*m}
     data[j]=(r<0?0:r>1?1:r)*mul;data[j+1]=(g<0?0:g>1?1:g)*mul;data[j+2]=(b<0?0:b>1?1:b)*mul;data[j+3]=(a<0?0:a>1?1:a)*mul}}
   return true}
@@ -93,7 +133,7 @@ const stripFx=dv=>{const d={...dv};delete d.fx;return d};
   fxRun(F,W,H,1,true,fx,L.opacity,mc?rx(mc).getImageData(0,0,W,H).data:null,o);return F};
  /* la clarté sélective a besoin d'une marge entre les tuiles du rendu final */
  const _ms=maxSigma;
- maxSigma=function(dv,docW,docH,scale){let s=_ms.apply(this,arguments);const fx=dv&&dv.fx;if(fxOn(fx,'selcl')){for(let i=0;i<3;i++){if(fxv(fx,'selcl','cl'+i))s=Math.max(s,Math.min(docW,docH)*0.012*scale);if(fxv(fx,'selcl','tx'+i))s=Math.max(s,3.5*scale)}}return s}}
+ maxSigma=function(dv,docW,docH,scale){let s=_ms.apply(this,arguments);const fx=dv&&dv.fx;if(fxOn(fx,'selcl')){for(let i=0;i<3;i++){if(fxv(fx,'selcl','cl'+i))s=Math.max(s,Math.min(docW,docH)*0.012*scale);if(fxv(fx,'selcl','tx'+i))s=Math.max(s,3.5*scale)}}if(fxOn(fx,'glow')&&fxv(fx,'glow','k'))s=Math.max(s,glowSigma(fx,docW,docH)*scale);return s}}
 
 /* ---------------------------------------------------------------- panneau */
 const pane=$('#pane-develop');
@@ -130,12 +170,13 @@ details.sec>summary .fxhide:hover{background:var(--raise);color:var(--fg)}
 document.head.appendChild(css);
 const fmt=(q,v)=>q[4]<1?(+v).toFixed(2):(q[6]==='hue'?Math.round(v)+'°':(q[2]<0&&v>0?'+':'')+Math.round(v));
 function rowHTML(s,q){const tr=q[6]==='hue'?`style="--track:${HUE_TRACK}"`:q[6]?`style="--track:${q[6]}"`:'';const id=`fx-${s.id}-${q[0]}`;
-  return`<div class="row" data-fk="${s.id}:${q[0]}"><label for="${id}" title="Double-clic pour réinitialiser">${q[1]}</label><input type="range" id="${id}" data-fk="${s.id}:${q[0]}" min="${q[2]}" max="${q[3]}" step="${q[4]}" ${tr}><output></output></div>`}
+  return`<div class="row" data-fk="${s.id}:${q[0]}"${q[7]?` data-only="${q[7].join(' ')}"`:''}><label for="${id}" title="Double-clic pour réinitialiser">${q[1]}</label><input type="range" id="${id}" data-fk="${s.id}:${q[0]}" min="${q[2]}" max="${q[3]}" step="${q[4]}" ${tr}><output></output></div>`}
 function secHTML(s){let b='';
   if(s.hist)b+=`<canvas class="fxhist" data-fxhist="${s.id}" width="520" height="110"></canvas>`;
   if(s.tabs){TAB[s.id]=TAB[s.id]||0;b+=`<div class="subtabs" data-fxtabs="${s.id}">${s.tabs.map((t,i)=>`<button type="button" data-fxtab="${i}" class="${i===TAB[s.id]?'on':''}">${t}</button>`).join('')}</div>`+
     s.tabs.map((_,i)=>`<div data-fxpage="${i}" ${i===TAB[s.id]?'':'hidden'}>${s.rows(i).map(q=>rowHTML(s,q)).join('')}</div>`).join('')}
   else b+=s.rows(0).map(q=>rowHTML(s,q)).join('');
+  if(s.choice){const[k,l,opts]=s.choice;b=`<div class="subtabs fxchoice" role="radiogroup" aria-label="${l}">${opts.map((t,i)=>`<button type="button" role="radio" data-fch="${s.id}:${k}" data-v="${i}">${t}</button>`).join('')}</div>`+b}
   if(s.colors)b=s.colors.map(([k,l])=>`<div class="fxcol"><label>${l}</label><input type="color" data-fc="${s.id}:${k}" aria-label="${l}"><button type="button" data-fxpick="${s.id}:${k}" title="Prélever la couleur dans la photo" aria-label="Prélever ${l.toLowerCase()} dans la photo">${PIP}</button></div>`).join('')+b;
   return`<details class="sec fxsec" data-sec="fx-${s.id}" data-fx="${s.id}"><summary>${s.title}<span class="dot" aria-hidden="true"></span><button type="button" class="fxsw" role="switch" aria-checked="false" data-fxon="${s.id}" title="Activer ou désactiver" aria-label="Activer « ${s.title} »"></button><button type="button" class="fxhide" data-fxhide="${s.id}" title="Retirer du panneau" aria-label="Retirer « ${s.title} » du panneau">${HIDE}</button><button type="button" class="rs" data-fxreset="${s.id}" title="Réinitialiser ce groupe" aria-label="Réinitialiser « ${s.title} »">${RESET}</button></summary><div class="secbody">${b}</div></details>`}
 function mount(){const body=$('#devBody');if(!body||body.querySelector('[data-fx]'))return;let open={};try{open=JSON.parse(PREF.get('w47Sec','{}'))||{}}catch(e){}
@@ -159,6 +200,8 @@ function outFx(row){const[s,k]=row.dataset.fk.split(':'),A=FXA();if(!A)return;co
 function fxSync(){const A=FXA();if(!A||!pane.querySelector('[data-fx]'))return;const fx=A.dev.fx;
   pane.querySelectorAll('input[type=range][data-fk]').forEach(i=>{const[s,k]=i.dataset.fk.split(':');i.value=fxv(fx,s,k)});
   pane.querySelectorAll('.row[data-fk]').forEach(outFx);
+  pane.querySelectorAll('[data-fch]').forEach(b=>{const[s,k]=b.dataset.fch.split(':'),on=fxv(fx,s,k)===+b.dataset.v;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)});
+  pane.querySelectorAll('.row[data-only]').forEach(r=>{const s=r.dataset.fk.split(':')[0],c=FX_SECS.find(q=>q.id===s).choice;r.hidden=!r.dataset.only.split(' ').includes(String(fxv(fx,s,c[0])))});
   pane.querySelectorAll('input[data-fc]').forEach(i=>{const[s,k]=i.dataset.fc.split(':'),v=fxv(fx,s,k);i.value=v||'#808080';i.classList.toggle('none',!v);i.title=v?v:'Aucune couleur : choisissez-en une ou prélevez-la'});
   for(const s of FX_SECS){const d=pane.querySelector(`[data-fx="${s.id}"]`);if(!d)continue;const on=fxOn(fx,s.id);d.hidden=!shown(fx,s.id);d.querySelector('[data-fxon]').setAttribute('aria-checked',on);d.classList.toggle('fxlive',on);d.classList.toggle('mod',on)}
   drawHist()}
@@ -172,6 +215,7 @@ pane.addEventListener('click',e=>{const t=e.target;
   const sw=t.closest('[data-fxon]');if(sw){e.preventDefault();e.stopPropagation();const A=FXA();if(!A)return;const s=sw.dataset.fxon,o=ensure(A,s);o.on=!o.on;tidy(A);fxSync();markContent();pushHistory((o.on?'Activer ':'Désactiver ')+FXT[s].toLowerCase());return}
   const hd=t.closest('[data-fxhide]');if(hd){e.preventDefault();e.stopPropagation();const s=hd.dataset.fxhide,A=FXA();PIN.delete(s);savePin();
     if(A&&A.dev.fx&&A.dev.fx[s]){delete A.dev.fx[s];tidy(A);fxSync();markContent();pushHistory('Retirer '+FXT[s].toLowerCase())}else fxSync();return}
+  const ch=t.closest('[data-fch]');if(ch){e.preventDefault();const[s,k]=ch.dataset.fch.split(':'),o=touch(s);if(!o)return;o[k]=+ch.dataset.v;fxSync();markContent();pushHistory(FXT[s]+' : '+ch.textContent.toLowerCase());return}
   const ad=t.closest('[data-fxadd]');if(ad){e.preventDefault();addMenu(ad);return}
   const rs=t.closest('[data-fxreset]');if(rs){e.preventDefault();e.stopPropagation();const A=FXA();if(!A)return;const s=rs.dataset.fxreset;if(A.dev.fx){delete A.dev.fx[s];tidy(A)}fxSync();markContent();pushHistory('Réinitialiser '+FXT[s].toLowerCase());return}
   const tb=t.closest('[data-fxtab]');if(tb){const box=tb.closest('[data-fxtabs]'),s=box.dataset.fxtabs,n=+tb.dataset.fxtab;TAB[s]=n;box.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===tb));

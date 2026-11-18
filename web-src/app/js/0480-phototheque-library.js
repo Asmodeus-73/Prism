@@ -7,6 +7,8 @@ async function libLoad(){const locals=await IDB.all('projects').catch(()=>[]);co
   locals.forEach(m=>map.set(m.id,{id:m.id,name:m.name,w:m.w,h:m.h,updatedAt:m.updatedAt,meta:m.meta||'',lib:libOf(m),local:m,cloud:null,hi:(m.layers||[]).some(L=>L.hi)}));
   Cloud.list.forEach(c=>{const e=map.get(c.id)||{id:c.id,name:c.name,w:c.w,h:c.h,updatedAt:c.updatedAt,meta:c.meta||'',lib:libOf(c),local:null};e.cloud=c;if(c.updatedAt>e.updatedAt){e.updatedAt=c.updatedAt;e.name=c.name}const cl=libOf(c);if(cl.at>e.lib.at)e.lib=cl;map.set(c.id,e)});
   const d=S.doc;if(d&&d.pid&&map.has(d.pid)&&d.lib){const e=map.get(d.pid);if((d.lib.at||0)>=e.lib.at)e.lib=libOf(d)}
+  /* une note ou un drapeau posé pendant la lecture (plus récent que ce qui vient d'être lu) n'est pas écrasé */
+  for(const p of LIB.items){const e=map.get(p.id);if(e&&p.lib&&(p.lib.at||0)>(e.lib.at||0))e.lib=p.lib}
   LIB.items=[...map.values()];for(const id of [...LIB.sel])if(!map.has(id))LIB.sel.delete(id)}
 function libFiltered(){const q=LIB.q.trim().toLowerCase(),now=Date.now();let a=LIB.items.filter(it=>{const l=it.lib;
     if(l.rating<LIB.minR)return false;if(LIB.label&&l.label!==LIB.label)return false;if(LIB.tag&&!l.tags.includes(LIB.tag))return false;if(LIB.cam&&camOf(it.meta)!==LIB.cam)return false;

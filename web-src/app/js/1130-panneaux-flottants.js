@@ -54,7 +54,7 @@ function float(k,box,{save=true}={}){const it=find(k);if(!it||!WIDE.matches)retu
   const b=h.querySelector('.pf-btn');if(b){b.title='Remettre en place';b.setAttribute('aria-label','Remettre '+name+' en place')}
   if(box&&box.pin==='left'&&k!=='layers'&&railEl())pin(k,Infinity,{save:false});
   if(save)remember(k,el);try{if(k==='layers')renderLayers&&renderLayers()}catch(e){}return true}
-function dock(k,{save=true}={}){const it=find(k);if(!it)return;const [,el,h,name]=it;if(!el.classList.contains('pf-float'))return;unpin(k);
+function dock(k,{save=true}={}){const it=find(k);if(!it)return;const [,el,h,name]=it;if(!el.classList.contains('pf-float'))return;clearTimeout(el._pfT);unpin(k);
   el.classList.remove('pf-float');h.classList.remove('pf-h');['left','top','width','height','zIndex'].forEach(p=>el.style[p]='');
   if(el.tagName==='DETAILS'&&el.dataset.pfWasOpen==='')el.open=false;delete el.dataset.pfWasOpen;
   const ph=el.previousElementSibling;if(ph&&ph.classList.contains('pf-ph'))ph.remove();
@@ -111,7 +111,7 @@ function wire(k,el,h,name){if(h.querySelector('.pf-btn'))return;
     addEventListener('pointermove',mv,true);addEventListener('pointerup',off,true)});
   /* détaché, un clic sur l'en-tête d'une section ne la replie pas */
   if(el.tagName==='DETAILS')h.addEventListener('click',e=>{if(el.classList.contains('pf-float')&&!e.target.closest('button'))e.preventDefault()});
-  new ResizeObserver(()=>{if(el.classList.contains('pf-float')&&!document.body.classList.contains('pf-moving')){clearTimeout(el._pfT);el._pfT=setTimeout(()=>remember(k,el),250)}}).observe(el)}
+  new ResizeObserver(()=>{if(el.classList.contains('pf-float')&&!document.body.classList.contains('pf-moving')){clearTimeout(el._pfT);el._pfT=setTimeout(()=>{if(el.classList.contains('pf-float'))remember(k,el)},250)}}).observe(el)}
 let ztop=15;
 function front(el){ztop++;if(ztop>19){ztop=16;for(const [,e] of items())if(e.classList.contains('pf-float'))e.style.zIndex=15}el.style.zIndex=ztop}
 document.addEventListener('pointerdown',e=>{const el=e.target.closest&&e.target.closest('.pf-float');if(el)front(el)},true);

@@ -115,10 +115,12 @@ function relightSpec(){const d=S.doc;return {key:'relight',title:'Rééclairage 
 function relightDialog(p0){if(S.doc)fxDialog({...relightSpec(),p0})}
 
 /* ---------- sélection selon la distance ---------- */
+/* masque (taille de la photo) de ce qui se trouve entre deux distances : p = {near, far, soft} en %, 100 = le plus proche */
+function rangeMask(dm,d,p){const {D,W,H}=dm,lo=p.far/100,hi=p.near/100,s=p.soft/100,F=new Float32Array(W*H);for(let i=0;i<W*H;i++){const v=D[i];F[i]=(lo<=0?1:sstep(lo-s,lo+s,v))*(hi>=1?1:1-sstep(hi-s,hi+s,v))}
+  const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=Math.round(F[i]*255)}g.putImageData(im,0,0);
+  const m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(c,0,0,d.w,d.h);return m}
 async function depthSelDialog(){const d=S.doc;if(!d)return;const dm=await depthMap();if(!dm||S.doc!==d)return;const old=d.sel,p={near:100,far:55,soft:8};let tmr=null;
-  const build=()=>{const {D,W,H}=dm,lo=p.far/100,hi=p.near/100,s=p.soft/100,F=new Float32Array(W*H);for(let i=0;i<W*H;i++){const v=D[i];F[i]=sstep(lo-s,lo+s,v)*(hi>=1?1:1-sstep(hi-s,hi+s,v))}
-    const c=mk(W,H),g=rx(c),im=g.createImageData(W,H),a=im.data;for(let i=0;i<W*H;i++){a[i*4]=a[i*4+1]=a[i*4+2]=255;a[i*4+3]=Math.round(F[i]*255)}g.putImageData(im,0,0);
-    const m=mk(d.w,d.h),mg=cx(m);mg.imageSmoothingQuality='high';mg.drawImage(c,0,0,d.w,d.h);return m};
+  const build=()=>rangeMask(dm,d,p);
   const show=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(S.doc!==d)return;d.sel=build();selChanged()},100)};
   dialog({title:'Sélectionner selon la distance',light:true,
     body:'<p class="muted" style="margin:0 0 8px">Sélectionne ce qui se trouve entre deux distances, d’après la profondeur estimée par l’IA (100 % = le plus proche).</p>'+rangeRow('ds-near','Jusqu’à (proche)',0,100,1,p.near,' %')+rangeRow('ds-far','À partir de (loin)',0,100,1,p.far,' %')+rangeRow('ds-soft','Douceur',0,30,1,p.soft,' %'),
@@ -129,12 +131,19 @@ async function depthSelDialog(){const d=S.doc;if(!d)return;const dm=await depthM
 /* ---------- visages : YuNet (640 × 640, BGR 0..255), sorties par pas 8, 16, 32 ---------- */
 function decodeYu(out,k,ox,oy,th){const F=[];for(const s of [8,16,32]){const cls=out['cls_'+s].data,obj=out['obj_'+s].data,bb=out['bbox_'+s].data,cols=640/s;
     for(let i=0;i<cls.length;i++){const sc=Math.sqrt(clamp(cls[i],0,1)*clamp(obj[i],0,1));if(sc<th)continue;const c=i%cols,r=(i/cols)|0;
-      const cxp=(c+bb[i*4])*s,cyp=(r+bb[i*4+1])*s,w=Math.exp(bb[i*4+2])*s,h=Math.exp(bb[i*4+3])*s;F.push({x:ox+(cxp-w/2)/k,y:oy+(cyp-h/2)/k,w:w/k,h:h/k,s:sc})}}return F}
+      const cxp=(c+bb[i*4])*s,cyp=(r+bb[i*4+1])*s,w=Math.exp(bb[i*4+2])*s,h=Math.exp(bb[i*4+3])*s,f={x:ox+(cxp-w/2)/k,y:oy+(cyp-h/2)/k,w:w/k,h:h/k,s:sc};
+      /* cinq repères : œil droit, œil gauche, bout du nez, coins droit et gauche de la bouche */
+      const kp=out['kps_'+s]&&out['kps_'+s].data;if(kp)f.kp=[0,1,2,3,4].map(j=>[ox+(c+kp[i*10+j*2])*s/k,oy+(r+kp[i*10+j*2+1])*s/k]);F.push(f)}}return F}
 const iou=(a,b)=>{const x0=Math.max(a.x,b.x),y0=Math.max(a.y,b.y),x1=Math.min(a.x+a.w,b.x+b.w),y1=Math.min(a.y+a.h,b.y+b.h),i=Math.max(0,x1-x0)*Math.max(0,y1-y0);return i/(a.w*a.h+b.w*b.h-i||1)};
 function nms(F){F.sort((a,b)=>b.s-a.s);const k=[];for(const f of F)if(!k.some(g=>iou(f,g)>0.3||(f.x>=g.x&&f.y>=g.y&&f.x+f.w<=g.x+g.w&&f.y+f.h<=g.y+g.h)))k.push(f);return k}
 async function detectFaces(){const d=S.doc;if(!d)return null;const key=docKey(d),C=DP.faces;if(C&&C.d.deref()===d&&sameKey(C.key,key))return C.F;
   const sess=await session('ai/face1/','des visages','0,2 Mo');if(!sess||S.doc!==d)return null;busy(true,'Recherche des visages…',null);await tick();
-  try{const src=flatSync(),ort=window.ort,R=640,F=[];
+  try{const K=await facesOn(flatSync(),d.w,d.h);if(!K||S.doc!==d)return null;DP.faces={d:new WeakRef(d),key:weakKey(key),F:K};return K}
+  catch(e){console.error(e);toast('Recherche des visages impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
+/* les visages d'une image quelconque (une autre photo de la rafale, par exemple) ; pas de cache */
+async function facesIn(src){const sess=await session('ai/face1/','des visages','0,2 Mo');if(!sess)return null;return facesOn(src,src.width,src.height)}
+async function facesOn(src,W,H){const sess=await session('ai/face1/','des visages','0,2 Mo');if(!sess)return null;const d={w:W,h:H};
+  {const ort=window.ort,R=640,F=[];
     const pass=async(x0,y0,w,h)=>{const k=R/Math.max(w,h),t=mk(R,R),g=rx(t);g.fillStyle='#000';g.fillRect(0,0,R,R);g.imageSmoothingQuality='high';g.drawImage(src,x0,y0,w,h,0,0,w*k,h*k);
       const a=g.getImageData(0,0,R,R).data,N=R*R,f=new Float32Array(3*N);for(let i=0;i<N;i++){f[i]=a[i*4+2];f[N+i]=a[i*4+1];f[2*N+i]=a[i*4]}
       const out=await sess.run({[sess.inputNames[0]]:new ort.Tensor('float32',f,[1,3,R,R])});F.push(...decodeYu(out,k,x0,y0,0.6))};
@@ -142,8 +151,7 @@ async function detectFaces(){const d=S.doc;if(!d)return null;const key=docKey(d)
     // large photos: also in overlapping tiles, so that small faces in a group are found
     const long=Math.max(d.w,d.h);if(long>1000){const T=Math.round(long/2),step=Math.round(T*0.75);
       for(let y=0;y<d.h;y+=step){for(let x=0;x<d.w;x+=step){await pass(x,y,Math.min(T,d.w-x),Math.min(T,d.h-y));if(x+T>=d.w)break}if(y+T>=d.h)break}}
-    const K=nms(F).filter(f=>f.w>6&&f.h>6);if(S.doc!==d)return null;DP.faces={d:new WeakRef(d),key:weakKey(key),F:K};return K}
-  catch(e){console.error(e);toast('Recherche des visages impossible : '+(e.message||e),5000);return null}finally{busy(false)}}
+    return nms(F).filter(f=>f.w>6&&f.h>6)}}
 function hideFaces(L,faces,p){const d=S.doc,out=cloneC(L.canvas),g=cx(out),src=L.canvas,ox=L.x|0,oy=L.y|0,m=p.margin/100;
   for(const f of faces){if(f.off)continue;const w=f.w*(1+m),h=f.h*(1+m)*1.15,x=f.x+f.w/2-w/2-ox,y=f.y+f.h/2-h/2-oy-f.h*0.05,pad=Math.ceil(Math.max(w,h)*0.3);
     const X=Math.max(0,Math.floor(x-pad)),Y=Math.max(0,Math.floor(y-pad)),X1=Math.min(src.width,Math.ceil(x+w+pad)),Y1=Math.min(src.height,Math.ceil(y+h+pad)),cw=X1-X,ch=Y1-Y;if(cw<2||ch<2)continue;
@@ -190,4 +198,26 @@ if(window.PrismEffects){
   [['fog',fogSpec,fogDialog],['relight',relightSpec,relightDialog]].forEach(([k,spec,dlg])=>PrismEffects.defineX(k,{name:spec().title,
     run:async(Lt,p)=>{const dm=await depthMap();if(!dm)throw new Error('profondeur indisponible');return spec().run(Lt,dm,p)},edit:p=>dlg(p)}));
   PrismEffects.defineX('faces',{name:'Anonymiser les visages',run:async(Lt,p)=>hideFaces(Lt,p.faces||[],p),edit:p=>facesDialog(p)})}
-window.PrismDepth={depthMap,detectFaces,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};
+/* ---------- masques de profondeur pour les réglages locaux (section Masque) : premier plan, plan moyen, lointain, ou une plage choisie ---------- */
+const DK={dnear:['Premier plan',{near:100,far:62,soft:7}],dmid:['Plan moyen',{near:66,far:30,soft:7}],dfar:['Lointain',{near:34,far:0,soft:7}],drange:['Plage de profondeur',null]};
+DP.range={near:100,far:50,soft:8};
+{const _cm=AI.categoryMask,_cl=AI.categoryLabel;
+ AI.categoryMask=async function(kind){if(!DK[kind])return _cm.apply(this,arguments);const d=S.doc,dm=await depthMap();if(!dm||S.doc!==d)return null;return rangeMask(dm,d,DK[kind][1]||DP.range)};
+ AI.categoryLabel=k=>DK[k]?DK[k][0]:_cl(k)}
+/* plage choisie : on voit l'effet du réglage sur la zone pendant qu'on bouge les curseurs */
+async function depthRangeMask(op){const d=S.doc,A=d&&d.layers[d.active];if(!A){toast('Ouvrez d’abord une photo');return}const dm=await depthMap();if(!dm||S.doc!==d)return;
+  const p={...DP.range},prevShow=S.showMask;let tmr=null;const live=A.kind==='adjust';
+  const show=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{if(S.doc!==d)return;A.maskPreview=rangeMask(dm,d,p);if(!live)S.showMask=true;markComp();if(typeof markContent==='function')markContent();requestRender()},90)};
+  const end=()=>{clearTimeout(tmr);delete A.maskPreview;S.showMask=prevShow;markComp();if(typeof markContent==='function')markContent();requestRender()};
+  dialog({title:'Masque selon la distance',light:true,
+    body:'<p class="muted" style="margin:0 0 8px">Le réglage ne touche que ce qui se trouve entre ces deux distances, d’après la profondeur estimée par l’IA (100 % = le plus proche).</p>'+rangeRow('dr-near','Jusqu’à (proche)',0,100,1,p.near,' %')+rangeRow('dr-far','À partir de (loin)',0,100,1,p.far,' %')+rangeRow('dr-soft','Douceur',0,30,1,p.soft,' %'),
+    onOpen:el=>{[['near','dr-near'],['far','dr-far'],['soft','dr-soft']].forEach(([k,id])=>{const i=$('#'+id,el);i.oninput=()=>{p[k]=+i.value;$('#'+id+'-o',el).textContent=i.value+' %';show()}});show()},
+    buttons:[{label:'Annuler',onClick:end},{label:'Appliquer',primary:true,onClick:()=>{end();DP.range={...p};if(window.PrismAIMask)PrismAIMask.apply('drange',op)}}]})}
+{const st=document.createElement('style');st.textContent='.aim-row .aim-d{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.aim-row .aim-d span{font-size:11.5px;color:var(--fg-2);margin-right:2px}';document.head.appendChild(st)}
+function injectDepth(){const r=document.querySelector('#zmSec .aim-row');if(!r||r.querySelector('.aim-d'))return;const b=document.createElement('div');b.className='aim-d';
+  b.innerHTML='<span>Profondeur</span>'+['dnear','dmid','dfar'].map(k=>`<button type="button" class="btn sm" data-aimd="${k}">${DK[k][0]}</button>`).join('')+'<button type="button" class="btn sm" data-aimd="drange" title="Choisir les distances">Plage…</button>';
+  const opv=()=>{const o=r.querySelector('.aim-op');return o?o.value:'new'};
+  b.addEventListener('click',e=>{const t=e.target.closest('[data-aimd]');if(!t)return;e.preventDefault();e.stopPropagation();const k=t.dataset.aimd;if(k==='drange')depthRangeMask(opv());else if(window.PrismAIMask)PrismAIMask.apply(k,opv())});
+  const ops=r.querySelector('.aim-b');if(ops&&ops.nextSibling)r.insertBefore(b,ops.nextSibling);else r.appendChild(b)}
+{const body=document.getElementById('devBody');if(body)new MutationObserver(()=>injectDepth()).observe(body,{childList:true,subtree:true});injectDepth()}
+window.PrismDepth={onPhoto,depthRange:depthRangeMask,rangeMask,depthMap,detectFaces,facesIn,hideFaces,fog:fogDialog,relight:relightDialog,faces:facesDialog,depthSel:depthSelDialog};

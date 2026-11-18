@@ -81,7 +81,7 @@ function dose(kind,st,sub){const z=DEV0();DOSE.why=[];if(!st)return z;
 const devSubject=st=>dose('subj',st),devSky=st=>dose('sky',st),devBg=(st,sub)=>dose('bg',st,sub);
 // a starting dose for a single AI mask, measured on the region (the user then tunes it)
 function devFor(kind,m){const st=stats(m);if(!st)return DEV0();
-  return dose(kind==='people'?'subj':kind,st,kind==='bg'?stats(invOf(m)):null)}
+  return dose(kind==='people'||kind==='dnear'||kind==='dmid'?'subj':kind==='dfar'?'bg':kind==='drange'?'':kind,st,kind==='bg'||kind==='dfar'?stats(invOf(m)):null)}
 const isNeutral=L=>{const z=DEV0(),v=L.dev||{};return Object.keys(z).every(k=>typeof z[k]!=='number'||(v[k]??z[k])===z[k])};
 
 async function aiMaskRetouch(){const d=S.doc;if(!d){toast('Ouvrez d’abord une photo');return}const h0=S.history[S.hi];

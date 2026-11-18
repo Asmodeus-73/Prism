@@ -1,6 +1,7 @@
 // Prism smoke tests: open the built page (web/index.html) in Chromium and exercise the editor.
 // Run: node tests/smoke.mjs        (needs the "playwright" package and its Chromium)
 //      PRISM_BROWSER=webkit node tests/smoke.mjs   (WebKit, the engine of the Mac app)
+//      ONLY='ouvrir les yeux' node tests/smoke.mjs   (only the tests whose name contains this text)
 // Every test fails on any uncaught error or console error in the page.
 import http from 'node:http';import fs from 'node:fs';import path from 'node:path';import {createRequire} from 'node:module';
 const root=path.join(path.dirname(new URL(import.meta.url).pathname),'..','web');
@@ -26,7 +27,7 @@ async function fresh(keep){const old=page;page=keep&&old?await old.context().new
 const ev=(fn,arg)=>page.evaluate(fn,arg);
 /* rouvrir l'app comme après l'avoir quittée : même stockage, nouvelle page */
 const reopen=()=>fresh(true);
-async function test(name,fn){const t0=Date.now();try{await fn();await page.waitForTimeout(100);if(errs.length)throw new Error(errs.slice(0,5).join('\n'));results.push([name,'ok',Date.now()-t0])}
+async function test(name,fn){if(process.env.ONLY&&!name.includes(process.env.ONLY))return;const t0=Date.now();try{await fn();await page.waitForTimeout(100);if(errs.length)throw new Error(errs.slice(0,5).join('\n'));results.push([name,'ok',Date.now()-t0])}
   catch(e){results.push([name,'FAIL',Date.now()-t0,String(e.message||e).slice(0,1500)])}finally{errs.length=0}}
 async function sample(){await ev(()=>loadSample());await page.waitForFunction(()=>S.doc&&S.doc.layers.length>0);await page.waitForTimeout(200)}
 async function drag(x0,y0,x1,y1,steps=8){const b=await page.locator('#view').boundingBox();await page.mouse.move(b.x+b.width*x0,b.y+b.height*y0);await page.mouse.down();
@@ -680,6 +681,61 @@ await test('réduction du bruit : la version Rust (WebAssembly) se charge et don
       for(let j=0;j<t.h;j++)for(let i=0;i<t.w*4;i++)if(o[j*t.w*4+i]!==rs[((t.y+j)*W+t.x)*4+i])diff++}
     return{mod:!!mod,diff,n:W*H}});
   if(!r.mod||r.diff)throw new Error(JSON.stringify(r))});
+await test('lueur : les cinq styles éclairent les zones claires, sans erreur, en 8 et 16 bits',async()=>{await fresh();await sample();
+  const r=await ev(async()=>{insertLayer(newAdjust('Lueur'),'Lueur',true);const L=AL();const mean=async b=>{const old=S.doc.bits;S.doc.bits=b;S.docVer++;try{const c=b===16?await renderDoc16(0.2):await renderDoc(0.2);const d=c.data||(c.canvas||c).getContext('2d').getImageData(0,0,c.width,c.height).data,k=d instanceof Float32Array?255:d instanceof Uint16Array?1/257:1;let s=0;for(let i=0;i<d.length;i+=4)s+=d[i]+d[i+1]+d[i+2];return s/(d.length/4)*k}finally{S.doc.bits=old}};
+    const a=await mean(8),out=[];for(let st=0;st<5;st++){L.dev.fx={glow:{on:true,style:st,k:80,dir:30}};out.push(await mean(8)-a)}L.dev.fx={glow:{on:true,style:0,k:80}};const b16=await mean(16)-a;return{out,b16}});
+  if(r.out.some(v=>!(v>0.2))||!(r.b16>0.2))throw new Error(JSON.stringify(r))});
+await test('vectorscope : un clic sur l’histogramme l’affiche, compte les pixels, un autre clic revient',async()=>{await fresh();await sample();await ev(()=>{try{setHisto(true)}catch(e){}});
+  await page.click('#histo');await page.waitForTimeout(400);const a=await ev(()=>({on:PrismScope.on,tot:PrismScope.pts&&PrismScope.pts.tot,h:document.getElementById('histo').height}));
+  await page.click('#histo');await page.waitForTimeout(200);const b=await ev(()=>({on:PrismScope.on,h:document.getElementById('histo').height}));
+  if(!a.on||!(a.tot>100)||a.h!==400||b.on||b.h!==172)throw new Error(JSON.stringify({a,b}))});
+await test('points AF : FocusLocation Sony lu dans l’EXIF et ramené à l’orientation de la photo',async()=>{const r=await ev(()=>{
+    /* un EXIF minimal (II) : IFD0 Make, Model, Orientation=6, ExifIFD -> MakerNote « SONY DSC » avec 0x2027 = 6000, 4000, 1500, 1000 */
+    const b=[],u16=v=>b.push(v&255,v>>8),u32=v=>b.push(v&255,(v>>8)&255,(v>>16)&255,v>>>24);b.push(0x49,0x49,42,0);u32(8);
+    const ifd0=8,n0=4,mkOff=ifd0+2+n0*12+4,mdOff=mkOff+6,exOff=mdOff+10;u16(n0);
+    const ent=(t,ty,c,v)=>{u16(t);u16(ty);u32(c);u32(v)};ent(0x010F,2,5,mkOff);ent(0x0110,2,9,mdOff);ent(0x0112,3,1,6);ent(0x8769,4,1,exOff);u32(0);
+    b.push(...[...'SONY\0\0'].map(c=>c.charCodeAt(0)));b.push(...[...'ILCE-7M3\0\0'].map(c=>c.charCodeAt(0)));
+    const mnOff=exOff+2+12+4;u16(1);ent(0x927C,7,12+2+12+4+8,mnOff);u32(0);
+    b.push(...[...'SONY DSC \0\0\0'].map(c=>c.charCodeAt(0)));const valOff=mnOff+12+2+12+4;u16(1);ent(0x2027,3,4,valOff);u32(0);u16(6000);u16(4000);u16(1500);u16(1000);
+    const ex=new Uint8Array(b),L=ex.length+8,j=new Uint8Array(ex.length+12);j.set([0xFF,0xD8,0xFF,0xE1,L>>8,L&255,0x45,0x78,0x69,0x66,0,0]);j.set(ex,12);
+    const r=PrismAF.parse(j);return r&&{make:r.make,orient:r.orient,p:r.pts[0]}});
+  if(!r||r.make!=='sony'||r.orient!==6||Math.abs(r.p.x-0.25)>1e-6||Math.abs(r.p.y-0.25)>1e-6)throw new Error(JSON.stringify(r))});
+await test('vue d’ensemble : s’ouvre sur plusieurs photos, note au clavier, se ferme sans toucher à la photothèque',async()=>{await fresh();
+  await ev(async()=>{const fs=[];for(let s=0;s<3;s++){const c=document.createElement('canvas');c.width=600;c.height=400;const g=c.getContext('2d');g.fillStyle=`hsl(${s*90},60%,50%)`;g.fillRect(0,0,600,400);const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9));fs.push(new File([b],`s${s}.jpg`,{type:'image/jpeg'}))}window.__SV=fs});
+  await page.click('#atSwitch [data-v=lib]');await page.waitForSelector('#library',{timeout:30000});await ev(()=>{const _p=pickFiles;pickFiles=async()=>{pickFiles=_p;return window.__SV}});await page.click('#lbAdd');
+  await page.waitForFunction(()=>LIB.items.length>=3,null,{timeout:60000});await page.waitForTimeout(500);
+  await ev(()=>{window.__svk=[];addEventListener('keydown',e=>window.__svk.push(e.key+'@'+(e.target&&e.target.tagName)+(e.target&&e.target.id?'#'+e.target.id:'')),true)});
+  await ev(()=>PrismSurvey.open(LIB.items.slice(0,3).map(i=>i.id)));await page.waitForTimeout(400);const n0=await ev(()=>LIB.items.length);
+  /* comme dans Safari et la fenêtre Mac (WebKit), où un clic sur un bouton ne lui donne pas le focus : la touche arrive sur la page.
+     La photothèque avalait alors les touches de la vue d'ensemble. */
+  await ev(()=>{if(document.activeElement)document.activeElement.blur();document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'3',code:'Digit3',bubbles:true,cancelable:true}))});await page.waitForFunction(()=>LIB.items.some(i=>i.lib.rating===3),null,{timeout:5000}).catch(()=>{});await page.waitForTimeout(300);await page.keyboard.press('Delete');await page.waitForTimeout(200);
+  const a=await ev(()=>({open:!!document.getElementById('lbSurvey'),n:PrismSurvey.list.length,lib:LIB.items.length,rated:LIB.items.some(i=>i.lib.rating===3),r:LIB.items.map(i=>i.lib.rating),sv:PrismSurvey.list.map(i=>i.lib&&i.lib.rating),keys:window.__svk}));
+  await page.keyboard.press('Escape');await page.waitForTimeout(200);const closed=await ev(()=>!document.getElementById('lbSurvey'));
+  if(!a.open||a.n!==2||a.lib!==n0||!a.rated||!closed)throw new Error(JSON.stringify({a,closed,n0}))});
+await test('ouvrir les yeux : yeux fermés repérés, yeux ouverts d’une autre photo de la rafale greffés dans un calque, annulable',async()=>{await fresh();
+  const b64=fs.readFileSync(path.join(FIX,'portrait-astronaute.jpg')).toString('base64');
+  const r0=await ev(async b64=>{const im=new Image();im.src='data:image/jpeg;base64,'+b64;await im.decode();const W=960,H=960,orig=mk(W,H);cx(orig).drawImage(im,0,0,W,H);
+    const F=await PrismDepth.facesIn(orig);if(!F||!F.length)return{err:'pas de visage'};const G=PrismEyes.measure(orig,F[0]).G,closed=cloneC(orig),g=cx(closed);
+    /* yeux fermés : la peau de la joue par-dessus, puis la ligne des cils */
+    for(const c of [G.a,G.b]){const s=g.getImageData(c[0]-G.ed*0.1|0,c[1]+G.ed*0.3|0,1,1).data;g.fillStyle=`rgb(${s[0]},${s[1]},${s[2]})`;g.save();g.translate(c[0],c[1]);g.rotate(G.ang);g.beginPath();g.ellipse(0,0,G.ed*0.24,G.ed*0.13,0,0,7);g.fill();g.strokeStyle='rgb(60,40,35)';g.lineWidth=G.ed*0.025;g.beginPath();g.moveTo(-G.ed*0.2,G.ed*0.02);g.quadraticCurveTo(0,G.ed*0.08,G.ed*0.2,G.ed*0.02);g.stroke();g.restore()}
+    /* l'autre photo de la rafale : un peu tournée, plus près, décalée */
+    const src=mk(W,H),sg=cx(src);sg.translate(W/2,H/2);sg.rotate(0.03);sg.scale(1.04,1.04);sg.translate(-W/2+9,-H/2-6);sg.drawImage(orig,0,0);
+    const fl=async(c,n)=>new File([await new Promise(r=>c.toBlob(r,'image/png'))],n,{type:'image/png'});const other=mk(W,H);cx(other).fillRect(0,0,W,H);
+    window.__EYF=[await fl(src,'rafale-2.png'),await fl(other,'autre.png')];window.__EYO=orig;window.__EYG=G;
+    setDoc(closed,'yeux-fermes.png',{quiet:true});return{ed:G.ed}},b64);
+  if(r0.err)throw new Error(r0.err);
+  await page.waitForFunction(()=>S.doc&&S.doc.name==='yeux-fermes.png');const n0=await ev(()=>S.doc.layers.length);
+  /* l'autre photo de la rafale est dans la photothèque, choisie */
+  await page.click('#atSwitch [data-v=lib]');await page.waitForSelector('#library',{timeout:30000});await ev(()=>{const _p=pickFiles;pickFiles=async()=>{pickFiles=_p;return window.__EYF}});await page.click('#lbAdd');
+  await page.waitForFunction(()=>LIB.items.some(i=>i.name==='rafale-2.png')&&S.doc&&S.doc.name==='yeux-fermes.png',null,{timeout:60000});
+  await ev(()=>{LIB.sel=new Set([LIB.items.find(i=>i.name==='rafale-2.png').id]);closeLibrary()});await page.waitForTimeout(300);
+  await ev(()=>PrismEyes.dialog());await page.waitForSelector('#ey-l select',{timeout:60000});await page.waitForTimeout(300);
+  const st=await ev(()=>({s:$('#ey-s').textContent,v:$('#ey-l select').value}));
+  await page.locator('#scrim .foot .btn',{hasText:'Appliquer'}).click();await page.waitForTimeout(300);
+  const err=()=>ev(()=>{const G=window.__EYG,c=flatSync();let e=0,n=0;for(const q of [G.a,G.b]){const x0=q[0]-G.ed*0.3|0,y0=q[1]-G.ed*0.18|0,w=G.ed*0.6|0,h=G.ed*0.36|0;const A=rx(c).getImageData(x0,y0,w,h).data,B=rx(window.__EYO).getImageData(x0,y0,w,h).data;for(let i=0;i<A.length;i+=4){e+=Math.abs(A[i]-B[i])+Math.abs(A[i+1]-B[i+1])+Math.abs(A[i+2]-B[i+2]);n+=3}}return Math.round(e/n)});
+  const a={n:await ev(()=>S.doc.layers.length),name:await ev(()=>S.doc.layers[1]&&S.doc.layers[1].name),label:await ev(()=>S.history[S.hi].label),err:await err()};
+  await ev(()=>undo());await page.waitForTimeout(200);const b={n:await ev(()=>S.doc.layers.length),err:await err()};
+  if(st.v!=='0'||a.n!==n0+1||a.name!=='Yeux ouverts'||a.label!=='Ouvrir les yeux'||!(a.err<b.err*0.6)||b.n!==n0)throw new Error(JSON.stringify({st,a,b,n0}))});
 await test('gomme magique : la méthode « IA rapide » (MI-GAN) efface l’objet, puis « IA » revient à LaMa',async()=>{await sample();
   const r=await ev(async()=>{setTool('remove');const pill=document.querySelector('#pill').innerText;const L=S.doc.layers.find(l=>l.kind==='pixel'),W=L.canvas.width,H=L.canvas.height;
     const m=document.createElement('canvas');m.width=W;m.height=H;const g=m.getContext('2d');g.fillStyle='#fff';g.fillRect(W*0.4,H*0.4,W*0.06,H*0.06);
