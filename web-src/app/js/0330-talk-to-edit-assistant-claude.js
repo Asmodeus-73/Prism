@@ -2,7 +2,7 @@
 const ASSIST_KEYS=(()=>{const o=[];SECTIONS.forEach(s=>(s.rows||[]).forEach(r=>{if(r&&r[0]!=='#')o.push({k:r[0],label:r[1],min:r[2],max:r[3]})}));return o})();
 let sampleNS=null;const sampleReady=(async()=>{try{return window.claude&&window.claude.use?await window.claude.use('sample'):null}catch(e){return null}})().then(v=>{sampleNS=v;$('#composer')&&($('#composer').hidden=!v||PREF.get('composerHidden',false));renderAI&&$('#pane-ai')&&!$('#pane-ai').hidden&&renderAI();return v});
 const ASSIST={busy:false,log:[],ctl:null};
-function nonDefaultDev(dv){const z=DEV0(),o={};for(const k in dv){if(k==='curve')continue;if(Array.isArray(dv[k])){if(dv[k].some((v,i)=>v!==z[k][i]))o[k]=dv[k]}else if(dv[k]!==z[k])o[k]=dv[k]}return o}
+function nonDefaultDev(dv){const z=DEV0(),o={};for(const k in dv){if(k==='curve'||k==='lcurve'||k==='pcurve')continue;if(Array.isArray(dv[k])){if(dv[k].some((v,i)=>v!==z[k][i]))o[k]=dv[k]}else if(dv[k]!==z[k])o[k]=dv[k]}return o}
 function ellipseMask(cxn,cyn,rxn,ryn,feather,invert){const d=S.doc,m=mk(d.w,d.h),g=cx(m);const X=cxn*d.w,Y=cyn*d.h,RX=Math.max(2,rxn*d.w),RY=Math.max(2,ryn*d.h);
   const gr=g.createRadialGradient(0,0,0,0,0,1);const f=clamp(feather??0.5,0,1);gr.addColorStop(0,'#fff');gr.addColorStop(clamp(1-f,0,0.999),'#fff');gr.addColorStop(1,'rgba(255,255,255,0)');
   g.save();g.translate(X,Y);g.scale(RX,RY);g.fillStyle=gr;g.beginPath();g.arc(0,0,1,0,7);g.fill();g.restore();if(invert){const o=fullMask(),og=cx(o);og.globalCompositeOperation='destination-out';og.drawImage(m,0,0);return o}return m}

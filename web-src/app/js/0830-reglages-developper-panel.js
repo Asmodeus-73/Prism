@@ -2,11 +2,11 @@
 
 /* ---- A. tone LUT: pure white stays white when exposure goes up, negative contrast no longer posterises the shadows ---- */
 lutMap.clear();
-getLUTs=function(dv){const key=JSON.stringify([dv.temp,dv.tint,dv.exposure,dv.contrast,dv.highlights,dv.shadows,dv.whites,dv.blacks,dv.dehaze,dv.curve]);let r=lutMap.get(key);if(r)return r;
+getLUTs=function(dv){const key=lutKeyOf(dv);let r=lutMap.get(key);if(r)return r;
   const t=dv.temp/100,ti=dv.tint/100;let g=[1+0.3*t,1-0.22*ti,1-0.3*t];const nrm=0.2126*g[0]+0.7152*g[1]+0.0722*g[2];g=g.map(v=>v/nrm);
   const ev=Math.pow(2,dv.exposure),hl=dv.highlights/100,sh=dv.shadows/100,wh=dv.whites/100,bl=dv.blacks/100,dh=dv.dehaze/100,c=dv.contrast/100+dh*0.35,k=c>=0?1+c*1.5:1+c*0.65;
-  const mf=isIdCurve(dv.curve.rgb)?null:curveFn(dv.curve.rgb),TWO_PI=Math.PI*2;
-  r=['r','g','b'].map((ch,ci)=>{const L=new Float32Array(4096),gain=g[ci]*ev,knee=gain>1?1-Math.min(0.3,(gain-1)*0.35):1,cf=isIdCurve(dv.curve[ch])?null:curveFn(dv.curve[ch]);
+  const mf=isIdCurve(dv.curve.rgb)?null:curveFn(dv.curve.rgb),pf=pcurveFn(dv.pcurve),TWO_PI=Math.PI*2,pre=[];
+  r=['r','g','b'].map((ch,ci)=>{const L=new Float32Array(4096),Pre=pre[ci]=new Float32Array(4096),gain=g[ci]*ev,knee=gain>1?1-Math.min(0.3,(gain-1)*0.35):1,cf=isIdCurve(dv.curve[ch])?null:curveFn(dv.curve[ch]);
     /* roll-off normalised so that the source white (x=1 before the gain) lands exactly on 1 instead of 0.99 */
     const xw=Math.pow(gain,1/2.2),den=knee<1?1-Math.exp(-(xw-knee)/(1-knee)):1;
     for(let i=0;i<4096;i++){let x=i/4095;if(dh>0)x=(x-0.1*dh)/(1-0.1*dh);else if(dh<0)x=x+(0.78-x)*(-dh)*0.35;if(x<0)x=0;x=Math.pow(Math.pow(x,2.2)*gain,1/2.2);
@@ -14,7 +14,9 @@ getLUTs=function(dv){const key=JSON.stringify([dv.temp,dv.tint,dv.exposure,dv.co
       x+=sh*1.35*x*(1-x)*(1-x);x+=hl*1.35*x*x*(1-x);x+=wh*0.25*x*x*x;x+=bl*0.2*(1-x)*(1-x)*(1-x);x=clamp(x,0,1);
       if(k>1)x=x<0.5?0.5*Math.pow(2*x,k):1-0.5*Math.pow(2-2*x,k);
       else if(k<1)x=x+(1-k)*Math.sin(TWO_PI*x)/TWO_PI;/* same slope in the middle, bounded slope at both ends: no 20-level jump between codes 0 and 1 */
-      if(mf)x=mf(x);if(cf)x=cf(x);L[i]=x}return L});
+      Pre[i]=x;if(pf)x=pf(x);if(mf)x=mf(x);if(cf)x=cf(x);L[i]=x}return L});
+  /* pre : la valeur qui entre dans les courbes (outil « sur la photo », pipettes) ; luma : la courbe de luminosité, appliquée après les canaux (lumaApply) */
+  r.pre=pre;r.luma=null;if(dv.lcurve&&!isIdCurve(dv.lcurve)){const lf=curveFn(dv.lcurve),Y=new Float32Array(4096);for(let i=0;i<4096;i++)Y[i]=lf(i/4095);r.luma=Y}
   if(lutMap.size>24)lutMap.delete(lutMap.keys().next().value);lutMap.set(key,r);return r};
 
 /* ---- B. history hygiene: no empty steps, keyboard repeat on a slider is one step ---- */
@@ -45,37 +47,48 @@ window.__devHist={isDevLabel,sameAsHead};
         the point keeps its offset under the pointer, arrow keys nudge the selected point, numeric read-out ---- */
 (()=>{
 const old=$('#curve');if(!old)return;const c=old.cloneNode(false);old.replaceWith(c);c.tabIndex=0;c.setAttribute('role','application');c.setAttribute('aria-label','Courbe des tonalités : flèches pour déplacer le point sélectionné, Suppr pour le retirer');
-let SEL=null;
+let SEL=null,ZD=null;
+window.curveSel=()=>SEL;window.curveSelSet=pt=>{SEL=pt;drawCurve()};
+/* écrêtage montré sur la photo pendant qu'on déplace un point : Alt enfoncé, ou toujours si l'option est allumée (outils de la courbe, 0835) */
+const clipOn=e=>{S.curveClip=!!(e.altKey||PREF.get('curveClip',false));if(S.curveClip)requestRender()};
+const clipOff=()=>{if(S.curveClip){S.curveClip=false;requestRender()}};
+const zoneAt=x=>{const B=pcBounds(ADJ().dev.pcurve||PC0);let k=0;while(k<3&&x>B[k+1])k++;return k};
+const pcSync=k=>{const i=document.getElementById('d-pcurve.'+k);if(i)i.value=ADJ().dev.pcurve[k];outDev('pcurve.'+k)};
 const pos=e=>{const r=c.getBoundingClientRect();return{x:clamp((e.clientX-r.left)/r.width,0,1),y:clamp(1-(e.clientY-r.top)/r.height,0,1),ry:1-(e.clientY-r.top)/r.height}};
 const snapshot=()=>JSON.stringify(ADJ()?ADJ().dev.curve:null);
 const commit=()=>{drawCurve();markContent();markSecs();pushHistory('Courbe des tonalités');scheduleThumbs()};
 c.addEventListener('pointerdown',e=>{if(e.button!==0||!ADJ())return;e.preventDefault();c.setPointerCapture(e.pointerId);try{c.focus({preventScroll:true})}catch(_){}
+  /* onglet Zones : glisser verticalement dans une zone la monte ou la descend, comme dans Lightroom */
+  if(curveCh==='p'){const d=ADJ().dev;if(!Array.isArray(d.pcurve))d.pcurve=PC0.slice();const p=pos(e),k=zoneAt(p.x);ZD={k,y0:p.ry,v0:d.pcurve[k],before:d.pcurve[k]};window.PC_HOT=k;clipOn(e);drawCurve();return}
+  clipOn(e);
   const p=pos(e),pts=curvePts(),before=snapshot();let i=pts.findIndex(q=>Math.hypot(q[0]-p.x,q[1]-p.y)<0.045),added=false;
   if(i<0){let bd=0.03;pts.forEach((q,j)=>{const dx=Math.abs(q[0]-p.x);if(dx<bd){bd=dx;i=j}})}
   if(i<0){pts.push([p.x,curveFn(pts)(p.x)]);pts.sort((a,b)=>a[0]-b[0]);i=pts.findIndex(q=>q[0]===p.x);added=true;markContent();markSecs()}
   SEL=pts[i];curveDrag={pt:pts[i],before,added,ox:added?0:pts[i][0]-p.x,oy:added?0:pts[i][1]-p.y};drawCurve()});
-c.addEventListener('pointermove',e=>{if(!curveDrag)return;const p=pos(e),pts=curvePts(),i=pts.indexOf(curveDrag.pt);if(i<0)return;
+c.addEventListener('pointermove',e=>{if(curveCh==='p'&&ADJ()){const p=pos(e),d=ADJ().dev;if(ZD){d.pcurve[ZD.k]=clamp(Math.round(ZD.v0+(p.ry-ZD.y0)*200),-100,100);pcSync(ZD.k);drawCurve();markContent();markSecs()}else{const k=zoneAt(p.x);if(window.PC_HOT!==k){window.PC_HOT=k;drawCurve()}}return}
+  if(!curveDrag)return;const p=pos(e),pts=curvePts(),i=pts.indexOf(curveDrag.pt);if(i<0)return;
   const lo=i>0?pts[i-1][0]+0.01:0,hi=i<pts.length-1?pts[i+1][0]-0.01:1,end=i===0||i===pts.length-1;
   if(!end&&(p.ry<-0.12||p.ry>1.12)){pts.splice(i,1);SEL=null;curveDrag=null;commit();return}
   curveDrag.pt[0]=clamp(p.x+curveDrag.ox,lo,hi);curveDrag.pt[1]=clamp(p.y+curveDrag.oy,0,1);drawCurve();markContent();markSecs()});
-const up=()=>{if(!curveDrag)return;const d=curveDrag;curveDrag=null;if(d.added||snapshot()!==d.before){pushHistory('Courbe des tonalités');scheduleThumbs()}drawCurve()};
+const up=()=>{clipOff();if(ZD){const z=ZD;ZD=null;if(ADJ()&&ADJ().dev.pcurve[z.k]!==z.before){pushHistory(labelFor('pcurve.'+z.k));scheduleThumbs()}drawCurve();return}if(!curveDrag)return;const d=curveDrag;curveDrag=null;if(d.added||snapshot()!==d.before){pushHistory('Courbe des tonalités');scheduleThumbs()}drawCurve()};
 c.addEventListener('pointerup',up);c.addEventListener('pointercancel',up);
-c.addEventListener('dblclick',e=>{if(!ADJ())return;const p=pos(e),pts=curvePts(),i=pts.findIndex(q=>Math.hypot(q[0]-p.x,q[1]-p.y)<0.05);if(i>0&&i<pts.length-1){pts.splice(i,1);SEL=null;commit()}});
+c.addEventListener('pointerleave',()=>{if(!ZD&&window.PC_HOT!=null){window.PC_HOT=null;drawCurve()}});
+c.addEventListener('dblclick',e=>{if(!ADJ())return;if(curveCh==='p'){const k=zoneAt(pos(e).x),d=ADJ().dev;if(d.pcurve[k]){d.pcurve[k]=0;pcSync(k);commit()}return}const p=pos(e),pts=curvePts(),i=pts.findIndex(q=>Math.hypot(q[0]-p.x,q[1]-p.y)<0.05);if(i>0&&i<pts.length-1){pts.splice(i,1);SEL=null;commit()}});
 const delSel=()=>{const pts=curvePts(),i=SEL?pts.indexOf(SEL):-1;if(i>0&&i<pts.length-1){pts.splice(i,1);SEL=pts[Math.min(i,pts.length-2)]||null;commit()}};
 /* Delete / Backspace on a develop slider or on the curve must never reach the global "delete the active layer" shortcut (it lets range inputs through) */
 window.addEventListener('keydown',e=>{if(e.key!=='Delete'&&e.key!=='Backspace')return;if(e.shiftKey||e.metaKey||e.ctrlKey||e.altKey)return;const t=e.target;if(!t||!t.closest)return;
   if(t.id==='curve'){e.preventDefault();e.stopImmediatePropagation();if(ADJ())delSel()}else if(t.matches('input[type=range]')){e.preventDefault();e.stopImmediatePropagation()}},true);/* any slider of the app (layer opacity, options bar...), not only the develop ones */
-c.addEventListener('keydown',e=>{if(!ADJ()||e.metaKey||e.ctrlKey||e.altKey)return;const pts=curvePts();let i=SEL?pts.indexOf(SEL):-1;
+c.addEventListener('keydown',e=>{if(!ADJ()||e.metaKey||e.ctrlKey||e.altKey||curveCh==='p')return;const pts=curvePts();let i=SEL?pts.indexOf(SEL):-1;
   if(!/^Arrow/.test(e.key))return;e.preventDefault();e.stopPropagation();
   if(i<0){i=pts.length>2?1:0;SEL=pts[i];drawCurve();return}
   const st=(e.shiftKey?10:1)/255,pt=pts[i],lo=i>0?pts[i-1][0]+0.01:0,hi=i<pts.length-1?pts[i+1][0]-0.01:1;
   if(e.key==='ArrowLeft')pt[0]=clamp(pt[0]-st,lo,hi);else if(e.key==='ArrowRight')pt[0]=clamp(pt[0]+st,lo,hi);else if(e.key==='ArrowUp')pt[1]=clamp(pt[1]+st,0,1);else pt[1]=clamp(pt[1]-st,0,1);
   commit()});
-c.addEventListener('blur',()=>{SEL=null;drawCurve()});
-document.addEventListener('click',e=>{if(SEL&&!e.target.closest('#curve')&&!e.target.closest('#curveCh')){SEL=null;drawCurve()}},true);
+c.addEventListener('blur',e=>{const r=e.relatedTarget;if(r&&r.closest&&r.closest('#cvNum'))return;SEL=null;drawCurve()});/* the numeric fields under the curve edit the selected point */
+document.addEventListener('click',e=>{if(SEL&&!e.target.closest('#curve')&&!e.target.closest('#curveCh')&&!e.target.closest('#cvNum')){SEL=null;drawCurve()}},true);
 /* the selected point and its input -> output values are drawn on the canvas */
 const _dc=drawCurve;drawCurve=function(){_dc.apply(this,arguments);try{
-  const cv=$('#curve');if(!cv||!ADJ())return;const pt=(curveDrag&&curveDrag.pt)||SEL;if(!pt||curvePts().indexOf(pt)<0)return;
+  const cv=$('#curve');if(!cv||!ADJ()||curveCh==='p')return;const pt=(curveDrag&&curveDrag.pt)||SEL;if(!pt||curvePts().indexOf(pt)<0)return;
   const g=cx(cv),W=cv.width,H=cv.height,x=pt[0]*W,y=H-pt[1]*H;g.save();g.lineWidth=3;g.strokeStyle='#fff';g.beginPath();g.arc(x,y,13,0,7);g.stroke();g.lineWidth=1.5;g.strokeStyle='rgba(0,0,0,.6)';g.beginPath();g.arc(x,y,14.5,0,7);g.stroke();
   const txt=`${Math.round(pt[0]*255)} → ${Math.round(pt[1]*255)}`;g.font='600 22px '+getComputedStyle(document.body).fontFamily;const w=g.measureText(txt).width+20,h=34;
   let bx=x+16,by=y-h-14;if(bx+w>W-4)bx=x-16-w;if(by<4)by=y+16;bx=Math.max(4,bx);by=Math.min(H-h-4,by);

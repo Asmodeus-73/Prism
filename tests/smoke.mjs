@@ -57,6 +57,38 @@ await test('réglages : finitions couleur (interrupteur, rendu 8 et 16 bits, ann
   const on=await ev(()=>!!(AL().dev.fx&&AL().dev.fx.bw&&AL().dev.fx.bw.on));const b8=await mean(8),b16=await mean(16);
   if(!on||Math.abs(b8)>0.6||Math.abs(b16)>0.6||Math.abs(a)<1)throw new Error(JSON.stringify({on,a,b8,b16}));
   await ev(()=>undo());const c=await mean(8);if(Math.abs(c-a)>0.01)throw new Error('annuler : '+a+' / '+c)});
+await test('courbe : Luma sans saturation, zones, sur la photo, pipettes, saisie, préréglages, écrêtage',async()=>{if(!(await ev(()=>!!S.doc)))await sample();
+  await ev(()=>{const i=S.doc.layers.findIndex(l=>l.kind==='adjust'&&!l.mask);if(i>=0)S.doc.active=i;AL().dev=DEV0();syncAll();pushHistory('Base du test');const sec=document.querySelector('[data-sec="curve"]');sec.open=true;sec.scrollIntoView()});
+  /* une courbe en S sur la luminosité ne sature pas les couleurs (la même sur RVB les sature), processeur et carte graphique d'accord */
+  const r=await ev(()=>{const c=flatSync(),w=160,h=Math.max(1,Math.round(160*c.height/c.width)),t=mk(w,h);cx(t).drawImage(c,0,0,w,h);const base=cx(t).getImageData(0,0,w,h);
+    const sat=d=>{let s=0,n=0;for(let i=0;i<d.length;i+=4){const mx=Math.max(d[i],d[i+1],d[i+2]),mn=Math.min(d[i],d[i+1],d[i+2]);if(mx>8){s+=(mx-mn)/mx;n++}}return s/n};
+    const run=(dv,gpu)=>{const im=new ImageData(new Uint8ClampedArray(base.data),w,h),o={scale:1,ox:0,oy:0,docW:w,docH:h};if(gpu){const c2=mk(w,h);cx(c2).putImageData(im,0,0);const out=GPU.develop(c2,dv,null,1,o),t2=mk(w,h);cx(t2).drawImage(out,0,0);return cx(t2).getImageData(0,0,w,h).data}developCPU(im,dv,o,null,1);return im.data};
+    const S_=[[0,0],[0.25,0.15],[0.75,0.85],[1,1]],a=DEV0(),b=DEV0();a.curve.rgb=S_;b.lcurve=S_;let gd=0;if(GPU.ok){const x=run(b),y=run(b,true);for(let i=0;i<x.length;i++)gd=Math.max(gd,Math.abs(x[i]-y[i]))}
+    const f=pcurveFn([100,-100,100,-100,25,50,75]);let mono=true;for(let i=1;i<=100;i++)if(f(i/100)<f((i-1)/100))mono=false;
+    return{s0:sat(base.data),rgb:sat(run(a)),luma:sat(run(b)),gd,ends:[f(0),f(1)],mono}});
+  if(!(r.rgb>r.s0*1.03)||Math.abs(r.luma-r.s0)>r.s0*0.03||r.gd>2||r.ends[0]!==0||r.ends[1]!==1||!r.mono)throw new Error(JSON.stringify(r));
+  /* onglet Zones : glisser dans la zone des hautes lumières la remonte, une étape d'historique */
+  await page.click('#curveCh [data-c="p"]');const cb=await page.locator('#curve').boundingBox();await page.mouse.move(cb.x+cb.width*0.9,cb.y+cb.height*0.5);await page.mouse.down();await page.mouse.move(cb.x+cb.width*0.9,cb.y+cb.height*0.3,{steps:4});await page.mouse.up();
+  const z=await ev(()=>[AL().dev.pcurve[3],S.history[S.history.length-1].label,!document.querySelector('#pcRows').hidden]);if(!(z[0]>20)||!/hautes lumières/.test(z[1])||!z[2])throw new Error('zones '+JSON.stringify(z));
+  /* sur la photo : glisser vers le haut ajoute un point remonté sur la courbe RVB */
+  await page.click('#curveCh [data-c="rgb"]');await page.click('#cvTAT');const vb=await page.locator('#view').boundingBox();
+  await page.mouse.move(vb.x+vb.width*0.5,vb.y+vb.height*0.5);await page.mouse.down();await page.mouse.move(vb.x+vb.width*0.5,vb.y+vb.height*0.5-60,{steps:5});await page.mouse.up();
+  const t=await ev(()=>{const p=AL().dev.curve.rgb;return{n:p.length,up:p.length===3&&p[1][1]>p[1][0]+0.1}});if(!t.up)throw new Error('sur la photo '+JSON.stringify(t));
+  /* saisie chiffrée du point sélectionné */
+  await page.keyboard.press('Escape');await ev(()=>curveSelSet(curvePts()[1]));await page.fill('#cvOut','100');await page.press('#cvOut','Enter');
+  const o=await ev(()=>Math.round(AL().dev.curve.rgb[1][1]*255));if(o!==100)throw new Error('sortie '+o);
+  /* pipette blanc : les trois courbes de canal finissent sous 1 */
+  await page.click('#cvTools [data-pk="w"]');await page.mouse.click(vb.x+vb.width*0.5,vb.y+vb.height*0.35);
+  const w=await ev(()=>['r','g','b'].map(c=>{const p=AL().dev.curve[c];return p[p.length-1]}));if(!w.every(p=>p[1]===1&&p[0]<1&&p[0]>0.2))throw new Error('pipette '+JSON.stringify(w));
+  /* préréglage, remise à zéro de l'onglet, enregistrement */
+  await page.selectOption('#cvPreset','b2');const pr=await ev(()=>AL().dev.curve.rgb.length);await page.click('#cvReset');const rs=await ev(()=>isIdCurve(AL().dev.curve.rgb));
+  await page.click('#cvSave');await page.click('.dlg .foot .primary');const sv=await ev(()=>PREF.get('curvePresets',[]).length);if(pr!==4||!rs||sv<1)throw new Error(JSON.stringify({pr,rs,sv}));
+  /* écrêtage : rouge sur la photo pendant qu'on monte fort la courbe Luma */
+  await page.click('#cvClip');await page.click('#curveCh [data-c="l"]');const cb2=await page.locator('#curve').boundingBox();await page.mouse.move(cb2.x+cb2.width*0.75,cb2.y+cb2.height*0.25);await page.mouse.down();await page.mouse.move(cb2.x+cb2.width*0.55,cb2.y+cb2.height*0.02,{steps:4});await page.waitForTimeout(250);
+  const red=await ev(()=>{const v=document.querySelector('#view'),d=v.getContext('2d').getImageData(0,0,v.width,v.height).data;let n=0;for(let i=0;i<d.length;i+=16)if(d[i]>200&&d[i]-d[i+1]>100&&d[i]-d[i+2]>100)n++;return n});await page.mouse.up();
+  await ev(()=>{PREF.set('curveClip',false);PREF.set('curvePresets',[]);curveCh='rgb';curveToolsUI()});if(red<50)throw new Error('écrêtage '+red);
+  /* annuler revient en arrière pas à pas, l'ancien projet sans Luma ni zones se rend */
+  await ev(()=>{for(let i=0;i<8;i++)undo()});const old=await ev(()=>{const d=DEV0();delete d.lcurve;delete d.pcurve;d.exposure=0.3;const im=new ImageData(new Uint8ClampedArray(64),4,4);developCPU(im,d,{scale:1,ox:0,oy:0,docW:4,docH:4},null,1);return lutKeyOf(d).length>0});if(!old)throw new Error('ancien réglage')});
 await test('interface 1.0 : calques à droite, capsule d’options, pastille de zoom, mode Focus',async()=>{await ev(()=>setTool('remove'));
   const r=await ev(()=>({lay:!!document.querySelector('.side #layersPanel,#atRail #layersPanel'),cap:!!document.querySelector('#stage>#optbar'),fam:[...document.querySelectorAll('#optbar .cap-fam [data-ft]')].map(b=>b.dataset.ft+(b.getAttribute('aria-pressed')==='true'?'*':'')).join(),
     zoom:!!document.querySelector('#stage .cap-zoom #zoomLbl'),rows:getComputedStyle(document.querySelector('#app')).gridTemplateRows.split(' ').length}));
