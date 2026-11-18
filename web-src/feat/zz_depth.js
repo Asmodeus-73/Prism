@@ -161,7 +161,7 @@ function hideFaces(L,faces,p){const d=S.doc,out=cloneC(L.canvas),g=cx(out),src=L
     else if(p.style==='fill'){fx=mk(cw,ch);const fg=cx(fx);fg.fillStyle=p.fill;fg.fillRect(0,0,cw,ch)}
     else{let b=piece;const r=Math.max(2,Math.max(w,h)*p.strength/100*0.25);b=blurCanvas(b,r);b=blurCanvas(b,r*0.6);fx=b}
     // soft ellipse: the edge fades over a tenth of the face
-    const mask=mk(cw,ch),mg=cx(mask),fe=p.style==='fill'?1:Math.max(1,Math.max(w,h)*0.08);mg.filter=`blur(${fe}px)`;mg.fillStyle='#fff';mg.beginPath();mg.ellipse(x-X+w/2,y-Y+h/2,w/2,h/2,0,0,Math.PI*2);mg.fill();mg.filter='none';
+    const mask=mk(cw,ch),mg=cx(mask),fe=p.style==='fill'?1:Math.max(1,Math.max(w,h)*0.08);mg.fillStyle='#fff';mg.beginPath();mg.ellipse(x-X+w/2,y-Y+h/2,w/2,h/2,0,0,Math.PI*2);mg.fill();{const b=blurCanvas(mask,fe);mg.clearRect(0,0,cw,ch);mg.drawImage(b,0,0)}
     const fg=cx(fx);fg.globalCompositeOperation='destination-in';fg.drawImage(mask,0,0);g.drawImage(fx,X,Y)}
   return out}
 async function facesDialog(p0){const d=S.doc;if(!d)return;const L=pixelTarget();if(!L){toast('Aucun calque de pixels');return}if(L.visible===false){toast('Ce calque est masqué : affichez-le d’abord');return}

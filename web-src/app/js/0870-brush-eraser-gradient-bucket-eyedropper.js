@@ -175,13 +175,13 @@ const _sfP=stampFor;stampFor=function(size,hard,color){const t=S.tool;
  const o=S.opts[t],tip=String(o.tip||'round'),ang=+o.angle||0,rd=+o.round||100;
  if(!(tip==='round'||tip==='square'||tip==='line')||(tip==='round'&&!ang&&rd>=100))return _sfP.apply(this,arguments);
  const s=Math.max(2,Math.ceil(size)),a=ang*Math.PI/180,f=Math.max(.08,rd/100),ca=Math.abs(Math.cos(a)),sa=Math.abs(Math.sin(a));
- const bl=hard<.95&&'filter' in cx(mk(1,1))?Math.round((1-hard)*s*.12):0;
+ const bl=hard<.95?Math.round((1-hard)*s*.12):0;
  const hx=tip==='square'?s*.44:tip==='line'?s*.46:s/2,hy=(tip==='square'?s*.44:tip==='line'?s*.12:s/2)*f;
  const N=Math.max(s,Math.ceil(2*(Math.max(hx*ca+hy*sa,hx*sa+hy*ca)+bl*2.5))+4),c=mk(N,N),g=cx(c);
  g.save();g.translate(N/2,N/2);g.rotate(a);g.scale(1,f);g.fillStyle='#000';
  if(tip==='square')g.fillRect(-s*.44,-s*.44,s*.88,s*.88);else{g.beginPath();if(tip==='line')g.ellipse(0,0,s*.46,s*.12,0,0,7);else g.arc(0,0,s/2,0,7);g.fill()}
  g.restore();
- if(bl){const t2=mk(N,N),g2=cx(t2);g2.filter=`blur(${bl}px)`;g2.drawImage(c,0,0);g.clearRect(0,0,N,N);g.drawImage(t2,0,0)}
+ if(bl){const t2=blurCanvas(c,bl);g.clearRect(0,0,N,N);g.drawImage(t2,0,0)} /* blurCanvas : le filtre du canevas, ou un flou calculé là où il manque (Safari avant la 18) */
  g.globalCompositeOperation='source-in';g.fillStyle=color||'#000000';g.fillRect(0,0,N,N);return c};
 
 /* ---------- "Spray…" dialog: the values were only read when closing (lost with Échap) and the numbers beside the sliders never moved ---------- */

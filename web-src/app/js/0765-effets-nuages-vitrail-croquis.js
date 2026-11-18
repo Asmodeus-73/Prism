@@ -65,9 +65,14 @@ Object.assign(FILTERS,{
  oil:{name:'Peinture à l’huile',params:[P('r','Taille du pinceau',1,20,1,6,' px',1),P('n','Niveaux',4,40,1,20,'')],
   run:(s,p)=>{const w0=s.width,h0=s.height,k=Math.min(1,2400/Math.max(w0,h0)),src=k<1?resample(s,Math.round(w0*k),Math.round(h0*k)):s,w=src.width,h=src.height,r=Math.max(1,Math.round(p.r*k)),L=p.n,sd=px(src).data,o=new ImageData(w,h),a=o.data;
    const lev=new Uint8Array(w*h);for(let i=0;i<w*h;i++)lev[i]=Math.min(L-1,Math.floor(luma(sd,i*4)/256*L));const cnt=new Uint32Array(L),sr=new Uint32Array(L),sg=new Uint32Array(L),sb=new Uint32Array(L);
-   for(let y=0;y<h;y++)for(let x=0;x<w;x++){cnt.fill(0);sr.fill(0);sg.fill(0);sb.fill(0);
-     for(let yy=Math.max(0,y-r);yy<=Math.min(h-1,y+r);yy++)for(let xx=Math.max(0,x-r);xx<=Math.min(w-1,x+r);xx++){const q=yy*w+xx,l=lev[q],j=q*4;cnt[l]++;sr[l]+=sd[j];sg[l]+=sd[j+1];sb[l]+=sd[j+2]}
-     let bl=0;for(let l=1;l<L;l++)if(cnt[l]>cnt[bl])bl=l;const j=(y*w+x)*4,n=cnt[bl]||1;a[j]=sr[bl]/n;a[j+1]=sg[bl]/n;a[j+2]=sb[bl]/n;a[j+3]=sd[j+3]}
+   /* fenêtre glissante : en avançant d'un pixel, on ajoute la colonne qui entre et on retire celle qui sort
+      (2r+1 pixels au lieu de (2r+1)², même résultat ; à 20 px l'ancien calcul bloquait l'éditeur plusieurs dizaines de secondes) */
+   const col=(xx,y0,y1,sg1)=>{for(let yy=y0;yy<=y1;yy++){const q=yy*w+xx,l=lev[q],j=q*4;cnt[l]+=sg1;sr[l]+=sg1*sd[j];sg[l]+=sg1*sd[j+1];sb[l]+=sg1*sd[j+2]}};
+   for(let y=0;y<h;y++){cnt.fill(0);sr.fill(0);sg.fill(0);sb.fill(0);const y0=Math.max(0,y-r),y1=Math.min(h-1,y+r);
+     for(let xx=0;xx<=Math.min(w-1,r);xx++)col(xx,y0,y1,1);
+     for(let x=0;x<w;x++){
+       let bl=0;for(let l=1;l<L;l++)if(cnt[l]>cnt[bl])bl=l;const j=(y*w+x)*4,n=cnt[bl]||1;a[j]=sr[bl]/n;a[j+1]=sg[bl]/n;a[j+2]=sb[bl]/n;a[j+3]=sd[j+3];
+       if(x-r>=0)col(x-r,y0,y1,-1);if(x+r+1<w)col(x+r+1,y0,y1,1)}}
    const out=put(w,h,o);return k<1?resample(out,w0,h0):out}},
 });
 /* « Mélange » se choisit dans une liste, pas avec un curseur */

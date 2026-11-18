@@ -80,7 +80,7 @@ const _sf=stampFor;stampFor=function(size,hard,color){const t=S.tool;if(t!=='bru
  else if(tip==='chalk'||tip==='splat'){const R=rnd(tip==='chalk'?11:5);g.fillStyle='#000';const n=tip==='chalk'?Math.round(s*s*.5):14;for(let i=0;i<n;i++){const a=R()*6.283,rr=Math.sqrt(R())*s*.45,r=tip==='chalk'?Math.max(.6,s*.012):s*(.04+R()*.1);g.globalAlpha=tip==='chalk'?.25+R()*.75:1;g.beginPath();g.arc(s/2+Math.cos(a)*rr,s/2+Math.sin(a)*rr,r,0,7);g.fill()}}
  else if(String(tip).startsWith('c:')){const im=tipLoad(+tip.slice(2));if(im)g.drawImage(im,0,0,s,s);else{g.fillStyle='#000';g.beginPath();g.arc(s/2,s/2,s/2,0,7);g.fill()}}
  else{g.fillStyle='#000';g.beginPath();g.arc(s/2,s/2,s/2,0,7);g.fill()}
- g.restore();if(hard<.95&&!String(tip).startsWith('c:')&&'filter'in g&&tip!=='chalk'&&tip!=='splat'){const t2=mk(s,s),g2=cx(t2);g2.filter=`blur(${Math.round((1-hard)*s*.12)}px)`;g2.drawImage(c,0,0);g.clearRect(0,0,s,s);g.drawImage(t2,0,0)}
+ g.restore();if(hard<.95&&!String(tip).startsWith('c:')&&tip!=='chalk'&&tip!=='splat'){const t2=blurCanvas(c,Math.round((1-hard)*s*.12));g.clearRect(0,0,s,s);g.drawImage(t2,0,0)}
  g.globalCompositeOperation='source-in';g.fillStyle=col;g.fillRect(0,0,s,s);return c};
 /* Photoshop brushes (.abr, versions 1, 2, 6 and later): the sampled tips, as grey levels (255 = paint). Computed round tips are skipped. */
 function parseABR(u8){const v=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),out=[];let p=0,px=0;const room=(w,h)=>out.length<12&&(px+=w*h)<=64e6;const u16=()=>{const x=v.getUint16(p);p+=2;return x},u32=()=>{const x=v.getUint32(p);p+=4;return x},i32=()=>{const x=v.getInt32(p);p+=4;return x};
