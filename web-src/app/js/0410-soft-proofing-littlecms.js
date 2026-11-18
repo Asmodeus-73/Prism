@@ -1,6 +1,6 @@
 /* ================= soft proofing (LittleCMS) ================= */
 function iccP3(){/* minimal ICC v4 Display P3 matrix/TRC profile */
-  const tags=[],u8=[],push=(sig,bytes)=>tags.push({sig,bytes});const be=n=>[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255],s15=v=>be(Math.round(v*65536)|0),sig=s=>[...s].map(c=>c.charCodeAt(0));
+  const tags=[],push=(sig,bytes)=>tags.push({sig,bytes});const be=n=>[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255],s15=v=>be(Math.round(v*65536)|0),sig=s=>[...s].map(c=>c.charCodeAt(0));
   const xyz=(x,y,z)=>[...sig('XYZ '),0,0,0,0,...s15(x),...s15(y),...s15(z)];
   const mluc=t=>{const str=[];for(const ch of t){const c=ch.charCodeAt(0);str.push(c>>8,c&255)}return[...sig('mluc'),0,0,0,0,...be(1),...be(12),...sig('enUS'),...be(str.length),...be(28),...str]};
   const para=[...sig('para'),0,0,0,0,0,3,0,0,...s15(2.4),...s15(1/1.055),...s15(0.055/1.055),...s15(1/12.92),...s15(0.04045)];

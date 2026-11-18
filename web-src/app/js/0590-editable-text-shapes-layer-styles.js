@@ -32,7 +32,7 @@ function drawTextTo(c,t){const g=cx(c);g.clearRect(0,0,c.width,c.height);g.font=
   return[t.x-t.sw,t.y-t.sw,bw+t.sw*2,lines.length*lh+t.sw*2]}
 async function loadFont(t){try{await document.fonts.load(fontOf(t),t.text||'A')}catch(e){}}
 const PV=new Map();const pvCanvas=(L)=>{const d=S.doc;let c=PV.get(L.id);if(!c||c.width!==d.w||c.height!==d.h){c=mk(d.w,d.h);PV.set(L.id,c)}return c};
-function livePreview(L){const d=S.doc;if(L.txt){const bb=drawTextTo(pvCanvas(L),L.txt);L.txt=Object.assign({},L.txt,{bbox:bb})}else if(L.shp){drawShapeTo(pvCanvas(L),L.shp)}L.preview=pvCanvas(L);markComp()}
+function livePreview(L){if(L.txt){const bb=drawTextTo(pvCanvas(L),L.txt);L.txt=Object.assign({},L.txt,{bbox:bb})}else if(L.shp){drawShapeTo(pvCanvas(L),L.shp)}L.preview=pvCanvas(L);markComp()}
 function finalizeMeta(L){const d=S.doc,c=mk(d.w,d.h);if(L.txt){const bb=drawTextTo(c,L.txt);L.txt=Object.assign({},L.txt,{bbox:bb})}else if(L.shp)drawShapeTo(c,L.shp);L.canvas=c;delete L.preview;PV.delete(L.id)}
 const inBox=(b,p)=>b&&p.x>=b[0]-6&&p.x<=b[0]+b[2]+6&&p.y>=b[1]-6&&p.y<=b[1]+b[3]+6;
 const nameOfText=t=>'Texte : '+((t.text.split('\n')[0]||'').slice(0,18)||'…');
@@ -159,7 +159,7 @@ function groupLayers(){const d=S.doc;let sel=multiLayers();if(sel.length<2){cons
   const idx=sel.map(l=>d.layers.indexOf(l)).sort((a,b)=>a-b),top=idx[idx.length-1],act=d.layers[d.active];const gid='g'+uid8();const n=new Set(d.layers.filter(l=>l.grp).map(l=>l.grp.id)).size+1,name='Groupe '+n;
   sel.forEach(l=>{l.grp={id:gid,name}});const rest=d.layers.filter(l=>!sel.includes(l)),pos=rest.filter(l=>d.layers.indexOf(l)<top).length;rest.splice(pos,0,...sel.sort((a,b)=>d.layers.indexOf(a)-d.layers.indexOf(b)));d.layers=rest;d.active=d.layers.indexOf(act);S.multi.clear();markComp();pushHistory('Grouper les calques');syncAll();toast(`${sel.length} calques dans « ${name} »`)}
 function ungroup(gid){const d=S.doc;let n=0;d.layers.forEach((l,i)=>{if(l.grp&&l.grp.id===gid){d.layers[i]={...l};delete d.layers[i].grp;n++}});if(!n)return;const act=d.active;d.active=Math.min(act,d.layers.length-1);markComp();pushHistory('Dissoudre le groupe');syncAll()}
-function removeFromGroup(){const d=S.doc,L=AL();if(!L||!L.grp)return;delete L.grp;markComp();pushHistory('Retirer du groupe');syncAll()}
+function removeFromGroup(){const L=AL();if(!L||!L.grp)return;delete L.grp;markComp();pushHistory('Retirer du groupe');syncAll()}
 function renameGroup(gid){const d=S.doc,cur=(d.layers.find(l=>l.grp&&l.grp.id===gid)||{}).grp;if(!cur)return;dialog({title:'Renommer le groupe',light:true,body:`<label class="field">Nom<input id="gnm" value="${esc(cur.name)}"></label>`,onOpen:el=>setTimeout(()=>{$('#gnm',el).focus();$('#gnm',el).select()},30),buttons:[{label:'Annuler'},{label:'Renommer',primary:true,onClick:()=>{const v=$('#gnm').value.trim();if(!v)return;d.layers.forEach((l,i)=>{if(l.grp&&l.grp.id===gid)l.grp={...l.grp,name:v}});pushHistory('Renommer le groupe');syncAll()}}]})}
 function setGroupVisible(gid,v){const d=S.doc;d.layers.forEach(l=>{if(l.grp&&l.grp.id===gid)l.visible=v});markComp();pushHistory(v?'Afficher le groupe':'Masquer le groupe');syncAll()}
 function linkLayers(){const d=S.doc;let sel=multiLayers().filter(l=>l.kind==='pixel');if(sel.length<2){const L=AL(),b=d.layers[d.active-1];if(!L||!b||L.kind!=='pixel'||b.kind!=='pixel'){toast('Sélectionnez deux calques de pixels (Ctrl ou Maj + clic dans la liste)');return}sel=[L,b]}
@@ -199,6 +199,4 @@ function layerExtras(i){const d=S.doc,L=d.layers[i],ms=multiLayers().length>1,ou
 const _layerCtx13=layerCtx;layerCtx=function(i){const a=_layerCtx13(i),d=S.doc;if(!d)return a;const at=a.findIndex(x=>x===SEP);a.splice(at<0?a.length:at+1,0,...layerExtras(i));return a};
 const _ctxFor13=ctxFor;ctxFor=function(t){const gh=t.closest&&t.closest('#pane-layers li.grp');if(gh&&S.doc)return()=>gCtx(gh.dataset.gid);return _ctxFor13(t)};
 (()=>{const mi=MENU2.layer.items;MENU2.layer.items=()=>{const a=mi(),d=S.doc;if(!d)return a;const i=a.findIndex(x=>x&&x.label&&/^Masque$/.test(x.label));a.splice(i<0?a.length:i,0,...layerExtras(d.active));return a}})();
-/* text tool: clicking existing text edits it; Enter on the menu entry too */
-(()=>{const mi=MENU2.edit&&MENU2.edit.items;/* no-op placeholder: edit menu untouched */})();
 

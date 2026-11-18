@@ -20,7 +20,7 @@ function paint(c,pr){
     g.v.forEach(x=>{const px=Math.round(X(x))+.5;c.moveTo(px,0);c.lineTo(px,H)});g.h.forEach(y=>{const py=Math.round(Y(y))+.5;c.moveTo(0,py);c.lineTo(W,py)});c.stroke()}
   const sl=S.snapLines;if(sl){c.beginPath();c.strokeStyle='#ff4fd8';c.lineWidth=1;(sl.v||[]).forEach(x=>{const px=Math.round(X(x))+.5;c.moveTo(px,0);c.lineTo(px,H)});(sl.h||[]).forEach(y=>{const py=Math.round(Y(y))+.5;c.moveTo(0,py);c.lineTo(W,py)});c.stroke()}
   if(st.rulers){
-    const bg=css('--chrome')||'#1c1c1f',ln=css('--line-2')||'#3a3a40',fg=css('--fg-3')||'#888',fg2=css('--fg-2')||'#aaa';
+    const bg=css('--chrome')||'#1c1c1f',ln=css('--line-2')||'#3a3a40',fg=css('--fg-3')||'#888';
     c.fillStyle=bg;c.globalAlpha=.94;c.fillRect(0,0,W,RW);c.fillRect(0,0,RW,H);c.globalAlpha=1;
     c.strokeStyle=ln;c.beginPath();c.moveTo(RW+.5,0);c.lineTo(RW+.5,H);c.moveTo(0,RW+.5);c.lineTo(W,RW+.5);c.stroke();
     const major=stepFor(70),minor=major/ (major%5===0&&major%10!==0?5:major===2||major===20||major===200?4:5);

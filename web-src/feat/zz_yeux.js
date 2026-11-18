@@ -93,7 +93,7 @@ const css=document.createElement('style');css.textContent=`
 .ey-row .ey-c{display:flex;flex-direction:column;gap:3px}
 .ey-row .ey-t{font-size:12px;opacity:.8}
 .ey-row select{width:100%;min-width:0}.ey-row .ey-c{min-width:0}`;document.head.appendChild(css);
-function crop(c,t,shiftFrom){const G=t.G,w=2*G.ed,h=0.66*G.ed,o=mk(264,88),g=cx(o);g.fillStyle='#222';g.fillRect(0,0,264,88);const k=264/w,{u,n,m}=G;
+function crop(c,t,shiftFrom){const G=t.G,w=2*G.ed,o=mk(264,88),g=cx(o);g.fillStyle='#222';g.fillRect(0,0,264,88);const k=264/w,{u,n,m}=G;
   g.setTransform(k*u[0],k*n[0],k*u[1],k*n[1],132-k*(u[0]*m[0]+u[1]*m[1]),44-k*(n[0]*m[0]+n[1]*m[1]));g.imageSmoothingQuality='high';g.drawImage(c,0,0);if(shiftFrom)g.drawImage(shiftFrom,0,0);return o}
 const pct=v=>Math.round(v*100)+' %';
 async function eyesDialog(){const d=S.doc;if(!d){toast(NODOC);return}const B=baseLayer(d);if(!B){toast('Pas de calque photo à retoucher');return}

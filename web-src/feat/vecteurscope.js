@@ -61,7 +61,7 @@ function draw(){if(!VS.on)return;const g=c.getContext('2d'),W=c.width,Hh=c.heigh
   g.strokeStyle=fg3;g.setLineDash([4,3]);g.beginPath();g.moveTo(cx0,cy0);g.lineTo(cx0+Math.cos(SKIN)*R,cy0-Math.sin(SKIN)*R);g.stroke();g.setLineDash([]);
   g.fillStyle=fg3;g.font=`${Math.round(Hh/20)}px system-ui,sans-serif`;g.textAlign='center';g.textBaseline='middle';
   for(const[l,col]of TGT){const[u,v]=uv(...col),x=cx0+u*1.9*R*0.75,y=cy0-v*1.9*R*0.75;g.strokeStyle=`rgb(${col.map(v=>v*200+30).join()})`;g.strokeRect(x-5,y-5,10,10);g.fillText(l,cx0+u*1.9*R*0.93,cy0-v*1.9*R*0.93)}
-  const P=VS.pts;if(P&&P.tot){const sc=2*R/N,img=g.createImageData(N,N),D=img.data;let mx=0;for(let i=0;i<N*N;i++)if(P.H[i]>mx)mx=P.H[i];const lm=Math.log1p(mx);
+  const P=VS.pts;if(P&&P.tot){const img=g.createImageData(N,N),D=img.data;let mx=0;for(let i=0;i<N*N;i++)if(P.H[i]>mx)mx=P.H[i];const lm=Math.log1p(mx);
     for(let i=0;i<N*N;i++){const h=P.H[i];if(!h)continue;const a=Math.log1p(h)/lm,k=1/h,j=i*4;let r=P.C[i*3]*k,gg=P.C[i*3+1]*k,b=P.C[i*3+2]*k;const mxc=Math.max(r,gg,b,1e-3),f=0.55/mxc+0.45;
       D[j]=Math.min(255,r*f*255+40);D[j+1]=Math.min(255,gg*f*255+40);D[j+2]=Math.min(255,b*f*255+40);D[j+3]=Math.round(60+195*a)}
     const t=VS.tmp||(VS.tmp=mk(N,N));rx(t).putImageData(img,0,0);g.imageSmoothingEnabled=true;g.globalCompositeOperation=st.getPropertyValue('--hist-blend').trim()==='multiply'?'multiply':'lighter';g.drawImage(t,cx0-R,cy0-R,2*R,2*R);g.globalCompositeOperation='source-over'}

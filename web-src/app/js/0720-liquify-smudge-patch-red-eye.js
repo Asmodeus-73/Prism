@@ -30,7 +30,7 @@ function smudgeStep(st,p,first){const o=OB.smudge,r=o.size/2,R=regionOf(st,p,r);
  let sel=null;if(st.sel)sel=st.sel.getImageData(R.x0,R.y0,w,h).data;
  if(!st.carry){st.carry={x:R.x0,y:R.y0,w,h,data:new Float32Array(a)};return}
  // carry buffer is expressed in the coordinates of the previous dab: resample it at the new position
- const C=st.carry,cd=C.data,nc=new Float32Array(w*h*4),cxp=p.x-R.x0,cyp=p.y-R.y0,tmp=[0,0,0,0];
+ const C=st.carry,cd=C.data,nc=new Float32Array(w*h*4),cxp=p.x-R.x0,cyp=p.y-R.y0;
  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const j=(y*w+x)*4;const sxx=R.x0+x-C.x,syy=R.y0+y-C.y;if(sxx<0||syy<0||sxx>=C.w-1||syy>=C.h-1){for(let c=0;c<4;c++)nc[j+c]=a[j+c];continue}const i=(syy*C.w+sxx)*4;for(let c=0;c<4;c++)nc[j+c]=cd[i+c]}
  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const ddx=x+.5-cxp,ddy=y+.5-cyp,dist=Math.hypot(ddx,ddy)/r;if(dist>=1)continue;const f=falloff(dist,o.hardness);const j=(y*w+x)*4,wsel=sel?sel[j+3]/255:1;const k=f*S0*wsel;if(k>0)for(let c=0;c<4;c++){const cur=a[j+c];a[j+c]=cur+(nc[j+c]-cur)*k;nc[j+c]=nc[j+c]*S0*.55+cur*(1-S0*.55)}}
  st.ctx.putImageData(img,R.x0,R.y0);st.carry={x:R.x0,y:R.y0,w,h,data:nc}}

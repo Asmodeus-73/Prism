@@ -11,7 +11,7 @@ web-src/
   build.mjs          l'assemblage
 ```
 
-Construire : `node web-src/build.mjs` (ou `npm run build-web`).
+Construire : `node web-src/build.mjs` (ou `npm run build-web`). Le script et la feuille de style sortent minifiés par esbuild (`npm ci` d'abord) : espaces et syntaxe seulement, les noms restent, pour que le journal des erreurs reste lisible. Les sources de `web-src/` restent la seule version à lire et à modifier.
 Vérifier : `npm test` contrôle que `web/index.html` correspond aux sources, puis lance les tests de l'éditeur dans Chromium (`tests/smoke.mjs`).
 
 ## Règles

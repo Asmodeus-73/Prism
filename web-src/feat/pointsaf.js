@@ -72,7 +72,7 @@ function sharpness(d,r){try{const src=flatSync(),k=Math.min(1,1600/Math.max(d.w,
 const verdict=s=>s==null?'':s>=0.75?'net':s>=0.45?'un peu flou':'flou';
 /* dessin sur la photo */
 {const _dov=drawOverlays;drawOverlays=function(c,pr){_dov.apply(this,arguments);if(!AF.on||!S.doc)return;const d=S.doc,r=AF.cache.get(d);if(!r)return;if(r.w!==d.w||r.h!==d.h)return;
-  try{const M=new DOMMatrix(viewMatrix(0,0)),st=rootStyle();c.save();c.setTransform(1,0,0,1,0,0);const sv=r.sharp,col=sv==null?'#3fd27a':sv>=0.75?'#3fd27a':sv>=0.45?'#f0b429':'#ef5350';
+  try{const M=new DOMMatrix(viewMatrix(0,0));c.save();c.setTransform(1,0,0,1,0,0);const sv=r.sharp,col=sv==null?'#3fd27a':sv>=0.75?'#3fd27a':sv>=0.45?'#f0b429':'#ef5350';
     for(const p of r.pts){const a=M.transformPoint(new DOMPoint((p.x-p.w/2)*d.w,(p.y-p.h/2)*d.h)),b=M.transformPoint(new DOMPoint((p.x+p.w/2)*d.w,(p.y+p.h/2)*d.h)),x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.max(6*pr,Math.abs(b.x-a.x)),h=Math.max(6*pr,Math.abs(b.y-a.y));
       if(p.on){c.lineWidth=2*pr;c.strokeStyle='rgba(0,0,0,.55)';c.strokeRect(x-pr,y-pr,w+2*pr,h+2*pr);c.strokeStyle=col;c.strokeRect(x,y,w,h)}
       else if(r.pts.length<=80){c.lineWidth=1*pr;c.strokeStyle='rgba(255,255,255,.35)';c.strokeRect(x,y,w,h)}}

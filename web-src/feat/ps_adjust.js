@@ -17,7 +17,7 @@ PSX.filter('levels',{name:'Niveaux',
   job:(img,p)=>{const L={rgb:lv(),r:lv(),g:lv(),b:lv(),...(p.lv||{})};L[LV_CH[p.ch|0]]=lv(p.inBlack,Math.max(p.inBlack+2,p.inWhite),p.gamma,p.outBlack,p.outWhite);return adj(img,'levels',L)}});
 
 /* Mélangeur de couches : chaque couche de sortie est un mélange des trois couches d'entrée */
-const MX=[['r','Rouge'],['g','Vert'],['b','Bleu']],MXK={r:'red',g:'green',b:'blue'};
+const MX=[['r','Rouge'],['g','Vert'],['b','Bleu']];
 PSX.filter('chmix',{name:'Mélangeur de couches',
   params:[['mono','Monochrome (la sortie rouge donne le gris)',0,1,1,0,'']].concat(...MX.map(([o,ol])=>[[o+'r',ol+' ← rouge',-200,200,1,o==='r'?100:0,' %'],[o+'g',ol+' ← vert',-200,200,1,o==='g'?100:0,' %'],[o+'b',ol+' ← bleu',-200,200,1,o==='b'?100:0,' %'],[o+'c',ol+' : constante',-200,200,1,0,' %']])),
   checks:['mono'],

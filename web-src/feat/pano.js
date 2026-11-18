@@ -238,7 +238,7 @@ async function estimatePair(A,B,H0hint,seed){
 
 /* ---------- ajustement global (Levenberg-Marquardt sur les 8 paramètres de chaque G) ---------- */
 function globalAdjust(G,ref,pairs,maxPts){
-  const n=G.length,R=new Map(),idxOf=i=>i===ref?-1:(i<ref?i:i-1);
+  const n=G.length,idxOf=i=>i===ref?-1:(i<ref?i:i-1);
   const items=pairs.filter(p=>p.pts&&p.pts.length>=4*10);if(!items.length)return{G,rms0:0,rms1:0};
   const sel=items.map(p=>{const m=p.pts.length>>2;let ids=[];if(m<=maxPts){for(let i=0;i<m;i++)ids.push(i)}else{const r=rng(7+p.i*31+p.j);const s=new Set();while(s.size<maxPts)s.add((r()*m)|0);ids=[...s]}
     const a=new Float64Array(ids.length*4);ids.forEach((id,q)=>a.set(p.pts.subarray(id*4,id*4+4),q*4));return{i:p.i,j:p.j,P:a,w:p.w||1,cx:p.cx||0,cy:p.cy||0}});
@@ -536,8 +536,6 @@ async function stitchImages(canvases,names,optsIn){
   const tx0=Math.floor(cr.x0/TS)*TS,ty0=Math.floor(cr.y0/TS)*TS,tiles=[];
   for(let ty=ty0;ty<cr.y1;ty+=TS)for(let tx=tx0;tx<cr.x1;tx+=TS)tiles.push([tx,ty]);
   stat.tiles=tiles.length;stat.multi=0;
-  const full=[],pix=ws.map(()=>null);
-  const ind=(i)=>i; /* indicateur par image -> échantillonné dans lab */
   const Mfull=ws.map((im,i)=>Ginv[i]);
   const T1=performance.now();
   let tdone=0;

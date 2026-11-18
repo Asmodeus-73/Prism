@@ -3,8 +3,11 @@
 //   app/css/*.css   the style sheet, joined in file-name order
 //   app/js/*.js     the editor, joined in file-name order into one classic script (they share its scope)
 //   feat/*.js       features loaded last, each in its own { } block, in file-name order
-// Usage: node web-src/build.mjs [--check]   (--check: fail if web/index.html is not up to date)
+//   The style sheet and the script are minified by esbuild (whitespace and syntax only: names are kept, so error
+//   reports stay readable).
+// Usage: node web-src/build.mjs [--check]   (--check: fail if web/index.html is not up to date; needs the esbuild dev dependency)
 import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import os from 'node:os';
+const esbuild=await import('esbuild');
 const here=path.dirname(new URL(import.meta.url).pathname),root=path.join(here,'..');
 const list=d=>fs.readdirSync(path.join(here,d)).filter(f=>/\.(css|js)$/.test(f)).sort().map(f=>path.join(here,d,f));
 const read=f=>fs.readFileSync(f,'utf8');
@@ -14,9 +17,10 @@ const feats=list('feat');
 const head='window.PRISM_VERSION='+JSON.stringify(version)+';window.PRISM_CODENAME='+JSON.stringify(codename)+';\n',add='\n'+feats.map(f=>`\n/* ===== feat: feat/${path.basename(f)} ===== */\n{\n${read(f)}\n}\n`).join('');
 const page=read(path.join(here,'app/page.html'));
 if(page.split('@@CSS@@').length!==2||page.split('@@JS@@').length!==2)throw new Error('page.html: @@CSS@@ and @@JS@@ must appear once each');
-const out=page.replace('@@CSS@@',()=>css).replace('@@JS@@',()=>head+js+add);
+const min=(code,loader)=>{try{return esbuild.transformSync(code,{loader,minifyWhitespace:true,minifySyntax:true,charset:'utf8'}).code.trimEnd()}catch(e){console.error('SYNTAX_FAIL',e.message);process.exit(1)}};
+const script=min(head+js+add,'js'),out=page.replace('@@CSS@@',()=>min(css,'css')).replace('@@JS@@',()=>script);
 // syntax check of the whole script, as the browser will see it
-const tmp=path.join(os.tmpdir(),`prism-check-${process.pid}.js`);fs.writeFileSync(tmp,head+js+add);
+const tmp=path.join(os.tmpdir(),`prism-check-${process.pid}.js`);fs.writeFileSync(tmp,script);
 const r=spawnSync(process.execPath,['--check',tmp],{stdio:'inherit'});fs.rmSync(tmp);if(r.status!==0){console.error('SYNTAX_FAIL');process.exit(1)}
 const dest=path.join(root,'web','index.html');
 if(process.argv.includes('--check')){if(!fs.existsSync(dest)||read(dest)!==out){console.error('web/index.html is out of date: run node web-src/build.mjs');process.exit(1)}console.log('web/index.html is up to date');}
