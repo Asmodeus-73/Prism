@@ -31,7 +31,7 @@ function pixelDab(st,p){const d=S.doc,o=S.opts.dodge,r=o.size/2,x0=Math.max(0,Ma
     if(mode==='dodge'||mode==='burn'){const gm=mode==='dodge'?1/(1+wg*0.6):1+wg*0.6;for(let c=0;c<3;c++)a[j+c]=255*Math.pow(a[j+c]/255,gm)}
     else if(mode==='saturate'||mode==='desaturate'){const l=0.2126*a[j]+0.7152*a[j+1]+0.0722*a[j+2],f=mode==='saturate'?1+wg*0.8:1-wg*0.9;for(let c=0;c<3;c++)a[j+c]=clamp(l+(a[j+c]-l)*f,0,255)}
     else{let s0=0,s1=0,s2=0,n=0;for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=w||Y>=h)continue;const k=(Y*w+X)*4;s0+=src[k];s1+=src[k+1];s2+=src[k+2];n++}const av=[s0/n,s1/n,s2/n];if(mode==='blur'){for(let c=0;c<3;c++){const v=src[j+c];a[j+c]=v+(av[c]-v)*Math.min(1,wg*3)}}else{const dl=0.2126*(src[j]-av[0])+0.7152*(src[j+1]-av[1])+0.0722*(src[j+2]-av[2]),ad=Math.abs(dl);if(ad>2){const g=dl*wg*1.6*Math.min(1,(ad-2)/6),dd=g>24?24:g<-24?-24:g;for(let c=0;c<3;c++)a[j+c]=clamp(src[j+c]+dd,0,255)}}}}
-  st.ctx.putImageData(img,x0,y0)}
+  st.ctx.putImageData(img,x0,y0);mipDirty(st.ctx.canvas,x0,y0,w,h)}
 async function endStroke(){const st=S.stroke;if(!st)return;S.stroke=null;const L=st.layer;
   if(st.tool==='dodge'){markComp();pushHistory({dodge:'Densité −',burn:'Densité +',blur:'Goutte d’eau',sharpen:'Netteté',saturate:'Éponge (saturer)',desaturate:'Éponge (désaturer)'}[S.opts.dodge.mode]);return}
   if(st.tool==='heal'){busy(true,'Correction…');await tick();let ok=true;const prevC=L.canvas;try{const H=hiTake(L);editCanvas(L);ok=healRegion(L,st.canvas,st.bounds,S.opts.heal.mode==='source'?st.off:null,H)!==false}finally{busy(false)}if(!ok){L.canvas=prevC;markComp();return}markComp();pushHistory(S.opts.heal.mode==='spot'?'Correcteur localisé':'Correcteur');return}

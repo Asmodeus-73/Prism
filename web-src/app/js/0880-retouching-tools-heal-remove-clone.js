@@ -174,7 +174,7 @@ function lqStep(dr,p,sx,sy){const d=S.doc,Q=LQF,o=S.opts.liquify,r=o.size/2,mode
  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;if(!(wt[i]>0))continue;let qx=x0+x+nx[i]-ox0,qy=y0+y+ny[i]-oy0;qx=qx<0?0:qx>ow-1.001?Math.max(0,ow-1.001):qx;qy=qy<0?0:qy>oh-1.001?Math.max(0,oh-1.001):qy;
   const qi=qx|0,qj=qy|0,tx=qx-qi,ty=qy-qj,i00=(qj*ow+qi)*4,i10=i00+(qi+1<ow?4:0),i01=i00+(qj+1<oh?ow*4:0),i11=i01+(qi+1<ow?4:0),j=i*4;
   for(let c=0;c<4;c++)a[j+c]=(O[i00+c]*(1-tx)+O[i10+c]*tx)*(1-ty)+(O[i01+c]*(1-tx)+O[i11+c]*tx)*ty}
- dr.ctx.putImageData(img,x0,y0)}
+ dr.ctx.putImageData(img,x0,y0);mipDirty(dr.ctx.canvas,x0,y0,w,h)}
 function lqPath(dr,p){const o=S.opts.liquify,sp=Math.max(1.5,o.size*.07),dx=p.x-dr.last.x,dy=p.y-dr.last.y,dist=Math.hypot(dx,dy);dr.cur={x:p.x,y:p.y};if(dist<sp)return;
  const n=Math.floor(dist/sp),sx=dx/dist*sp,sy=dy/dist*sp;let q={x:dr.last.x,y:dr.last.y};for(let k=1;k<=n;k++){q={x:q.x+sx,y:q.y+sy};lqStep(dr,q,sx,sy)}dr.last=q;dr.lastT=performance.now();markComp()}
 // ---------- smudge: the paint picked up now travels with the brush (it stayed where it was taken, so the tool barely changed anything) ----------
@@ -191,7 +191,7 @@ function smStep(dr,p){const d=S.doc,o=S.opts.smudge,r=o.size/2;if(r<.5)return;co
   const f=dist<=hard?1:Math.pow(1-(dist-hard)/(1-hard+1e-6),2),ws=sel?sel[j+3]/255:1,i=(sy*C.w+sx)*4,pk=1-(1-q)*f,k=f*S0*ws;
   for(let c=0;c<4;c++){const cur=a[j+c],v=cd[i+c]*pk+cur*(1-pk);nc[j+c]=v;if(k>0)a[j+c]=cur+(v-cur)*k}}}
  // 16-bit layer: the float pixels are kept, the canvas shows them rounded
- if(hw){hw.set(x0,y0,w,h,a);img.data.set(a)}dr.ctx.putImageData(img,x0,y0);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
+ if(hw){hw.set(x0,y0,w,h,a);img.data.set(a)}dr.ctx.putImageData(img,x0,y0);mipDirty(dr.ctx.canvas,x0,y0,w,h);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
 function smPath(dr,p){const o=S.opts.smudge,sp=Math.max(1.5,o.size*.06),dx=p.x-dr.last.x,dy=p.y-dr.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;
  const n=Math.floor(dist/sp),sx=dx/dist*sp,sy=dy/dist*sp;let q={x:dr.last.x,y:dr.last.y};for(let k=1;k<=n;k++){q={x:q.x+sx,y:q.y+sy};smStep(dr,q)}dr.last=q;dr.moved=true;markComp()}
 const _od=onDown;onDown=function(e,p){const pre=new Map();if(S.tool==='liquify'&&S.doc){S.doc.layers.forEach(l=>pre.set(l,l.canvas));if(e&&e.altKey!=null)S.altDown=!!e.altKey}

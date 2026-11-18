@@ -1224,7 +1224,7 @@ function pixelDab(st,p){const d=S.doc,o=S.opts.dodge,r=o.size/2,x0=Math.max(0,Ma
     if(mode==='dodge'||mode==='burn'){const gm=mode==='dodge'?1/(1+wg*0.6):1+wg*0.6;for(let c=0;c<3;c++)a[j+c]=255*Math.pow(a[j+c]/255,gm)}
     else if(mode==='saturate'||mode==='desaturate'){const l=0.2126*a[j]+0.7152*a[j+1]+0.0722*a[j+2],f=mode==='saturate'?1+wg*0.8:1-wg*0.9;for(let c=0;c<3;c++)a[j+c]=clamp(l+(a[j+c]-l)*f,0,255)}
     else{let s0=0,s1=0,s2=0,n=0;for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=w||Y>=h)continue;const k=(Y*w+X)*4;s0+=src[k];s1+=src[k+1];s2+=src[k+2];n++}const av=[s0/n,s1/n,s2/n];if(mode==='blur'){for(let c=0;c<3;c++){const v=src[j+c];a[j+c]=v+(av[c]-v)*Math.min(1,wg*3)}}else{const dl=0.2126*(src[j]-av[0])+0.7152*(src[j+1]-av[1])+0.0722*(src[j+2]-av[2]),ad=Math.abs(dl);if(ad>2){const g=dl*wg*1.6*Math.min(1,(ad-2)/6),dd=g>24?24:g<-24?-24:g;for(let c=0;c<3;c++)a[j+c]=clamp(src[j+c]+dd,0,255)}}}}
-  st.ctx.putImageData(img,x0,y0)}
+  st.ctx.putImageData(img,x0,y0);mipDirty(st.ctx.canvas,x0,y0,w,h)}
 async function endStroke(){const st=S.stroke;if(!st)return;S.stroke=null;const L=st.layer;
   if(st.tool==='dodge'){markComp();pushHistory({dodge:'Densité −',burn:'Densité +',blur:'Goutte d’eau',sharpen:'Netteté',saturate:'Éponge (saturer)',desaturate:'Éponge (désaturer)'}[S.opts.dodge.mode]);return}
   if(st.tool==='heal'){busy(true,'Correction…');await tick();let ok=true;const prevC=L.canvas;try{const H=hiTake(L);editCanvas(L);ok=healRegion(L,st.canvas,st.bounds,S.opts.heal.mode==='source'?st.off:null,H)!==false}finally{busy(false)}if(!ok){L.canvas=prevC;markComp();return}markComp();pushHistory(S.opts.heal.mode==='spot'?'Correcteur localisé':'Correcteur');return}
@@ -2163,9 +2163,13 @@ function mipRegion(src,x,y,w,h){const e=MIP.get(src);if(!e||!e.length)return;let
     if(nx1<=nx0||ny1<=ny0)break;const g=cx(n);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.imageSmoothingEnabled=true;g.imageSmoothingQuality='low';
     g.clearRect(nx0,ny0,nx1-nx0,ny1-ny0);g.drawImage(cur,nx0*fx,ny0*fy,(nx1-nx0)*fx,(ny1-ny0)*fy,nx0,ny0,nx1-nx0,ny1-ny0);
     cur=n;x0=nx0;y0=ny0;x1=nx1;y1=ny1}}
+/* les outils qui retouchent le calque sur place (doigt, fluidité, densité) disent quelle zone ils ont changée : la pyramide n'est alors
+   remise à jour que là, au lieu d'être jetée et refaite en entier (sur 24 Mpx, c'est la différence entre 150 ms et 2 ms par coup d'outil). */
+const MIPD=new Map();
+function mipDirty(c,x,y,w,h){if(!c||w<=0||h<=0)return;const d=MIPD.get(c);if(d){d.x0=Math.min(d.x0,x);d.y0=Math.min(d.y0,y);d.x1=Math.max(d.x1,x+w);d.y1=Math.max(d.y1,y+h)}else MIPD.set(c,{x0:x,y0:y,x1:x+w,y1:y+h})}
 function drawMip(g,src,x,y,scale,ok){if(src.__sp){x+=src.__sx;y+=src.__sy}const s=ok?mipLevel(src,scale):src,q=src.__live?g.imageSmoothingQuality:null;if(q)g.imageSmoothingQuality='low';
   if(s===src)g.drawImage(src,x,y);else g.drawImage(s,0,0,s.width,s.height,x,y,src.width,src.height);if(q)g.imageSmoothingQuality=q}
-function mipForget(){const L=AL();if(L&&L.kind==='pixel'){lcv(L)&&MIP.delete(lcv(L));L.mask&&MIP.delete(L.mask)}const st=S.stroke;if(st&&st.layer){lcv(st.layer)&&MIP.delete(lcv(st.layer));st.layer.mask&&MIP.delete(st.layer.mask)}}
+function mipForget(){const kept=new Set();for(const[c,d]of MIPD){if(MIP.has(c)){mipRegion(c,d.x0,d.y0,d.x1-d.x0,d.y1-d.y0);kept.add(c)}}MIPD.clear();const L=AL();if(L&&L.kind==='pixel'){lcv(L)&&!kept.has(lcv(L))&&MIP.delete(lcv(L));L.mask&&!kept.has(L.mask)&&MIP.delete(L.mask)}const st=S.stroke;if(st&&st.layer){lcv(st.layer)&&!kept.has(lcv(st.layer))&&MIP.delete(lcv(st.layer));st.layer.mask&&!kept.has(st.layer.mask)&&MIP.delete(st.layer.mask)}}
 
 /* ================= soft proofing (LittleCMS) ================= */
 function iccP3(){/* minimal ICC v4 Display P3 matrix/TRC profile */
@@ -3638,6 +3642,34 @@ const _rd16=renderDoc16;renderDoc16=function(...a){clearMutes();return _rd16(...
 const _sn11=saveNow;saveNow=function(...a){if(Object.keys(MUTE).length){setTimeout(()=>saveNow(...a),1500);return Promise.resolve()}return _sn11(...a)};
 const _sd11=syncDev;syncDev=function(){/* a muted group belongs to one layer */for(const id of Object.keys(MUTE)){if(MUTE[id].layer!==(S.doc&&AL()))unmute(id)}_sd11()};
 
+
+/* ================= confort des curseurs (tous les curseurs de la page, panneaux et fenêtres) =================
+   Maj + glisser : réglage fin (le curseur suit la souris dix fois moins vite), comme Photoshop et Affinity.
+   Maj + flèche : pas multiplié par 10. Alt + molette sur un curseur : le déplace d'un pas (Maj : x10).
+   Le glissé reste un seul « input » continu : l'historique et l'aperçu rapide ne voient aucune différence. */
+(()=>{
+const isR=t=>t&&t.matches&&t.matches('input[type=range]');
+const fire=(i,final)=>{i.dispatchEvent(new Event('input',{bubbles:true}));if(final)i.dispatchEvent(new Event('change',{bubbles:true}))};
+const stepOf=i=>{const s=parseFloat(i.step);return s>0?s:1};
+let drag=null;
+document.addEventListener('pointerdown',e=>{const i=e.target;if(isR(i)&&!i.disabled){const v=+i.value;drag={i,mine:v,last:v,fine:e.shiftKey}}},true);
+const end=()=>{drag=null};
+document.addEventListener('pointerup',end,true);document.addEventListener('pointercancel',end,true);
+document.addEventListener('pointermove',e=>{if(drag)drag.fine=e.shiftKey},true);
+document.addEventListener('input',e=>{const i=e.target;if(!drag||drag.i!==i||!e.isTrusted)return;
+  const nat=+i.value,d=nat-drag.last;drag.last=nat;
+  if(drag.fine){drag.mine=Math.min(+i.max,Math.max(+i.min,drag.mine+d*0.1));i.value=drag.mine}
+  else drag.mine=nat},true);
+document.addEventListener('keydown',e=>{const i=e.target;if(!isR(i)||!e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
+  const dir=e.key==='ArrowRight'||e.key==='ArrowUp'?1:e.key==='ArrowLeft'||e.key==='ArrowDown'?-1:0;if(!dir)return;
+  e.preventDefault();e.stopPropagation();const v=Math.min(+i.max,Math.max(+i.min,+i.value+dir*stepOf(i)*10));i.value=v;fire(i,true)},true);
+let wt=null,wi=null;
+const flushW=()=>{if(wi){clearTimeout(wt);const i=wi;wi=null;i.dispatchEvent(new Event('change',{bubbles:true}))}};
+document.addEventListener('pointerdown',flushW,true);document.addEventListener('keydown',flushW,true);
+document.addEventListener('wheel',e=>{const i=e.target;if(!isR(i)||!e.altKey||i.disabled)return;
+  e.preventDefault();const d=(e.deltaY||e.deltaX)<0?1:-1;i.value=Math.min(+i.max,Math.max(+i.min,+i.value+d*stepOf(i)*(e.shiftKey?10:1)));fire(i,false);
+  if(wi&&wi!==i)flushW();wi=i;clearTimeout(wt);wt=setTimeout(flushW,350)},{capture:true,passive:false});
+})();
 /* ================= v9: crop grids & remembered formats, quick mask, hair cut-out ================= */
 const CROP_GRIDS=[['thirds','Tiers'],['grid','Grille'],['golden','Nombre d’or'],['spiral','Spirale d’or'],['diag','Diagonales'],['tri','Triangles'],['none','Aucune']];
 function cropGridSel(){const g=PREF.get('cropGrid','thirds');S.opts.crop.grid=g;return`<label>Grille<select data-sel="crop.grid">${CROP_GRIDS.map(([v,l])=>`<option value="${v}" ${g===v?'selected':''}>${l}</option>`).join('')}</select></label>`}
@@ -7605,7 +7637,7 @@ function lqStep(dr,p,sx,sy){const d=S.doc,Q=LQF,o=S.opts.liquify,r=o.size/2,mode
  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;if(!(wt[i]>0))continue;let qx=x0+x+nx[i]-ox0,qy=y0+y+ny[i]-oy0;qx=qx<0?0:qx>ow-1.001?Math.max(0,ow-1.001):qx;qy=qy<0?0:qy>oh-1.001?Math.max(0,oh-1.001):qy;
   const qi=qx|0,qj=qy|0,tx=qx-qi,ty=qy-qj,i00=(qj*ow+qi)*4,i10=i00+(qi+1<ow?4:0),i01=i00+(qj+1<oh?ow*4:0),i11=i01+(qi+1<ow?4:0),j=i*4;
   for(let c=0;c<4;c++)a[j+c]=(O[i00+c]*(1-tx)+O[i10+c]*tx)*(1-ty)+(O[i01+c]*(1-tx)+O[i11+c]*tx)*ty}
- dr.ctx.putImageData(img,x0,y0)}
+ dr.ctx.putImageData(img,x0,y0);mipDirty(dr.ctx.canvas,x0,y0,w,h)}
 function lqPath(dr,p){const o=S.opts.liquify,sp=Math.max(1.5,o.size*.07),dx=p.x-dr.last.x,dy=p.y-dr.last.y,dist=Math.hypot(dx,dy);dr.cur={x:p.x,y:p.y};if(dist<sp)return;
  const n=Math.floor(dist/sp),sx=dx/dist*sp,sy=dy/dist*sp;let q={x:dr.last.x,y:dr.last.y};for(let k=1;k<=n;k++){q={x:q.x+sx,y:q.y+sy};lqStep(dr,q,sx,sy)}dr.last=q;dr.lastT=performance.now();markComp()}
 // ---------- smudge: the paint picked up now travels with the brush (it stayed where it was taken, so the tool barely changed anything) ----------
@@ -7622,7 +7654,7 @@ function smStep(dr,p){const d=S.doc,o=S.opts.smudge,r=o.size/2;if(r<.5)return;co
   const f=dist<=hard?1:Math.pow(1-(dist-hard)/(1-hard+1e-6),2),ws=sel?sel[j+3]/255:1,i=(sy*C.w+sx)*4,pk=1-(1-q)*f,k=f*S0*ws;
   for(let c=0;c<4;c++){const cur=a[j+c],v=cd[i+c]*pk+cur*(1-pk);nc[j+c]=v;if(k>0)a[j+c]=cur+(v-cur)*k}}}
  // 16-bit layer: the float pixels are kept, the canvas shows them rounded
- if(hw){hw.set(x0,y0,w,h,a);img.data.set(a)}dr.ctx.putImageData(img,x0,y0);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
+ if(hw){hw.set(x0,y0,w,h,a);img.data.set(a)}dr.ctx.putImageData(img,x0,y0);mipDirty(dr.ctx.canvas,x0,y0,w,h);dr.cy={x:x0,y:y0,w,h,px:p.x,py:p.y,rx:fx-ix,ry:fy-iy,data:nc};SB=[C.data,nc]}
 function smPath(dr,p){const o=S.opts.smudge,sp=Math.max(1.5,o.size*.06),dx=p.x-dr.last.x,dy=p.y-dr.last.y,dist=Math.hypot(dx,dy);if(dist<sp)return;
  const n=Math.floor(dist/sp),sx=dx/dist*sp,sy=dy/dist*sp;let q={x:dr.last.x,y:dr.last.y};for(let k=1;k<=n;k++){q={x:q.x+sx,y:q.y+sy};smStep(dr,q)}dr.last=q;dr.moved=true;markComp()}
 const _od=onDown;onDown=function(e,p){const pre=new Map();if(S.tool==='liquify'&&S.doc){S.doc.layers.forEach(l=>pre.set(l,l.canvas));if(e&&e.altKey!=null)S.altDown=!!e.altKey}
@@ -15198,7 +15230,7 @@ pixelDab=function(st,p){
   // result, always from the photo as it was before the stroke
   const img=st.ctx.getImageData(x0,y0,w,h);
   shade(B,bx0,by0,bw,bh,x0,y0,w,h,cov,w,img.data,mode,sig,{x:p.x,y:p.y,r});
-  st.ctx.putImageData(img,x0,y0)};
+  st.ctx.putImageData(img,x0,y0);mipDirty(st.ctx.canvas,x0,y0,w,h)};
 // end of a stroke on a 16-bit layer: every pixel the coverage reached, recomputed in float and stored at 16 bits
 const _esBR=endStroke;
 endStroke=function(){const st=S.stroke;
