@@ -23,7 +23,7 @@ function fitStyle(srcImg,refImg){const target=styleFeatures(refImg.data),o={scal
 async function styleFromFile(file){const src=RAW_EXT.test(file.name||'')?(await decodeRaw(file)).c:await loadImageFile(file);let c=src;if(src.tagName==='IMG'){c=mk(src.naturalWidth,src.naturalHeight);cx(c).drawImage(src,0,0)}return c}
 let STYLE_REF=null;
 async function copyStyleDialog(){if(!S.doc){toast('Ouvrez d’abord une photo');return}const f=await pickFile('image/*,.tif,.tiff,.pdf,.tga,.svg,.jxl,.bmp,.ico,.avif,.heic,.heif,'+RAW_ACCEPT);if(!f)return;busy(true,'Analyse de la photo de référence…',null);await tick();
-  try{const ref=await styleFromFile(f);STYLE_REF={name:(f.name||'référence').replace(/\.[^.]+$/,''),img:thumbData(ref)};const dv=await applyStyleToDoc(STYLE_REF);busy(false);
+  try{const ref=await styleFromFile(f);STYLE_REF={name:(f.name||'référence').replace(/\.[^.]+$/,''),img:thumbData(ref)};await applyStyleToDoc(STYLE_REF);busy(false);
     toast(`Style de « ${STYLE_REF.name} » appliqué dans un calque de réglage. Ajustez son opacité pour doser l’effet.`,6000)}
   catch(e){busy(false);console.error(e);toast('Analyse impossible : '+(e.message||e),5000)}}
 async function applyStyleToDoc(ref,opts={}){const d=S.doc;const cur=await renderDoc(Math.min(1,300/Math.max(d.w,d.h)));const dv=fitStyle(thumbData(cur),ref.img);

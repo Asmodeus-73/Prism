@@ -1,7 +1,7 @@
 /* ================= v19: free transform (scale, rotate, flip, perspective, warp) ================= */
 (()=>{
 const TO=S.opts.transform={mode:'free',prop:true};
-const V=(x,y)=>({x,y}),sub=(a,b)=>V(a.x-b.x,a.y-b.y),add=(a,b)=>V(a.x+b.x,a.y+b.y),mul=(a,k)=>V(a.x*k,a.y*k),dot=(a,b)=>a.x*b.x+a.y*b.y,len=a=>Math.hypot(a.x,a.y);
+const V=(x,y)=>({x,y}),sub=(a,b)=>V(a.x-b.x,a.y-b.y),add=(a,b)=>V(a.x+b.x,a.y+b.y),mul=(a,k)=>V(a.x*k,a.y*k),len=a=>Math.hypot(a.x,a.y);
 function homography(q,w,h){ // unit rect (0..w,0..h) -> quad q (tl,tr,br,bl)
  const x0=q[0].x,y0=q[0].y,x1=q[1].x,y1=q[1].y,x2=q[2].x,y2=q[2].y,x3=q[3].x,y3=q[3].y;
  const dx1=x1-x2,dx2=x3-x2,dx3=x0-x1+x2-x3,dy1=y1-y2,dy2=y3-y2,dy3=y0-y1+y2-y3;let a,b,c,d,e,f,g,hh;

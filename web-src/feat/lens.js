@@ -292,7 +292,7 @@ function lensDialog(){
  if(maskTarget()){toast('La correction de l’objectif s’applique à la photo, pas au masque : choisissez le calque de photo');return}
  const L=pixelTarget();if(!L){toast('Aucun calque de pixels à corriger');return}
  if(L.visible===false){toast('Ce calque est masqué : affichez-le pour appliquer une correction');return}
- const orig=L.canvas,p=NP({}),F=FILTERS.lens;
+ const orig=L.canvas,p=NP({});
  let tmr=null,seq=0,closed=false,pv=null;
  const small=()=>{if(pv)return pv;const k=1400/Math.max(orig.width,orig.height);return pv=k<1?resample(orig,Math.max(8,Math.round(orig.width*k)),Math.max(8,Math.round(orig.height*k))):orig};
  const clear=()=>{closed=true;seq++;clearTimeout(tmr);delete L.preview};

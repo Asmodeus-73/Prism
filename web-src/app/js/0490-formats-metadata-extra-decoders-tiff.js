@@ -70,7 +70,7 @@ async function decodeTIFF(u8){const T=tiffRead(u8);if(!T.ifds.length)throw new E
           if(pred===2&&x>0)v=bits===8?(v+raw[di+c-spp])&255:(v+raw[di+c-spp])&65535;raw[di+c]=v}}}
     if(k%8===7)await tick()}
   /* to RGBA 16-bit */
-  const N=W*H,rgba=new Uint16Array(N*4),hasA=(photo===2&&spp>=4)||(photo<=1&&spp>=2)||(photo===5&&spp>=5),aIdx=photo===2?3:photo===5?4:1,assoc=extra[0]===1;
+  const N=W*H,rgba=new Uint16Array(N*4),hasA=(photo===2&&spp>=4)||(photo<=1&&spp>=2)||(photo===5&&spp>=5),assoc=extra[0]===1;
   const to16=bits===8?(v=>v*257):bits===16?(v=>v):(v=>{v=v<=0?0:v>=1?1:v;return Math.round(v*65535)});
   let icc=T.bytes(ifd,34675);icc=icc&&icc.slice();let space='srgb',linear=false;
   if(photo===3){const cm=T.arr(ifd,320),nc=1<<bits;for(let i=0;i<N;i++){const ix=raw[i*spp];rgba[i*4]=cm[ix];rgba[i*4+1]=cm[nc+ix];rgba[i*4+2]=cm[2*nc+ix];rgba[i*4+3]=65535}}

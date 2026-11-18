@@ -100,7 +100,7 @@ function editEffect(L,i,after){
   const list=L.filters,f=list&&list[i];if(!f||!canEdit(f))return;
   ready(list,L).then(()=>f.x?editX(L,i,after):openEdit(L,i,after),e=>{console.warn(e);toast('Effet illisible : '+(e.message||e),4000)})}
 async function openEdit(L,i,after){
-  const d=S.doc,list=L.filters,f=list[i],F=FX(f.id);
+  const list=L.filters,f=list[i],F=FX(f.id);
   let prefix;try{prefix=await withBusy(()=>chainA(L,L.fbase,list,i))}catch(e){failed(e);return}
   const p={...f.p};let tmr=null,job=0;
   const run=async()=>{const first=await stepA(L,prefix,{...f,off:false},p,list,i);return chainA(L,L.fbase,list,null,i+1,first)};

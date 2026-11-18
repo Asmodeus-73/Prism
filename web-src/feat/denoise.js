@@ -212,5 +212,5 @@ function dnRunAsync(s,p,opts){opts=opts||{};const W=s.width,H=s.height,g=cx(s),p
    applyMasked(L,r,F.name)}
   catch(e){if(!(e&&e.code==='cancelled')){console.error(e);toast('Filtre impossible : '+(e.message||e),4000)}}
   finally{if(btn)btn.remove();busy(false)}}
- function dnTilesIn(pl,x,y,w,h){const T=pl.tiles,ts=[];const t=512;x&=~1;y&=~1;for(let ty=y;ty<y+h;ty+=t)for(let tx=x;tx<x+w;tx+=t)ts.push({x:tx,y:ty,w:Math.min(t,x+w-tx),h:Math.min(t,y+h-ty)});return ts}
+ function dnTilesIn(pl,x,y,w,h){const ts=[];const t=512;x&=~1;y&=~1;for(let ty=y;ty<y+h;ty+=t)for(let tx=x;tx<x+w;tx+=t)ts.push({x:tx,y:ty,w:Math.min(t,x+w-tx),h:Math.min(t,y+h-ty)});return ts}
 }

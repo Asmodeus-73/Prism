@@ -129,7 +129,7 @@ const _D=x=>x<=0.25?((16*x-12)*x+4)*x:Math.sqrt(x);
 const BSEP={multiply:(b,s)=>b*s,screen:(b,s)=>b+s-b*s,overlay:(b,s)=>b<=0.5?2*b*s:1-2*(1-b)*(1-s),darken:(b,s)=>b<s?b:s,lighten:(b,s)=>b>s?b:s,
   'color-dodge':(b,s)=>b===0?0:s>=1?1:Math.min(1,b/(1-s)),'color-burn':(b,s)=>b>=1?1:s<=0?0:1-Math.min(1,(1-b)/s),'hard-light':(b,s)=>s<=0.5?2*b*s:1-2*(1-b)*(1-s),
   'soft-light':(b,s)=>s<=0.5?b-(1-2*s)*b*(1-b):b+(2*s-1)*(_D(b)-b),difference:(b,s)=>Math.abs(b-s),exclusion:(b,s)=>b+s-2*b*s,lighter:(b,s)=>Math.min(1,b+s)};
-function blendFF(F,S2,mode,op){const sep=BSEP[mode],t1=[0,0,0],t2=[0,0,0],cb=[0,0,0],cs=[0,0,0],B=[0,0,0];
+function blendFF(F,S2,mode,op){const sep=BSEP[mode],t1=[0,0,0],cb=[0,0,0],cs=[0,0,0],B=[0,0,0];
   for(let j=0;j<F.length;j+=4){const as=S2[j+3]*op;if(as<=0)continue;const ab=F[j+3];
     cs[0]=S2[j];cs[1]=S2[j+1];cs[2]=S2[j+2];
     if(ab<=0){F[j]=cs[0];F[j+1]=cs[1];F[j+2]=cs[2];F[j+3]=as;continue}

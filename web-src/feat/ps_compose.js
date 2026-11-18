@@ -131,7 +131,7 @@ PSX.filter('decontam',{name:'Nettoyer les franges de couleur',
 const SPATIAL=['texture','clarity','dehaze','sharpen','noise','vignette','grain'];
 async function exportCube(){const d=S.doc;if(!d)return;const Ls=d.layers.filter(L=>L.kind==='adjust'&&L.visible!==false&&!L.mask&&L.dev);
   if(!Ls.length){toast('Aucun calque de réglage global visible à exporter');return}
-  const N=33,n=N*N*N,w=N*N,h=N,c=mk(w,h),g=rx(c),im=g.createImageData(w,h),a=im.data;
+  const N=33,w=N*N,h=N,c=mk(w,h),g=rx(c),im=g.createImageData(w,h),a=im.data;
   for(let b=0;b<N;b++)for(let gg=0;gg<N;gg++)for(let r=0;r<N;r++){const i=((gg*w)+b*N+r)*4;a[i]=Math.round(r*255/(N-1));a[i+1]=Math.round(gg*255/(N-1));a[i+2]=Math.round(b*255/(N-1));a[i+3]=255}
   let skipped=false;
   for(const L of Ls){const dv=JSON.parse(JSON.stringify(L.dev));SPATIAL.forEach(k=>{if(dv[k]){skipped=true;dv[k]=0}});developCPU(im,dv,{scale:1,ox:0,oy:0,docW:w,docH:h},null,L.opacity==null?1:L.opacity)}

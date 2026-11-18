@@ -34,13 +34,14 @@ const file = join(dist, 'index.html');
 let html = readFileSync(file, 'utf8');
 const swaps = [
   // Fonts come from the bundle so the app works offline (lazy text fonts first).
-  ["'https://fonts.googleapis.com/css2?'+q+'&display=swap'", "'desktop/fonts/fonts.css'"],
+  // (web/index.html is minified: its script strings use double quotes)
+  ['"https://fonts.googleapis.com/css2?"+q+"&display=swap"', '"desktop/fonts/fonts.css"'],
   [/https:\/\/fonts\.googleapis\.com\/css2\?[^"']*/g, 'desktop/fonts/fonts.css'],
   [/<link rel="preconnect"[^>]*>/g, ''],
   // Fonts load right away (the print/onload trick is an inline handler the app's CSP blocks).
   [` media="print" onload="this.media='all'"`, ''],
   // Synced files are served by the app instead of claude.ai.
-  ["'/_blob/'", 'PRISM_BLOB'],
+  ['"/_blob/"', 'PRISM_BLOB'],
   ['"/_blob/${', '"${PRISM_BLOB}${'],
   // Sync goes through a folder, not a claude.ai account.
   ['La synchronisation entre appareils fonctionne quand Prism est ouvert depuis votre compte Claude par son propriétaire.',

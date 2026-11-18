@@ -70,7 +70,7 @@ LM.plan=(bx,W,H)=>{const hw=bx.x1-bx.x0,hh=bx.y1-bx.y0,m=Math.max(hw,hh),mg=Math
   return{x0,y0,x1,y1,rw,rh,f,fx:rw/(x1-x0),fy:rh/(y1-y0)}};
 LM.fmtT=ms=>{const s=Math.round(ms/1000);return s<90?s+' s':Math.round(s/60)+' min'};
 /* Cœur : remplit la zone de masque (alpha de maskC, repère de L.canvas) ; renvoie {res,soft,plan,hole} ou null si annulé/échec. */
-LM.fill=async(L,maskC,bx)=>{const d=S.doc,W=L.canvas.width,H=L.canvas.height,P=LM.plan(bx,W,H),{x0,y0,x1,y1,rw,rh,fx,fy}=P,n=rw*rh;
+LM.fill=async(L,maskC,bx)=>{const W=L.canvas.width,H=L.canvas.height,P=LM.plan(bx,W,H),{x0,y0,x1,y1,rw,rh,fx,fy}=P,n=rw*rh;
   const src=mk(rw,rh),sg=rx(src);sg.imageSmoothingQuality='high';sg.drawImage(L.canvas,x0,y0,x1-x0,y1-y0,0,0,(x1-x0)*fx,(y1-y0)*fy);
   const mc=mk(rw,rh),mg=rx(mc);mg.imageSmoothingQuality='high';mg.drawImage(maskC,x0,y0,x1-x0,y1-y0,0,0,(x1-x0)*fx,(y1-y0)*fy);
   const sd=sg.getImageData(0,0,rw,rh).data,md=mg.getImageData(0,0,rw,rh).data;let hole=new Uint8Array(n),hc=0;

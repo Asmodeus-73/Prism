@@ -87,7 +87,7 @@ const alive=(d,L)=>S.doc===d&&d.layers.includes(L);
 {const _am=applyMasked;
  applyMasked=function(L,result,label){if(L&&(L.txt||L.shp)){delete L.txt;delete L.shp;toast('Ce calque devient un calque de pixels : le texte ou la forme ne sera plus modifiable',4000)}return _am.apply(this,arguments)}}
 
-function runOn(T,F,p,sel){const d=S.doc,L=T.L;
+function runOn(T,F,p,sel){const L=T.L;
   if(T.mask){const src=L.mask;let r=g2m(F.run(m2g(src),p));if(sel)r=mixSel(src,r,sel);return r}
   let r=F.run(L.canvas,p);if(sel)r=mixSel(L.canvas,r,sel);return r}
 function applyFilter(T,F,p){const d=S.doc,L=T.L;
