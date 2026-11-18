@@ -760,6 +760,11 @@ await test('sans filtre de canevas (Safari avant la 18) : pointes douces et masq
     const i=S.doc.layers.findIndex(l=>l.kind==='pixel');S.doc.active=i;PrismC.shapeMask({shape:'ellipse',w:50,h:50,x:50,y:50,feather:20,invert:false});
     return{fo:filterOK(),stamp:soft(st),mask:soft(AL().mask)}});
   await fresh();if(r.fo||r.stamp<0.3||r.mask<0.2)throw new Error(JSON.stringify(r))});
+await test('export : un nom de document avec / : ? donne un nom de fichier valable (Windows, Mac)',async()=>{await sample();
+  const r=await ev(async()=>{const got=[];const keep=saveFile;saveFile=async(b,n)=>{got.push(n)};try{S.doc.name='Vacances 12/08: lac?';quickExport('png');await new Promise(r=>setTimeout(r,2500))}finally{saveFile=keep}
+    return{got,names:['a/b:c*?.jpg','  .png',' CON.jpg','x'.repeat(300)+'.tif','Été – lac.jpg'].map(safeFileName)}});
+  const ok=r.got[0]==='Vacances 12-08- lac-.png'&&r.names[0]==='a-b-c-.jpg'&&r.names[1]==='photo.png'&&r.names[2]==='_CON.jpg'&&r.names[3].length===200&&r.names[3].endsWith('.tif')&&r.names[4]==='Été – lac.jpg';
+  if(!ok)throw new Error(JSON.stringify(r))});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

@@ -43,7 +43,7 @@ exportDialog=async function(){const d=S.doc;if(!d)return;await Promise.all(['ima
       $$('.exf',el).forEach(b=>b.onclick=()=>{if(b.classList.contains('off'))return;st.fmt=b.dataset.f;draw()});$('#exFs',el).onchange=e=>{st.fmt=e.target.value;draw()};draw()},
     buttons:[{label:'Annuler'},{label:'Exporter',primary:true,onClick:el=>{const f=EXF.find(x=>x.id===st.fmt);PREF.set('exFmt',st.fmt);PREF.set('exChroma',st.chroma);PREF.set('exMeta',st.meta);if(f.q)PREF.set('exQ_'+f.id,st.q[f.id]);
       exportAs({...st,q:f.q?st.q[f.id]/100:1},el._scale(),($('#exN',el).value||'photo').replace(/[\\/:*?"<>|]+/g,'-'))}}]})};
-async function saveOut(blob,fname){await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Enregistré : '+fname+' · '+fmtMo(blob.size));return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}console.warn('save',e)}
+async function saveOut(blob,fname){fname=safeFileName(fname);await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Enregistré : '+fname+' · '+fmtMo(blob.size));return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}console.warn('save',e)}
     try{const z=await makeZip([{name:fname,data:new Uint8Array(await blob.arrayBuffer())}]);await dlNS.save({filename:fname+'.zip',data:z});toast('Enregistré dans un .zip : '+fname);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}}}
   await saveFile(blob,fname)}
 async function exportAs(st,scale,name){const d=S.doc,f=EXF.find(x=>x.id===st.fmt),fname=name+'.'+f.ext;
