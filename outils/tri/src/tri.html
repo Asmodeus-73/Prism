@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prism Tri</title>
+<style>
+:root {
+  --fond: #121212; --panneau: #1c1c1e; --bord: #2c2c2e; --texte: #e8e8ea; --doux: #9a9aa0;
+  --accent: #5b8cff; --etoile: #f5c542; --rejet: #ff5c5c;
+  --Red: #e5484d; --Yellow: #f5c542; --Green: #3fb950; --Blue: #4c8dff; --Purple: #a371f7;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--fond); color: var(--texte);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--panneau);
+  border-bottom: 1px solid var(--bord); height: 48px; white-space: nowrap; overflow-x: auto; }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header .dossier { color: var(--doux); overflow: hidden; text-overflow: ellipsis; }
+header .espace { flex: 1; }
+button, select { background: #2a2a2d; color: var(--texte); border: 1px solid var(--bord); border-radius: 6px;
+  padding: 5px 10px; font: inherit; cursor: pointer; }
+button:hover { border-color: #48484c; }
+button.actif { background: var(--accent); border-color: var(--accent); color: #fff; }
+#progression { color: var(--doux); font-variant-numeric: tabular-nums; }
+main { position: absolute; top: 48px; bottom: 32px; left: 0; right: 0; }
+#grille { position: absolute; inset: 0; overflow-y: auto; padding: 12px 16px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; align-content: start; }
+.case { position: relative; background: var(--panneau); border-radius: 6px; aspect-ratio: 3 / 2;
+  display: flex; align-items: center; justify-content: center; outline: 2px solid transparent; cursor: pointer; overflow: hidden; }
+.case img { max-width: 100%; max-height: 100%; display: block; }
+.case.choisie { outline-color: var(--accent); }
+.case.rejet img { opacity: .28; }
+.case .etoiles { position: absolute; left: 6px; bottom: 4px; color: var(--etoile); font-size: 12px; text-shadow: 0 1px 2px #000; }
+.case .rej { position: absolute; left: 6px; bottom: 4px; color: var(--rejet); font-weight: 700; font-size: 12px; }
+.case .etiq { position: absolute; right: 0; top: 0; bottom: 0; width: 5px; }
+.case .badge { position: absolute; left: 6px; top: 6px; font-size: 11px; padding: 1px 6px; border-radius: 10px;
+  background: rgba(0,0,0,.65); color: #fff; }
+.case .badge.top { background: var(--accent); }
+#loupe { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: #0b0b0b; }
+#loupe img { position: absolute; }
+#loupe .vide { color: var(--doux); }
+footer { position: absolute; bottom: 0; left: 0; right: 0; height: 32px; display: flex; align-items: center; gap: 16px;
+  padding: 0 16px; background: var(--panneau); border-top: 1px solid var(--bord); color: var(--doux); white-space: nowrap; overflow: hidden; }
+footer b { color: var(--texte); font-weight: 600; }
+footer .note { color: var(--etoile); letter-spacing: 1px; }
+footer .note.rejet { color: var(--rejet); }
+#temps { margin-left: auto; font-variant-numeric: tabular-nums; }
+#aide { position: absolute; right: 16px; top: 56px; width: 300px; background: var(--panneau); border: 1px solid var(--bord);
+  border-radius: 8px; padding: 12px 16px; display: none; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+#aide table { border-collapse: collapse; width: 100%; }
+#aide td { padding: 3px 0; }
+#aide td:first-child { color: var(--doux); width: 45%; }
+kbd { background: #2a2a2d; border: 1px solid var(--bord); border-radius: 4px; padding: 0 5px; font: 12px ui-monospace, monospace; }
+#message { position: absolute; left: 50%; bottom: 48px; transform: translateX(-50%); background: #2a2a2d; border: 1px solid var(--bord);
+  padding: 8px 14px; border-radius: 8px; display: none; z-index: 6; }
+@media (max-width: 640px) {
+  #grille { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); padding: 8px 16px; }
+  header .dossier, #progression { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Prism Tri</h1>
+  <span class="dossier" id="dossier"></span>
+  <span class="espace"></span>
+  <span id="progression"></span>
+  <select id="filtre" title="Filtrer">
+    <option value="toutes">Toutes</option>
+    <option value="notees">1 étoile et plus</option>
+    <option value="sans">Sans note</option>
+    <option value="rejets">Rejetées</option>
+    <option value="rafales">Rafales</option>
+  </select>
+  <button id="garder" title="Dans chaque rafale, rejeter tout sauf la photo la plus nette (les photos déjà notées ne sont pas touchées)" disabled>Garder la plus nette de chaque rafale</button>
+  <button id="vue">Loupe</button>
+  <button id="btnAide" title="Raccourcis clavier">?</button>
+</header>
+<main>
+  <div id="grille"></div>
+  <div id="loupe"><span class="vide">Aucune photo</span></div>
+</main>
+<footer>
+  <b id="nom"></b><span id="date"></span><span class="note" id="note"></span><span id="infos"></span><span id="temps"></span>
+</footer>
+<div id="aide">
+  <table>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>photo précédente, suivante</td></tr>
+    <tr><td><kbd>Espace</kbd> <kbd>Entrée</kbd></td><td>loupe ou grille</td></tr>
+    <tr><td><kbd>1</kbd> à <kbd>5</kbd></td><td>étoiles</td></tr>
+    <tr><td><kbd>0</kbd></td><td>retirer la note</td></tr>
+    <tr><td><kbd>X</kbd></td><td>rejeter</td></tr>
+    <tr><td><kbd>U</kbd></td><td>annuler le rejet</td></tr>
+    <tr><td><kbd>6</kbd> à <kbd>9</kbd></td><td>étiquette rouge, jaune, verte, bleue</td></tr>
+    <tr><td><kbd>Maj</kbd> + note</td><td>noter et passer à la suivante</td></tr>
+  </table>
+  <p style="color:var(--doux);margin:8px 0 0">Les notes sont écrites dans un fichier XMP à côté de chaque photo, que Lightroom, Capture One, Bridge et darktable lisent.</p>
+</div>
+<div id="message"></div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const ETIQUETTES = { 6: "Red", 7: "Yellow", 8: "Green", 9: "Blue" };
+const NOMS_ETIQ = { Red: "rouge", Yellow: "jaune", Green: "verte", Blue: "bleue", Purple: "violette" };
+let photos = [], visibles = [], cur = 0, vue = "grille", filtre = "toutes";
+let rafaleDe = new Map(), rafales = [], nettete = [];
+const cache = new Map();          // i -> Promise<HTMLImageElement> décodée
+const cases = new Map();          // i -> élément de la grille
+
+async function demarrer() {
+  const r = await (await fetch("/api/photos")).json();
+  photos = r.photos;
+  $("dossier").textContent = r.dossier || "";
+  document.title = (r.dossier ? r.dossier + " · " : "") + "Prism Tri";
+  appliquerFiltre();
+  suivreAnalyse();
+}
+
+function appliquerFiltre() {
+  const garde = {
+    toutes: () => true,
+    notees: (p) => p.note >= 1,
+    sans: (p) => p.note === 0,
+    rejets: (p) => p.note === -1,
+    rafales: (p, i) => rafaleDe.has(i),
+  }[filtre];
+  const avant = visibles[cur];
+  visibles = photos.map((p, i) => i).filter((i) => garde(photos[i], i));
+  cur = Math.max(0, visibles.indexOf(avant));
+  construireGrille();
+  afficher();
+}
+
+function construireGrille() {
+  const g = $("grille");
+  g.textContent = "";
+  cases.clear();
+  const frag = document.createDocumentFragment();
+  visibles.forEach((i, k) => {
+    const c = document.createElement("div");
+    c.className = "case";
+    c.innerHTML = `<img loading="lazy" decoding="async" alt="">`;
+    c.firstChild.src = "/v/" + i;
+    c.addEventListener("click", () => { cur = k; afficher(); });
+    c.addEventListener("dblclick", () => { cur = k; basculer("loupe"); });
+    cases.set(i, c);
+    majCase(i);
+    frag.appendChild(c);
+  });
+  g.appendChild(frag);
+  if (!visibles.length) g.innerHTML = `<p style="color:var(--doux)">Aucune photo pour ce filtre.</p>`;
+}
+
+function majCase(i) {
+  const c = cases.get(i);
+  if (!c) return;
+  const p = photos[i];
+  c.classList.toggle("rejet", p.note === -1);
+  c.querySelectorAll(".etoiles,.rej,.etiq,.badge").forEach((e) => e.remove());
+  if (p.note > 0) c.insertAdjacentHTML("beforeend", `<span class="etoiles">${"★".repeat(p.note)}</span>`);
+  if (p.note === -1) c.insertAdjacentHTML("beforeend", `<span class="rej">✕ rejetée</span>`);
+  if (p.etiquette) c.insertAdjacentHTML("beforeend", `<span class="etiq" style="background:var(--${p.etiquette}, #888)"></span>`);
+  const r = rafaleDe.get(i);
+  if (r) c.insertAdjacentHTML("beforeend", r.meilleure === i
+    ? `<span class="badge top">Rafale ${r.n} · la plus nette</span>` : `<span class="badge">Rafale ${r.n}</span>`);
+}
+
+function charger(i) {
+  if (i == null || i < 0 || i >= photos.length) return null;
+  if (!cache.has(i)) {
+    const img = new Image();
+    img.src = "/g/" + i;
+    cache.set(i, img.decode().then(() => img).catch(() => null));
+    // Mémoire bornée : on oublie les plus anciennes.
+    if (cache.size > 40) cache.delete(cache.keys().next().value);
+  }
+  return cache.get(i);
+}
+
+let jeton = 0;
+async function afficher() {
+  const i = visibles[cur];
+  majPied(i);
+  cases.forEach((c, k) => c.classList.toggle("choisie", k === i));
+  const c = cases.get(i);
+  if (c && vue === "grille") c.scrollIntoView({ block: "nearest" });
+  if (vue !== "loupe") return;
+  const moi = ++jeton, t0 = performance.now();
+  const img = i == null ? null : await charger(i);
+  if (moi !== jeton) return;
+  const l = $("loupe");
+  l.textContent = "";
+  if (!img) { l.innerHTML = `<span class="vide">${i == null ? "Aucune photo" : "Aperçu illisible"}</span>`; return; }
+  poser(img, photos[i].rotation);
+  l.appendChild(img);
+  $("temps").textContent = `affichée en ${Math.round(performance.now() - t0)} ms`;
+  // Les suivantes d'avance (on avance plus souvent qu'on ne recule).
+  for (const d of [1, 2, 3, 4, -1, -2]) charger(visibles[cur + d]);
+}
+
+/// Taille et rotation de l'image en grand (l'aperçu d'un RAW n'est pas redressé).
+function poser(img, rot) {
+  const l = $("loupe"), W = l.clientWidth, H = l.clientHeight;
+  const tourne = rot >= 5;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const [vw, vh] = tourne ? [ih, iw] : [iw, ih];
+  const k = Math.min(W / vw, H / vh, 1);
+  img.style.width = iw * k + "px";
+  img.style.height = ih * k + "px";
+  img.style.left = (W - iw * k) / 2 + "px";
+  img.style.top = (H - ih * k) / 2 + "px";
+  const angle = { 3: 180, 6: 90, 8: -90 }[rot] || 0;
+  const miroir = [2, 4, 5, 7].includes(rot) ? " scaleX(-1)" : "";
+  img.style.transform = `rotate(${angle}deg)${miroir}`;
+}
+
+function majPied(i) {
+  if (i == null) { $("nom").textContent = ""; $("date").textContent = ""; $("note").textContent = ""; $("infos").textContent = ""; return; }
+  const p = photos[i];
+  $("nom").textContent = p.nom;
+  $("date").textContent = p.date || "";
+  const n = $("note");
+  n.className = "note" + (p.note === -1 ? " rejet" : "");
+  n.textContent = p.note === -1 ? "rejetée" : p.note > 0 ? "★".repeat(p.note) + "☆".repeat(5 - p.note) : "☆☆☆☆☆";
+  const bits = [`${cur + 1} / ${visibles.length}`];
+  if (p.etiquette) bits.push("étiquette " + (NOMS_ETIQ[p.etiquette] || p.etiquette));
+  if (nettete[i] != null) bits.push("netteté " + Math.round(nettete[i]));
+  const r = rafaleDe.get(i);
+  if (r) bits.push(r.meilleure === i ? `rafale ${r.n} : la plus nette sur ${r.taille}` : `rafale ${r.n} (${r.taille} photos)`);
+  $("infos").textContent = bits.join(" · ");
+}
+
+async function noter(i, champs) {
+  Object.assign(photos[i], champs);
+  majCase(i);
+  majPied(visibles[cur]);
+  const r = await fetch("/api/noter", { method: "POST", body: JSON.stringify({ i, ...champs }) });
+  if (!r.ok) dire("Note non enregistrée : " + ((await r.json().catch(() => ({}))).erreur || r.status));
+}
+
+function basculer(v) {
+  vue = v || (vue === "grille" ? "loupe" : "grille");
+  $("grille").style.display = vue === "grille" ? "grid" : "none";
+  $("loupe").style.display = vue === "loupe" ? "flex" : "none";
+  $("vue").textContent = vue === "grille" ? "Loupe" : "Grille";
+  afficher();
+}
+
+function colonnes() {
+  const g = $("grille"), c = g.querySelector(".case");
+  if (!c) return 1;
+  return Math.max(1, Math.round(g.clientWidth / (c.offsetWidth + 10)));
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "SELECT" || e.metaKey || e.ctrlKey || e.altKey) return;
+  const i = visibles[cur];
+  const avancer = (d) => { cur = Math.min(visibles.length - 1, Math.max(0, cur + d)); afficher(); };
+  const k = e.key;
+  // Avec Maj, on lit la touche physique (Maj+1 donne « ! » ou « & » selon le clavier).
+  const chiffre = /^Digit[0-9]$/.test(e.code) ? +e.code.slice(5) : /^[0-9]$/.test(k) ? +k : null;
+  if (k === "ArrowRight") avancer(1);
+  else if (k === "ArrowLeft") avancer(-1);
+  else if (k === "ArrowDown" && vue === "grille") avancer(colonnes());
+  else if (k === "ArrowUp" && vue === "grille") avancer(-colonnes());
+  else if (k === " " || k === "Enter") basculer();
+  else if (k === "Escape") { $("aide").style.display = "none"; if (vue === "loupe") basculer("grille"); }
+  else if (k === "?") basculerAide();
+  else if (i == null) return;
+  else if (chiffre != null && chiffre <= 5) { noter(i, { note: chiffre }); if (e.shiftKey) avancer(1); }
+  else if (chiffre != null) noter(i, { etiquette: photos[i].etiquette === ETIQUETTES[chiffre] ? "" : ETIQUETTES[chiffre] });
+  else if (k === "x" || k === "X") { noter(i, { note: -1 }); if (e.shiftKey) avancer(1); }
+  else if ((k === "u" || k === "U") && photos[i].note === -1) noter(i, { note: 0 });
+  else return;
+  e.preventDefault();
+});
+
+function basculerAide() { const a = $("aide"); a.style.display = a.style.display === "block" ? "none" : "block"; }
+$("btnAide").onclick = basculerAide;
+$("vue").onclick = () => basculer();
+$("filtre").onchange = (e) => { filtre = e.target.value; e.target.blur(); appliquerFiltre(); };
+window.addEventListener("resize", () => { if (vue === "loupe") afficher(); });
+
+$("garder").onclick = async () => {
+  let n = 0;
+  for (const r of rafales) for (const i of r.photos) {
+    if (i !== r.meilleure && photos[i].note === 0) { noter(i, { note: -1 }); n++; }
+  }
+  dire(n ? `${n} photo(s) rejetée(s) dans ${rafales.length} rafale(s). La touche U annule un rejet.` : "Rien à rejeter : les autres photos des rafales sont déjà notées.");
+};
+
+let minuteur;
+function dire(t) {
+  const m = $("message");
+  m.textContent = t; m.style.display = "block";
+  clearTimeout(minuteur); minuteur = setTimeout(() => (m.style.display = "none"), 4000);
+}
+
+async function suivreAnalyse() {
+  const t0 = performance.now();
+  for (;;) {
+    const e = await (await fetch("/api/etat")).json();
+    nettete = e.nettete;
+    $("progression").textContent = e.fini ? `${e.total} photos analysées` : `Analyse ${e.analysees} / ${e.total}`;
+    if (e.fini) {
+      rafales = e.rafales || [];
+      rafaleDe = new Map();
+      rafales.forEach((r, k) => r.photos.forEach((i) => rafaleDe.set(i, { n: k + 1, meilleure: r.meilleure, taille: r.photos.length })));
+      $("garder").disabled = !rafales.length;
+      $("garder").textContent = rafales.length ? `Garder la plus nette de chaque rafale (${rafales.length})` : "Aucune rafale";
+      photos.forEach((p, i) => majCase(i));
+      majPied(visibles[cur]);
+      if (filtre === "rafales") appliquerFiltre();
+      return;
+    }
+    await new Promise((r) => setTimeout(r, performance.now() - t0 < 10000 ? 500 : 1500));
+  }
+}
+
+demarrer();
+</script>
+</body>
+</html>
