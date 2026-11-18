@@ -5459,7 +5459,8 @@ openLibrary=async function(...a){const r=await _ol.apply(this,a);const bk=$('#lb
 /* un clic ou une flèche = vraie sélection : Entrée peut alors ouvrir */
 const _lc=libClick;libClick=function(e){LIB.auto=false;return _lc(e)};
 window.addEventListener('keydown',e=>{
-  if(!LIB.open)return;
+  /* la vue d'ensemble (par-dessus la photothèque) a ses propres touches : 0 à 5, P, X, Suppr… */
+  if(!LIB.open||document.getElementById('lbSurvey'))return;
   const t=e.target,inLib=t&&t.closest&&t.closest('#library');
   if(inLib){if(/^Arrow/.test(e.key))LIB.auto=false;return}
   if(t&&t.closest&&t.closest('input,textarea,select,[contenteditable],#scrim,#cmdk,#msheet,.menu,#busy'))return;
