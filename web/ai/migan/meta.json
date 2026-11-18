@@ -1,0 +1,1 @@
+{"model": "migan-512-places2", "chunks": 2, "sizes": [6701481, 6701481], "total": 13402962, "fmt": "onnx-fp16w", "fixed": 512}

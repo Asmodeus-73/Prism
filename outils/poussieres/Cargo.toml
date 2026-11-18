@@ -1,0 +1,13 @@
+[package]
+name = "prism-poussieres"
+description = "Repère les poussières du capteur sur toute une séance photo"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+socle = { path = "../socle" }
+rayon.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+png = "0.17"

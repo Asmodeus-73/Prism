@@ -1,0 +1,12 @@
+[package]
+name = "prism-scan"
+description = "Trouve les photos abîmées d'une photothèque et surveille leur dégradation silencieuse"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+socle = { path = "../socle" }
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true

@@ -1,7 +1,8 @@
 /* ================= Suppression d'objet par réseau neuronal (LaMa "big-lama", ONNX Runtime web) ================= */
 /* Disponible seulement si ai/lama/meta.json existe (application de bureau). Sinon : l'ancien remplissage par patchs est utilisé, sans message. */
+/* Méthode « IA rapide » (barre de l'outil, voir ps_fill.js) : MI-GAN (Picsart, MIT), 13 Mo, entrée fixe 512 × 512, environ 4 fois plus rapide que LaMa mais moins juste sur les objets détaillés. LaMa reste le modèle par défaut. */
 /* Modèle : LaMa (Suvorov et al., Samsung AI), FFT remplacée par produit matriciel DFT, poids int8 par canal + fp16, découpé en morceaux ai/lama/N.wasm, taille H x W dynamique (multiples de 8). */
-const LM={meta:null,availP:null,w:null,loadP:null,loadRes:null,pend:new Map(),rid:0,abort:false,busyNow:false,MAXS:512,MINS:256,tpp:null,last:null,
+const LM={dir:'lama',fixed:0,metas:{},availPs:{},meta:null,availP:null,w:null,loadP:null,loadRes:null,pend:new Map(),rid:0,abort:false,busyNow:false,MAXS:512,MINS:256,tpp:null,last:null,
   /* limite de la zone : fraction de l'image couverte par le cadre de l'objet */
   GUARD:0.45};
 LM.WSRC=`let sess=null;
@@ -18,16 +19,21 @@ self.onmessage=async e=>{const m=e.data;
   catch(err){postMessage({t:'err',id:m.id,msg:String(err&&err.message||err)})}}};`;
 LM.abs=u=>new URL(u,location.href).href;
 /* le modèle est-il livré avec cette version ? (réponse mémorisée) */
-LM.avail=()=>{if(window.LAMA_DISABLE)return Promise.resolve(false);return LM.availP||(LM.availP=(async()=>{try{
-    const u=asset('ai/lama/meta.json');let r=await fetch(u,{method:'HEAD',cache:'no-store'});if(!r.ok)return false;
-    r=await fetch(u,{cache:'no-store'});if(!r.ok)return false;const m=JSON.parse(await r.text());if(!(m&&m.chunks>0))return false;LM.meta=m;return true}catch(e){return false}})())};
+LM.probe=dir=>LM.availPs[dir]||(LM.availPs[dir]=(async()=>{try{
+    const u=asset(`ai/${dir}/meta.json`);let r=await fetch(u,{method:'HEAD',cache:'no-store'});if(!r.ok)return false;
+    r=await fetch(u,{cache:'no-store'});if(!r.ok)return false;const m=JSON.parse(await r.text());if(!(m&&m.chunks>0))return false;LM.metas[dir]=m;return true}catch(e){return false}})());
+LM.wantFast=()=>!!(S.opts.remove&&S.opts.remove.method==='aifast');
+/* choisit le modèle (LaMa, ou MI-GAN en mode rapide s'il est livré) ; un changement de modèle libère l'ancien */
+LM.avail=async()=>{if(window.LAMA_DISABLE)return false;let dir='lama';if(LM.wantFast()&&await LM.probe('migan'))dir='migan';else if(!(await LM.probe('lama')))return false;
+  if(dir!==LM.dir&&!LM.busyNow&&!LM.loadP){LM.unload();LM.dir=dir}const m=LM.metas[LM.dir];if(!m)return false;LM.meta=m;LM.fixed=m.fixed||0;return true};
+LM.unload=()=>{if(LM.loadP)return;try{LM.nat&&LM.nat.release&&LM.nat.release()}catch(e){}try{LM.w&&LM.w.terminate&&LM.w.terminate()}catch(e){}LM.nat=null;LM.w=null;LM.tpp=null};
 LM.load=()=>LM.w?Promise.resolve(LM.w):(LM.loadP||(LM.loadP=LM._load().finally(()=>{LM.loadP=null})));
 LM._load=()=>new Promise(async res=>{LM.loadRes=res;
   /* sans les infos du modèle, le chargement restait bloqué pour toujours */
   if(!LM.meta&&!(await LM.avail())){res(null);return}
   busy(true,'Chargement du moteur IA…',0.02);LM.busyCancel(true);
   /* application de bureau : moteur IA natif (carte graphique) d'abord */
-  {const N=window.PrismNAI;if(N&&await N.ok()){try{const s=await N.fromChunks([...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),v=>{if(LM.loadRes!==res)return;busy(true,'Chargement du modèle de suppression…',v*0.9);LM.busyCancel(true)});
+  {const N=window.PrismNAI;if(N&&await N.ok()){try{const s=await N.fromChunks([...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/${LM.dir}/${i}.wasm`))),v=>{if(LM.loadRes!==res)return;busy(true,'Chargement du modèle de suppression…',v*0.9);LM.busyCancel(true)});
       if(LM.loadRes!==res){s.release();if(!LM.loadRes&&!LM.busyNow&&document.querySelector('#busy .lm-cancel')){busy(false);LM.busyCancel(false)}return}LM.nat=s;LM.w=s;LM.ep='native-'+s.__ep;LM.threads=navigator.hardwareConcurrency||1;LM.loadRes=null;res(s);return}catch(e){console.warn('IA native, suppression :',e)}}}
   let w;try{w=new Worker(LM.wurl||(LM.wurl=URL.createObjectURL(new Blob([LM.WSRC],{type:'text/javascript'}))))}catch(e){console.warn('lama',e);res(null);return}
   LM.loadW=w;const thr=self.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)):1;
@@ -37,7 +43,7 @@ LM._load=()=>new Promise(async res=>{LM.loadRes=res;
     else if(m.t==='ready'){LM.threads=m.threads;LM.ep=m.ep||'wasm';LM.loadRes=null;LM.loadW=null;LM.w=w;w.onmessage=LM._onmsg;res(w)}
     else if(m.t==='err')fail(m.msg)};
   w.onerror=e=>fail(e.message||'worker');
-  w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/lama/${i}.wasm`))),threads:thr})});
+  w.postMessage({t:'init',ort:LM.abs(await PrismORT.bundle()),eps:await PrismORT.eps(),bin:(await PrismORT.gpuP())?PrismORT.binURLs():null,wasm:LM.abs(asset('ai/')),chunks:[...Array(LM.meta.chunks).keys()].map(i=>LM.abs(asset(`ai/${LM.dir}/${i}.wasm`))),threads:thr})});
 LM._onmsg=e=>{const m=e.data,p=LM.pend.get(m.id);if(!p)return;LM.pend.delete(m.id);m.t==='res'?p.res(new Float32Array(m.buf)):p.rej(new Error(m.msg))};
 LM.infer=(img,mask,h,w)=>LM.nat?LM.nat.run({img:{data:img,dims:[1,3,h,w],type:'float32'},mask:{data:mask,dims:[1,1,h,w],type:'float32'}}).then(o=>new Float32Array(o[LM.nat.outputNames[0]].data)):new Promise((res,rej)=>{const id=++LM.rid;LM.pend.set(id,{res,rej});LM.w.postMessage({t:'run',id,img:img.buffer,mask:mask.buffer,dims:[1,3,h,w]},[img.buffer,mask.buffer])});
 /* annulation : pendant le chargement on arrête le worker ; pendant le calcul on abandonne le résultat (le modèle reste en mémoire pour la prochaine fois) */
@@ -57,6 +63,10 @@ LM.plan=(bx,W,H)=>{const hw=bx.x1-bx.x0,hh=bx.y1-bx.y0,m=Math.max(hw,hh),mg=Math
     const ext=(a,b,t,N)=>{let d=t-(b-a);const e=Math.min(d,N-b);b+=e;d-=e;const s=Math.min(d,a);a-=s;d-=s;return[a,b+d]};
     [x0,x1]=ext(x0,x1,rw,W);[y0,y1]=ext(y0,y1,rh,H)}
   else{rw=Math.max(8,Math.round(w*f/8)*8);rh=Math.max(8,Math.round(h*f/8)*8)}
+  /* modèle à taille fixe (MI-GAN 512) : fenêtre carrée, recentrée dans l'image si possible ; ce qui dépasse de l'image est rempli puis jeté */
+  if(LM.fixed){const Z=LM.fixed,side=Math.max(x1-x0,y1-y0);
+    const sq=(a,b,N)=>{a=a-Math.floor((side-(b-a))/2);b=a+side;if(a<0){const k=Math.min(-a,Math.max(0,N-b));a+=k;b+=k}if(b>N){const k=Math.min(b-N,Math.max(0,a));a-=k;b-=k}return[a,b]};
+    [x0,x1]=sq(x0,x1,W);[y0,y1]=sq(y0,y1,H);return{x0,y0,x1,y1,rw:Z,rh:Z,f:Z/side,fx:Z/side,fy:Z/side}}
   return{x0,y0,x1,y1,rw,rh,f,fx:rw/(x1-x0),fy:rh/(y1-y0)}};
 LM.fmtT=ms=>{const s=Math.round(ms/1000);return s<90?s+' s':Math.round(s/60)+' min'};
 /* Cœur : remplit la zone de masque (alpha de maskC, repère de L.canvas) ; renvoie {res,soft,plan,hole} ou null si annulé/échec. */
@@ -107,4 +117,5 @@ LM.removeObject=async function(L,maskC,bx,clip,prev){const d=S.doc,doc0=d,h0=S.h
   const ok=await LM.removeObject(L,maskC,bx,clip);
   if(ok===false){console.warn('lama: repli sur l’ancienne méthode');return _ro.apply(self,args)}
   _ro.call(self,L,maskC,E0)}}               /* remet clipSel à zéro, comme l'ancienne version */
+LM.probe('migan');
 window.LM=LM;
