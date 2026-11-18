@@ -62,13 +62,29 @@ function histoSched(now){const iv=S.stroke?450:(S.drag||S.sliding)?90:40;clearTi
 
 /* histogram */
 const histoC=$('#histo'),hctx=cx(histoC);
-function histogram(img){const d=img.data,n=d.length/4,step=Math.max(1,Math.floor(n/200000)),R=new Uint32Array(256),G=new Uint32Array(256),B=new Uint32Array(256);let cnt=0,lo=0,hi=0;
-  for(let i=0;i<n;i+=step){const j=i*4;if(d[j+3]<10)continue;const r=d[j],g=d[j+1],b=d[j+2];R[r]++;G[g]++;B[b]++;cnt++;if(r>=254&&g>=254&&b>=254)hi++;if(r<=1&&g<=1&&b<=1)lo++}S.lastHist={R,G,B};
-  const W=histoC.width,H=histoC.height,c=hctx,st=rootStyle(),mode=st.getPropertyValue('--hist-blend').trim()||'lighter';c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,W,H);
-  const sm=A=>{const o=new Float32Array(256);for(let i=0;i<256;i++){const a=A[Math.max(0,i-1)],b=A[i],c=A[Math.min(255,i+1)];o[i]=i===0||i===255?b:(a+2*b+c)/4}return o};const RS=sm(R),GS=sm(G),BS=sm(B);let mx=1;for(let i=2;i<254;i++)mx=Math.max(mx,RS[i],GS[i],BS[i]);mx*=1.08;c.strokeStyle=st.getPropertyValue('--line-2');c.lineWidth=1;for(let k=1;k<4;k++){const x=Math.round(W*k/4)+.5;c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke()}
-  c.globalCompositeOperation=mode;const cols=mode==='multiply'?['rgba(232,96,90,.7)','rgba(96,190,110,.7)','rgba(90,130,232,.7)']:['rgba(214,74,66,.85)','rgba(70,170,92,.85)','rgba(70,110,226,.85)'];
-  [RS,GS,BS].forEach((A,k)=>{c.fillStyle=cols[k];c.beginPath();c.moveTo(0,H);for(let i=0;i<256;i++)c.lineTo(i/255*W,H-Math.min(1,Math.sqrt(A[i]/mx))*H*0.95);c.lineTo(W,H);c.closePath();c.fill()});c.globalCompositeOperation='source-over';
-  $('#hmL').textContent=cnt?`Ombres écrêtées ${(lo/cnt*100).toFixed(1)} %`:'—';$('#hmR').textContent=cnt?`Hautes lumières ${(hi/cnt*100).toFixed(1)} %`:'';if(!curveDrag)drawCurve()}
+/* the canvas is drawn at its displayed size (times the screen density): never stretched, never blurred.
+   Channels are blended like a screen (light theme: multiply), so where the three overlap the curve is neutral grey, not a white or yellow blob. */
+function histoFit(c){const w=c.clientWidth,h=c.clientHeight;if(w<8||h<8)return;const pr=Math.min(3,window.devicePixelRatio||1),W=Math.round(w*pr),H=Math.round(h*pr);if(c.width!==W||c.height!==H){c.width=W;c.height=H}}
+/* every count the panel and the info card need: per channel and luminance (Rec. 709), clipping per channel and on all three */
+function histoCount(img){const d=img.data,n=d.length/4,step=Math.max(1,Math.floor(n/200000)),R=new Uint32Array(256),G=new Uint32Array(256),B=new Uint32Array(256),L=new Uint32Array(256);let cnt=0,lo=0,hi=0;
+  for(let i=0;i<n;i+=step){const j=i*4;if(d[j+3]<10)continue;const r=d[j],g=d[j+1],b=d[j+2];R[r]++;G[g]++;B[b]++;L[Math.round(0.2126*r+0.7152*g+0.0722*b)]++;cnt++;if(r>=254&&g>=254&&b>=254)hi++;if(r<=1&&g<=1&&b<=1)lo++}
+  return{R,G,B,L,n:cnt,lo,hi,w:img.width,h:img.height}}
+function histoSmooth(A){const o=new Float32Array(256);for(let i=0;i<256;i++){const a=A[Math.max(0,i-1)],b=A[i],c=A[Math.min(255,i+1)];o[i]=i===0||i===255?b:(a+2*b+c)/4}return o}
+/* draws channels (arrays of 256 counts) into a canvas; returns the scale so a caller can place a marker */
+function histoPaint(c,chans,opt={}){const W=c.width,H=c.height,g=cx(c),st=rootStyle(),light=(st.getPropertyValue('--hist-blend').trim()==='multiply');g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,W,H);
+  const S2=chans.map(([A])=>histoSmooth(A));let mx=1;for(const A of S2)for(let i=2;i<254;i++)if(A[i]>mx)mx=A[i];mx*=1.08;const top=H*0.95,yOf=v=>H-Math.min(1,Math.sqrt(v/mx))*top;
+  g.strokeStyle=st.getPropertyValue('--line-2');g.lineWidth=1;for(let k=1;k<4;k++){const x=Math.round(W*k/4)+.5;g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke()}
+  g.globalCompositeOperation=chans.length>1?(light?'multiply':'screen'):'source-over';
+  S2.forEach((A,k)=>{const col=chans[k][1];g.fillStyle=col.fill;g.beginPath();g.moveTo(0,H);for(let i=0;i<256;i++)g.lineTo(i/255*W,yOf(A[i]));g.lineTo(W,H);g.closePath();g.fill()});
+  g.globalCompositeOperation='source-over';const lw=Math.max(1,Math.round((window.devicePixelRatio||1)));
+  S2.forEach((A,k)=>{const col=chans[k][1];if(!col.line)return;g.strokeStyle=col.line;g.lineWidth=lw;g.beginPath();for(let i=0;i<256;i++){const x=i/255*W,y=yOf(A[i]);i?g.lineTo(x,y):g.moveTo(x,y)}g.stroke()});
+  return{mx,yOf}}
+function histoColors(){const light=rootStyle().getPropertyValue('--hist-blend').trim()==='multiply';
+  return light?{R:{fill:'rgba(240,120,112,.55)',line:'rgba(200,60,52,.9)'},G:{fill:'rgba(120,200,130,.55)',line:'rgba(40,140,62,.9)'},B:{fill:'rgba(118,150,240,.55)',line:'rgba(50,90,210,.9)'},L:{fill:'rgba(120,120,128,.55)',line:'rgba(60,60,66,.9)'}}
+    :{R:{fill:'rgba(226,78,70,.62)',line:'rgba(255,120,110,.9)'},G:{fill:'rgba(70,184,96,.62)',line:'rgba(120,225,140,.9)'},B:{fill:'rgba(72,116,236,.62)',line:'rgba(130,165,255,.9)'},L:{fill:'rgba(200,200,206,.45)',line:'rgba(235,235,240,.9)'}}}
+function histogram(img){const h=histoCount(img);S.lastHist=h;histoFit(histoC);const C=histoColors();
+  histoPaint(histoC,[[h.R,C.R],[h.G,C.G],[h.B,C.B]]);const cnt=h.n;
+  $('#hmL').textContent=cnt?`Ombres écrêtées ${(h.lo/cnt*100).toFixed(1)} %`:'—';$('#hmR').textContent=cnt?`Hautes lumières ${(h.hi/cnt*100).toFixed(1)} %`:'';if(!curveDrag)drawCurve()}
 
 /* overlays: marching ants, mask tint, crop, brush cursor */
 const ants={key:'',idx:null,img:null,c:null,m:null};
