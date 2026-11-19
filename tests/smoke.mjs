@@ -810,6 +810,26 @@ await test('export : un nom de document avec / : ? donne un nom de fichier valab
     return{got,names:['a/b:c*?.jpg','  .png',' CON.jpg','x'.repeat(300)+'.tif','Été – lac.jpg'].map(safeFileName)}});
   const ok=r.got[0]==='Vacances 12-08- lac-.png'&&r.names[0]==='a-b-c-.jpg'&&r.names[1]==='photo.png'&&r.names[2]==='_CON.jpg'&&r.names[3].length===200&&r.names[3].endsWith('.tif')&&r.names[4]==='Été – lac.jpg';
   if(!ok)throw new Error(JSON.stringify(r))});
+await test('finitions : zoom en douceur, trait des onglets, groupes (Alt / Ctrl + clic, mémoire), glisser sur le nom d’un réglage',async()=>{await fresh();await sample();
+  /* zoom : un clic glisse jusqu'au cadrage visé (la mesure de vitesse est neutralisée : le rendu logiciel de la CI est lent) */
+  const z=await ev(async()=>{S.contentMs=0;const a=S.zoom;document.querySelector('#bZoomIn').click();const mid=S.zoom;await new Promise(r=>setTimeout(r,450));return {a,mid,b:S.zoom}});
+  if(!(z.mid===z.a&&z.b>z.a))throw new Error('zoom '+JSON.stringify(z));
+  const ink=await ev(async()=>{const t=document.querySelector('.tabs [data-tab=history]');t.click();await new Promise(r=>setTimeout(r,300));const i=document.querySelector('.tab-ink'),x=i.getBoundingClientRect(),y=t.getBoundingClientRect();document.querySelector('.tabs [data-tab=develop]').click();return Math.abs((x.left+x.width/2)-(y.left+y.width/2))});
+  if(!(ink<2))throw new Error('trait des onglets décalé de '+ink+' px');
+  await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['Alt']});
+  const solo=await ev(()=>[...document.querySelectorAll('#pane-develop details.sec[data-sec]:not([data-sec=presets])')].filter(s=>s.open).map(s=>s.dataset.sec).join());
+  if(solo!=='presence')throw new Error('Alt + clic : '+solo);
+  if(await ev(()=>document.querySelector('[data-sec=presets]').open))throw new Error('les préréglages se sont ouverts');
+  await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['ControlOrMeta']});await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['ControlOrMeta']});
+  if(await ev(()=>[...document.querySelectorAll('#pane-develop details.sec[data-sec]:not([data-sec=presets])')].some(s=>!s.open)))throw new Error('Ctrl + clic n’a pas tout ouvert');
+  await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['Alt']});await page.click('#pane-develop details.sec[data-sec=base]>summary');await page.waitForTimeout(300);
+  await reopen();const kept=await ev(()=>['base','presence','detail'].map(k=>document.querySelector(`#pane-develop [data-sec=${k}]`).open).join());
+  if(kept!=='true,true,false')throw new Error('groupes ouverts non retenus : '+kept);
+  await sample();const lab=page.locator('#pane-develop .row[data-k="exposure"]>label');await lab.scrollIntoViewIfNeeded();const b=await lab.boundingBox();const h0=await ev(()=>S.history.length);
+  await page.mouse.move(b.x+10,b.y+b.height/2);await page.mouse.down();for(let k=1;k<=8;k++)await page.mouse.move(b.x+10+k*8,b.y+b.height/2);await page.mouse.up();await page.waitForTimeout(150);
+  const r=await ev(()=>({v:AL().dev.exposure,sl:S.sliding}));const h1=await ev(()=>S.history.length);
+  if(!(r.v>0)||r.sl||h1!==h0+1)throw new Error('glisser sur le nom : '+JSON.stringify({r,h0,h1}));
+  await lab.dblclick();if(await ev(()=>AL().dev.exposure)!==0)throw new Error('double-clic sur le nom : pas remis à zéro')});
 console.log(results.map(r=>`${r[1]==='ok'?'✓':'✗'} ${r[0]} (${r[2]} ms)${r[3]?'\n    '+r[3].replace(/\n/g,'\n    '):''}`).join('\n'));
 await browser.close();server.close();
 const failed=results.filter(r=>r[1]!=='ok').length;console.log(failed?`${failed} échec(s) sur ${results.length}`:`${results.length} tests réussis`);process.exit(failed?1:0);

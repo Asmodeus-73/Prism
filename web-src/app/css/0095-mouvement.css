@@ -1,0 +1,49 @@
+/* ---------- mouvement : transitions et retours visuels ----------
+   Des transitions courtes (120 à 220 ms) sur ce qui change d'état : onglets, groupes de réglages, calques, messages.
+   Rien ne bouge pendant un tracé ou un glissé sur la photo. Affichage > Animations de l'interface les coupe toutes,
+   comme le réglage « réduire les animations » du système. */
+
+/* retours au survol et au clic */
+button,.btn,.chip,.preset,.lyr,.hist-list li,.tbtn{transition:background-color .12s,color .12s,border-color .12s,box-shadow .15s,transform .1s}
+#dock [data-tool]:active,.ib:active,.tbtn:active,.chip:active,.cap-fam button:active,.seg button:active,.tabs button:active,.preset:active{transform:scale(.94)}
+.btn:active{transform:scale(.97)}
+.preset canvas{transition:filter .15s}
+.preset:hover canvas{filter:brightness(1.06)}
+
+/* curseurs : la poignée grossit au survol et pendant le glissé, le chiffre suit en couleur */
+input[type=range]::-webkit-slider-thumb{transition:transform .12s,box-shadow .12s}
+input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.12)}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.22)}
+.row output{transition:color .12s}
+.row:has(>input[type=range]:active) output,.row.scrubbing output{color:var(--accent-fg);font-weight:600}
+.row:has(>input[type=range]:active) label,.row.scrubbing label{color:var(--fg)}
+/* glisser sur le nom d'un réglage change sa valeur */
+.row[data-k]>label{cursor:ew-resize}
+body.scrub,body.scrub *{cursor:ew-resize!important;user-select:none}
+
+/* groupes de réglages : ouverture et fermeture en douceur (Chromium ; ailleurs ils s'ouvrent d'un coup) */
+details.sec:not([data-sec=presets]){interpolate-size:allow-keywords}
+details.sec:not([data-sec=presets])::details-content{height:0;overflow:clip;opacity:0;transition:height .2s cubic-bezier(.2,.7,.2,1),opacity .16s,content-visibility .2s allow-discrete}
+details.sec[open]:not([data-sec=presets])::details-content{height:auto;opacity:1}
+details.sec>summary::before{transition:transform .2s cubic-bezier(.2,.7,.2,1)}
+details.sec>summary .dot{animation:dotIn .25s ease-out}
+
+/* onglets du panneau de droite : le trait glisse d'un onglet à l'autre, le contenu apparaît en fondu */
+.tabs{position:relative}
+.tabs>.tab-ink{position:absolute;left:0;bottom:-1px;height:2px;width:0;border-radius:2px;background:var(--accent);pointer-events:none;transition:transform .22s cubic-bezier(.2,.7,.2,1),width .22s cubic-bezier(.2,.7,.2,1)}
+.tabs.inked button.on{border-bottom-color:transparent}
+#pane-develop:not([hidden]),#pane-ai:not([hidden]),#pane-history:not([hidden]){animation:paneIn .18s ease-out}
+
+/* nouveaux calques et messages */
+.lyr.fresh{animation:lyrIn .34s cubic-bezier(.2,.7,.2,1)}
+#toast:not([hidden]){animation:toastIn .2s cubic-bezier(.2,.7,.2,1)}
+.hist-list li.on{transition:background-color .15s,color .15s}
+
+@keyframes paneIn{from{opacity:0}}
+@keyframes lyrIn{from{opacity:0;transform:translateY(-6px);background:var(--accent-soft)}}
+@keyframes toastIn{from{opacity:0;translate:0 8px}}
+@keyframes dotIn{from{transform:scale(0)}}
+
+/* sans animations (réglage du système ou Affichage > Animations de l'interface) ; la barre de progression continue de tourner */
+@media (prefers-reduced-motion:reduce){*:not(.prog *),::before,::after,::details-content{transition-duration:0s!important;animation-duration:0s!important}}
+html.no-anim *:not(.prog *),html.no-anim ::before,html.no-anim ::after,html.no-anim ::details-content{transition:none!important;animation:none!important}
