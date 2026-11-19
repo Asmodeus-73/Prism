@@ -34,11 +34,7 @@ writeFileSync(join(dist, 'models.json'), JSON.stringify(models, null, 1) + '\n')
 const file = join(dist, 'index.html'), jsFile = join(dist, 'app.js');
 let html = readFileSync(file, 'utf8'), js = readFileSync(jsFile, 'utf8');
 const swaps = [
-  // Fonts come from the bundle so the app works offline (lazy text fonts first).
-  // (web/index.html is minified: its script strings use double quotes)
-  ['"https://fonts.googleapis.com/css2?"+q+"&display=swap"', '"desktop/fonts/fonts.css"'],
-  [/https:\/\/fonts\.googleapis\.com\/css2\?[^"']*/g, 'desktop/fonts/fonts.css'],
-  [/<link rel="preconnect"[^>]*>/g, ''],
+  // (web/index.html and web/app.js are minified: their script strings use double quotes)
   // Synced files are served by the app instead of claude.ai.
   ['"/_blob/"', 'PRISM_BLOB'],
   ['"/_blob/${', '"${PRISM_BLOB}${'],
