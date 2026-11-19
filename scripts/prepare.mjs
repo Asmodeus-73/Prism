@@ -30,16 +30,15 @@ Object.assign(models, JSON.parse(readFileSync(join(root, 'desktop', 'models-extr
 writeFileSync(join(dist, 'desktop', 'models.js'), `window.PRISM_MODELS=${JSON.stringify(models)};\n`);
 writeFileSync(join(dist, 'models.json'), JSON.stringify(models, null, 1) + '\n');
 
-const file = join(dist, 'index.html');
-let html = readFileSync(file, 'utf8');
+// The page (index.html) and its script (app.js): each swap applies to both.
+const file = join(dist, 'index.html'), jsFile = join(dist, 'app.js');
+let html = readFileSync(file, 'utf8'), js = readFileSync(jsFile, 'utf8');
 const swaps = [
   // Fonts come from the bundle so the app works offline (lazy text fonts first).
   // (web/index.html is minified: its script strings use double quotes)
   ['"https://fonts.googleapis.com/css2?"+q+"&display=swap"', '"desktop/fonts/fonts.css"'],
   [/https:\/\/fonts\.googleapis\.com\/css2\?[^"']*/g, 'desktop/fonts/fonts.css'],
   [/<link rel="preconnect"[^>]*>/g, ''],
-  // Fonts load right away (the print/onload trick is an inline handler the app's CSP blocks).
-  [` media="print" onload="this.media='all'"`, ''],
   // Synced files are served by the app instead of claude.ai.
   ['"/_blob/"', 'PRISM_BLOB'],
   ['"/_blob/${', '"${PRISM_BLOB}${'],
@@ -55,12 +54,15 @@ const swaps = [
   ['Sur mon compte', 'Dans le dossier synchronisé'],
   ['Sur votre compte', 'Dans le dossier synchronisé'],
 ];
+const swap = (text, from, to) => typeof from === 'string' ? text.split(from).join(to) : text.replace(from, to);
 for (const [from, to] of swaps) {
-  const before = html;
-  html = typeof from === 'string' ? html.split(from).join(to) : html.replace(from, to);
-  if (html === before) console.warn(`prepare: nothing replaced for ${from}`);
+  const before = html + js;
+  html = swap(html, from, to);
+  js = swap(js, from, to);
+  if (html + js === before) console.warn(`prepare: nothing replaced for ${from}`);
 }
 // The bridge must run before the app's own scripts.
 html = html.replace(/<head>/i, '<head><script src="desktop/models.js"></script><script src="desktop/desktop.js"></script>');
 writeFileSync(file, html);
+writeFileSync(jsFile, js);
 console.log('dist/ ready');

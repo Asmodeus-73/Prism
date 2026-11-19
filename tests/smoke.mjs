@@ -625,7 +625,7 @@ await test('effets modifiables : filtre sur une sélection, liste dans Calques, 
   await ev(()=>undo());await page.waitForTimeout(200);const r5=await ev(()=>S.doc.layers.some(l=>PrismEffects.valid(l)));
   if(!(r1.ok&&r1.rows===1&&r1.out&&r1.inn&&r2&&r3===true&&r4&&r5))throw new Error(JSON.stringify({r1,r2,r3,r4,r5}))});
 await test('signaler un problème : Aide, rapport avec version et journal d’erreurs, ticket GitHub court',async()=>{
-  await ev(()=>{console.warn('essai de journal');const sc=document.createElement('script');sc.textContent="setTimeout(function(){throw new Error('erreur volontaire')},0)";document.head.appendChild(sc);sc.remove()});await page.waitForTimeout(150);errs.length=0;await page.waitForTimeout(100);
+  await ev(()=>{console.warn('essai de journal');setTimeout(()=>{throw new Error('erreur volontaire')},0)});await page.waitForTimeout(150);errs.length=0;await page.waitForTimeout(100);
   const r=await ev(()=>{const it=MENU2.help.items().some(x=>x&&x.label==='Signaler un problème…');PrismReport.dialog();const o=document.querySelector('#rpOut').value,u=PrismReport.issueUrl('Test',true);closeDialog();
     return{it,v:o.includes('Version : '+PRISM_VERSION),log:/erreur volontaire/.test(o)&&/essai de journal/.test(o),u:u.startsWith('https://github.com/Asmodeus-73/Prism/issues/new?')&&u.length<=7500}});
   if(!(r.it&&r.v&&r.log&&r.u))throw new Error(JSON.stringify(r)+'\n'+await ev(()=>ERRLOG.slice(-4).map(e=>e.k+' '+e.m).join('\n')))});
@@ -718,6 +718,7 @@ await test('lueur : les cinq styles éclairent les zones claires, sans erreur, e
     const a=await mean(8),out=[];for(let st=0;st<5;st++){L.dev.fx={glow:{on:true,style:st,k:80,dir:30}};out.push(await mean(8)-a)}L.dev.fx={glow:{on:true,style:0,k:80}};const b16=await mean(16)-a;return{out,b16}});
   if(r.out.some(v=>!(v>0.2))||!(r.b16>0.2))throw new Error(JSON.stringify(r))});
 await test('histogramme : dessiné à sa taille affichée, couches et écrêtage justes',async()=>{await fresh();await sample();await ev(()=>{try{setHisto(true)}catch(e){}});
+  await page.waitForTimeout(300);  /* le panneau finit de s’ouvrir (WebKit mesurait la taille en pleine animation) */
   /* une image connue : moitié noire, moitié rouge pur ; le décompte doit tomber juste */
   const r=await ev(()=>{const c=document.createElement('canvas');c.width=40;c.height=10;const g=c.getContext('2d');g.fillStyle='#000';g.fillRect(0,0,20,10);g.fillStyle='#ff0000';g.fillRect(20,0,20,10);
     const h=histoCount(g.getImageData(0,0,40,10)),cv=document.getElementById('histo'),pr=Math.min(3,devicePixelRatio||1);histoNow();
