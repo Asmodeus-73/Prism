@@ -629,6 +629,19 @@ await test('signaler un problème : Aide, rapport avec version et journal d’er
   const r=await ev(()=>{const it=MENU2.help.items().some(x=>x&&x.label==='Signaler un problème…');PrismReport.dialog();const o=document.querySelector('#rpOut').value,u=PrismReport.issueUrl('Test',true);closeDialog();
     return{it,v:o.includes('Version : '+PRISM_VERSION),log:/erreur volontaire/.test(o)&&/essai de journal/.test(o),u:u.startsWith('https://github.com/Asmodeus-73/Prism/issues/new?')&&u.length<=7500}});
   if(!(r.it&&r.v&&r.log&&r.u))throw new Error(JSON.stringify(r)+'\n'+await ev(()=>ERRLOG.slice(-4).map(e=>e.k+' '+e.m).join('\n')))});
+await test('signaler un problème : dans l’app de bureau, la fin du journal des plantages natifs est jointe',async()=>{
+  const r=await ev(async()=>{const D=window.PRISM_DESKTOP;window.PRISM_DESKTOP={invoke:async(c,a)=>c==='crash_log'?'panicked at src/ai.rs:12: essai de plantage ('+a.max+')':null};
+    try{await PrismReport.readNative();const o=PrismReport.report('x',true),no=PrismReport.report('x',false),u=PrismReport.issueUrl('x',true);return{o:/Plantages de l’application[\s\S]*essai de plantage \(3000\)/.test(o),no:!/Plantages/.test(no),u:u.length<=7500}}
+    finally{window.PRISM_DESKTOP={invoke:async()=>null};await PrismReport.readNative();window.PRISM_DESKTOP=D}});
+  if(!(r.o&&r.no&&r.u))throw new Error(JSON.stringify(r))});
+await test('sauvegarde de la photothèque : rappel après 30 jours sans sauvegarde, au plus une fois par semaine',async()=>{
+  const r=await ev(async()=>{const k=['backupAt','backupNag','firstUse'].map(x=>PREF.get(x,0)),now=Date.now(),D=864e5,R=PrismBackupReminder;
+    const set=(a,n,f)=>{PREF.set('backupAt',a);PREF.set('backupNag',n);PREF.set('firstUse',f)};
+    set(now-40*D,0,now-90*D);const due1=R.due();set(now-10*D,0,now-90*D);const due2=R.due();set(now-40*D,now-2*D,now-90*D);const due3=R.due();set(0,0,now-5*D);const due4=R.due();
+    set(now-40*D,0,now-90*D);const _k=IDB.keys;IDB.keys=async()=>['p1'];let shown='';try{await R.maybe();shown=(document.querySelector('#toast')||{}).textContent||''}finally{IDB.keys=_k}
+    const again=R.due();const t=document.querySelector('#toast');if(t)t.hidden=true;
+    set(...k);return{due1,due2,due3,due4,shown,again}});
+  if(!(r.due1&&!r.due2&&!r.due3&&!r.due4&&/il y a 40 jours/.test(r.shown)&&/Sauvegarder/.test(r.shown)&&!r.again))throw new Error(JSON.stringify(r))});
 await test('effets modifiables : contraste local et visages (appliquer, œil, modifier, annuler)',async()=>{
   const idle=async()=>{await page.waitForFunction(()=>!document.querySelector('#busy:not([hidden])'),null,{timeout:120000});await page.waitForTimeout(300)};
   const primary=async()=>{await page.waitForSelector('#scrim button.primary',{timeout:60000});await page.waitForTimeout(300);await page.click('#scrim button.primary');await page.waitForTimeout(300)};
