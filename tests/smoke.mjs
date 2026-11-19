@@ -820,7 +820,7 @@ await test('finitions : zoom en douceur, trait des onglets, groupes (Alt / Ctrl 
   const solo=await ev(()=>[...document.querySelectorAll('#pane-develop details.sec[data-sec]:not([data-sec=presets])')].filter(s=>s.open).map(s=>s.dataset.sec).join());
   if(solo!=='presence')throw new Error('Alt + clic : '+solo);
   if(await ev(()=>document.querySelector('[data-sec=presets]').open))throw new Error('les préréglages se sont ouverts');
-  await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['Control']});await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['Control']});
+  await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['ControlOrMeta']});await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['ControlOrMeta']});
   if(await ev(()=>[...document.querySelectorAll('#pane-develop details.sec[data-sec]:not([data-sec=presets])')].some(s=>!s.open)))throw new Error('Ctrl + clic n’a pas tout ouvert');
   await page.click('#pane-develop details.sec[data-sec=presence]>summary',{modifiers:['Alt']});await page.click('#pane-develop details.sec[data-sec=base]>summary');await page.waitForTimeout(300);
   await reopen();const kept=await ev(()=>['base','presence','detail'].map(k=>document.querySelector(`#pane-develop [data-sec=${k}]`).open).join());
