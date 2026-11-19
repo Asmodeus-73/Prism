@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sd-unload"
+description = "Enables the sd_unload command without any pre-configured scope."
+commands.allow = ["sd_unload"]
+
+[[permission]]
+identifier = "deny-sd-unload"
+description = "Denies the sd_unload command without any pre-configured scope."
+commands.deny = ["sd_unload"]

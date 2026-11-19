@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sd-prepare"
+description = "Enables the sd_prepare command without any pre-configured scope."
+commands.allow = ["sd_prepare"]
+
+[[permission]]
+identifier = "deny-sd-prepare"
+description = "Denies the sd_prepare command without any pre-configured scope."
+commands.deny = ["sd_prepare"]

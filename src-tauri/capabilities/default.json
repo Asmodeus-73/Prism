@@ -1,7 +1,42 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions of the main Prism window",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Permissions of the main Prism window: only the commands Prism's page calls, and the few core features it uses (events for progress, the app version).",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:app:allow-version",
+    "allow-save-file",
+    "allow-print-page",
+    "allow-report-issue",
+    "allow-sync-folder",
+    "allow-sync-choose",
+    "allow-sync-stop",
+    "allow-db-scan",
+    "allow-db-get",
+    "allow-db-set",
+    "allow-db-delete",
+    "allow-asset-put",
+    "allow-asset-delete",
+    "allow-asset-usage",
+    "allow-update-check",
+    "allow-update-install",
+    "allow-ai-status",
+    "allow-ai-load",
+    "allow-ai-unload",
+    "allow-ai-run",
+    "allow-sd-status",
+    "allow-sd-prepare",
+    "allow-sd-generate",
+    "allow-sd-cancel",
+    "allow-sd-unload",
+    "allow-raw-decode",
+    "allow-tether-folder",
+    "allow-tether-start",
+    "allow-tether-stop",
+    "allow-tether-read"
+  ]
 }

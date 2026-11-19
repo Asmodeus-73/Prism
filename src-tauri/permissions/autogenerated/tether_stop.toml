@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tether-stop"
+description = "Enables the tether_stop command without any pre-configured scope."
+commands.allow = ["tether_stop"]
+
+[[permission]]
+identifier = "deny-tether-stop"
+description = "Denies the tether_stop command without any pre-configured scope."
+commands.deny = ["tether_stop"]

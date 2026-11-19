@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ai-load"
+description = "Enables the ai_load command without any pre-configured scope."
+commands.allow = ["ai_load"]
+
+[[permission]]
+identifier = "deny-ai-load"
+description = "Denies the ai_load command without any pre-configured scope."
+commands.deny = ["ai_load"]
