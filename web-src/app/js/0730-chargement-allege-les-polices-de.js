@@ -1,15 +1,12 @@
 /* ===== wave27: chargement allégé. Les polices de texte ne sont téléchargées qu'à la première utilisation ===== */
 (()=>{
-const LAZY={'Newsreader':'family=Newsreader:ital,opsz,wght@1,6..72,500','Playfair Display':'family=Playfair+Display:wght@700','Bebas Neue':'family=Bebas+Neue','Caveat':'family=Caveat:wght@600'};
+// fonts/fonts.css (loaded by the page) declares them: a face is downloaded the first time it is drawn.
+const LAZY={'Newsreader':'italic 500','Playfair Display':'700','Bebas Neue':'400','Caveat':'600'};
 const pend={};
 function ensureFamily(name){
   const q=LAZY[name];if(!q)return Promise.resolve();
   if(pend[name])return pend[name];
-  return pend[name]=new Promise(res=>{
-    const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?'+q+'&display=swap';
-    l.onload=()=>res();l.onerror=()=>res();document.head.appendChild(l);
-    setTimeout(res,4000);
-  });
+  return pend[name]=Promise.race([FontFaceSet.prototype.load.call(document.fonts,q+' 16px "'+name+'"').catch(()=>{}),new Promise(res=>setTimeout(res,4000))]);
 }
 window.ensureTextFonts=()=>Promise.all(Object.keys(LAZY).map(ensureFamily));
 const fam=f=>{const m=/"([^"]+)"/.exec(f);return m?m[1]:''};
