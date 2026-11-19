@@ -8,9 +8,9 @@
 //   reports stay readable).
 // Output: web/index.html, web/app.js and web/sw.js (from sw.js). They are not kept in git: CI, the site and the app build them.
 // Usage: node web-src/build.mjs [--check]   (--check: fail if web/index.html or web/app.js is not up to date; needs the esbuild dev dependency)
-import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import os from 'node:os';import {createHash} from 'node:crypto';
+import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import os from 'node:os';import {createHash} from 'node:crypto';import {fileURLToPath} from 'node:url';
 const esbuild=await import('esbuild');
-const here=path.dirname(new URL(import.meta.url).pathname),root=path.join(here,'..');
+const here=path.dirname(fileURLToPath(import.meta.url)),root=path.join(here,'..');
 const list=d=>fs.readdirSync(path.join(here,d)).filter(f=>/\.(css|js)$/.test(f)).sort().map(f=>path.join(here,d,f));
 const read=f=>fs.readFileSync(f,'utf8');
 const pkg=JSON.parse(read(path.join(root,'package.json'))),version=pkg.displayVersion||pkg.version,codename=pkg.codename||'';
