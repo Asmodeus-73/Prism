@@ -7,7 +7,7 @@ function mk(w,h){const c=document.createElement('canvas');c.width=Math.max(1,Mat
 function ctx2(c,o){const g=c.getContext('2d',c._cs?{...o,colorSpace:c._cs}:o);if(!g)throw new Error('mémoire graphique saturée : fermez d’autres onglets ou réduisez la photo');return g}
 const cx=c=>ctx2(c,{}),rx=c=>ctx2(c,{willReadFrequently:true});
 function cloneC(s){const c=mk(s.width,s.height);cx(c).drawImage(s,0,0);return c}
-function esc(s){return String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 let toastT;function toast(msg,ms){let t=$('#toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t)}t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,ms||2800)}
 function busy(on,msg,p){let b=$('#busy');if(on){if(!b){b=document.createElement('div');b.id='busy';b.className='busy';b.innerHTML='<div><span></span><div class="prog"><i></i></div></div>';document.body.appendChild(b)}b.querySelector('span').textContent=msg||'Traitement…';const pr=b.querySelector('.prog');pr.hidden=false;pr.classList.toggle('ind',p==null);if(p!=null)pr.firstChild.style.width=Math.max(0,Math.min(100,p*100)).toFixed(1)+'%';b.hidden=false}else if(b)b.hidden=true}
 const tick=()=>new Promise(r=>setTimeout(r,16));

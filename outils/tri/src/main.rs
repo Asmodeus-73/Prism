@@ -116,17 +116,29 @@ fn main() {
     });
 
     let serveur = Arc::new(Server::http(("127.0.0.1", a.port)).expect("serveur local"));
-    let adresse = format!("http://{}/", serveur.server_addr());
+    let hote = serveur.server_addr().to_string();
+    let jeton = Arc::new(Acces { hote: hote.clone(), jeton: jeton_aleatoire() });
+    let adresse = format!("http://{hote}/?t={}", jeton.jeton);
     println!("Tri ouvert sur {adresse}  (Ctrl+C pour quitter)");
     if !a.sans_navigateur {
         ouvrir(&adresse);
     }
     let fils: Vec<_> = (0..8)
         .map(|_| {
-            let (s, e) = (serveur.clone(), etat.clone());
+            let (s, e, j) = (serveur.clone(), etat.clone(), jeton.clone());
             std::thread::spawn(move || {
                 for r in s.incoming_requests() {
-                    repondre(&e, r);
+                    match j.verifier(&r) {
+                        Verdict::Refus => {
+                            r.respond(Response::from_string("accès refusé").with_status_code(403)).ok();
+                        }
+                        Verdict::Ouverture => {
+                            // first visit from the opened link: the token moves into a cookie
+                            let cookie = format!("tri={}; HttpOnly; SameSite=Strict; Path=/", j.jeton);
+                            r.respond(Response::empty(303).with_header(entete("Location", "/")).with_header(entete("Set-Cookie", &cookie))).ok();
+                        }
+                        Verdict::Ok => repondre(&e, r),
+                    }
                 }
             })
         })
@@ -354,6 +366,103 @@ fn repondre(e: &Etat, mut r: Request) {
         _ => Response::from_string("introuvable").with_status_code(404),
     };
     r.respond(reponse).ok();
+}
+
+/// Only the page opened by Prism Tri may talk to it: another site open in the
+/// browser cannot guess the token, and a renamed host (DNS rebinding) is refused.
+struct Acces {
+    hote: String,
+    jeton: String,
+}
+
+#[derive(Debug, PartialEq)]
+enum Verdict {
+    Ok,
+    Ouverture,
+    Refus,
+}
+
+impl Acces {
+    fn verifier(&self, r: &Request) -> Verdict {
+        let en = |nom: &'static str| r.headers().iter().find(|h| h.field.equiv(nom)).map(|h| h.value.as_str().to_string());
+        self.decider(r.url(), en("Host").as_deref(), en("Origin").as_deref(), en("Cookie").as_deref())
+    }
+
+    fn decider(&self, url: &str, hote: Option<&str>, origine: Option<&str>, cookie: Option<&str>) -> Verdict {
+        if hote != Some(self.hote.as_str()) {
+            return Verdict::Refus;
+        }
+        if origine.is_some_and(|o| o != format!("http://{}", self.hote)) {
+            return Verdict::Refus;
+        }
+        let a_cookie = cookie
+            .map(|c| c.split(';').any(|p| p.trim().strip_prefix("tri=").is_some_and(|v| egal(v, &self.jeton))))
+            .unwrap_or(false);
+        if a_cookie {
+            return Verdict::Ok;
+        }
+        let (chemin, requete) = url.split_once('?').unwrap_or((url, ""));
+        let lien = requete.split('&').any(|p| p.strip_prefix("t=").is_some_and(|v| egal(v, &self.jeton)));
+        if chemin == "/" && lien { Verdict::Ouverture } else { Verdict::Refus }
+    }
+}
+
+/// Comparison that takes the same time whatever the first wrong character.
+fn egal(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// 128 random bits, from the keys the standard library draws from the system.
+fn jeton_aleatoire() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut sortie = String::new();
+    for i in 0..2u64 {
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u64(i);
+        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+        h.write_u32(std::process::id());
+        sortie.push_str(&format!("{:016x}", h.finish()));
+    }
+    sortie
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn acces() -> Acces {
+        Acces { hote: "127.0.0.1:5000".into(), jeton: "0123456789abcdef0123456789abcdef".into() }
+    }
+
+    /// Attaque : un site visité ne peut ni lire les vignettes ni changer une note.
+    #[test]
+    fn les_requetes_etrangeres_sont_refusees() {
+        let a = acces();
+        let h = Some("127.0.0.1:5000");
+        let c = Some("tri=0123456789abcdef0123456789abcdef");
+        assert_eq!(a.decider("/api/photos", h, None, None), Verdict::Refus);
+        assert_eq!(a.decider("/api/photos", Some("piege.example:5000"), None, c), Verdict::Refus);
+        assert_eq!(a.decider("/api/noter", h, Some("https://piege.example"), c), Verdict::Refus);
+        assert_eq!(a.decider("/api/photos", h, None, Some("tri=faux")), Verdict::Refus);
+        assert_eq!(a.decider("/api/photos?t=0123456789abcdef0123456789abcdef", h, None, None), Verdict::Refus);
+    }
+
+    #[test]
+    fn la_page_ouverte_par_prism_tri_passe() {
+        let a = acces();
+        let h = Some("127.0.0.1:5000");
+        assert_eq!(a.decider("/?t=0123456789abcdef0123456789abcdef", h, None, None), Verdict::Ouverture);
+        let c = Some("autre=1; tri=0123456789abcdef0123456789abcdef");
+        assert_eq!(a.decider("/api/noter", h, Some("http://127.0.0.1:5000"), c), Verdict::Ok);
+        assert_eq!(a.decider("/v/3", h, None, c), Verdict::Ok);
+    }
+
+    #[test]
+    fn deux_jetons_different() {
+        let (x, y) = (jeton_aleatoire(), jeton_aleatoire());
+        assert_eq!(x.len(), 32);
+        assert_ne!(x, y);
+    }
 }
 
 fn entete(k: &str, v: &str) -> Header {

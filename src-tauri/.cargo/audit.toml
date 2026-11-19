@@ -1,0 +1,14 @@
+# cargo audit (run by tests.yml). Advisories accepted for now, with the reason.
+[advisories]
+ignore = [
+  # zip 4.6.1, pulled by tauri-plugin-updater 2.13.3 (still the latest 2.x).
+  # The updater extracts an archive only after its minisign signature is checked,
+  # so a crafted archive needs the private update key. Drop these once the
+  # updater pulls zip >= 9.
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
+  "RUSTSEC-2026-0429",
+  "RUSTSEC-2026-0545",
+  "RUSTSEC-2026-0548",
+]
