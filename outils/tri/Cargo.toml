@@ -15,4 +15,4 @@ zune-jpeg.workspace = true
 zune-core = "0.4"
 memmap2 = "0.9"
 tiny_http = "0.12"
-jpeg-encoder = { version = "0.6", features = ["simd"] }
+jpeg-encoder = { version = "0.7", features = ["simd"] }
