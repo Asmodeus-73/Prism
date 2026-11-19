@@ -3,12 +3,14 @@ name: Outils photo
 # Teste et compile les outils en ligne de commande de outils/ (prism-tri, prism-copie,
 # prism-scan, prism-export, prism-poussieres) pour Mac, Windows et Linux. Les exécutables sont
 # dans les « Artifacts » de chaque exécution (onglet Actions), un fichier par système.
+# build.yml l'appelle aussi pour chaque version : les trois fichiers sont alors joints à la release.
 on:
   push:
     paths: ['outils/**', '.github/workflows/outils.yml']
   pull_request:
     paths: ['outils/**', '.github/workflows/outils.yml']
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

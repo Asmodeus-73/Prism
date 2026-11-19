@@ -13,6 +13,28 @@ permissions:
   contents: read
 
 jobs:
+  # Known security advisories in the dependencies (Rust and npm).
+  # Accepted advisories are listed, with the reason, in src-tauri/.cargo/audit.toml.
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.97.0
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: cargo-audit
+      - name: Outil cargo-audit
+        run: cargo install cargo-audit@0.23.0 --locked
+      - name: Avis de sécurité Rust
+        run: for d in src-tauri server outils pixels; do echo "== $d"; (cd "$d" && cargo audit) || exit 1; done
+      - name: Avis de sécurité npm
+        run: npm audit --audit-level=moderate && (cd server && npm audit --omit=dev --audit-level=moderate)
+
   server:
     runs-on: ubuntu-24.04
     defaults:
@@ -113,7 +135,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.0
           components: clippy
 
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -181,7 +203,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.0
           components: clippy
 
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2

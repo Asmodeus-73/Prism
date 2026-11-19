@@ -2,14 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://api.github.com; img-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Privacy · Prism</title>
 <meta name="description" content="What Prism does with your photos and data: everything stays on your device.">
 <link rel="alternate" hreflang="fr" href="../confidentialite.html">
 <link rel="icon" href="../favicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+<link rel="preload" href="../fonts/Geist.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -33,7 +32,7 @@
   <h2>What goes over the Internet</h2>
   <ul>
     <li><b>This site and the online version</b> are hosted on GitHub Pages. GitHub receives your IP address with each page, like any host.</li>
-    <li><b>The typeface</b> (Geist) comes from Google Fonts, which receives your IP address.</li>
+    <li><b>The online version’s typeface</b> (Geist) comes from Google Fonts, which receives your IP address. This site hosts it itself.</li>
     <li><b>Downloads</b> (the app, AI models, checking for the latest version) go through GitHub.</li>
   </ul>
   <p>Nothing else: no usage statistics, no crash reports.</p>
@@ -41,7 +40,7 @@
   <h2>Prism account (coming soon)</h2>
   <p>An optional account will let you sync your photos between your devices. <b>It isn’t open.</b> Here is what it will store:</p>
   <ul>
-    <li>your email address, your hashed password and, if you add them, a name and a profile picture;</li>
+    <li>your email address, your hashed password (never stored in plain text) and, if you add them, a name and a profile picture;</li>
     <li>the list of your signed-in devices (device name and type);</li>
     <li>while syncing, your photos stay on the server <b>24 hours at most</b>, then are deleted. If both devices are on, they go from one to the other with no server;</li>
     <li>the list of changes to sync (without the photos), kept for 30 days.</li>
