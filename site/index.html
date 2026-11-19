@@ -2,17 +2,18 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://api.github.com; img-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Prism · Retouche photo gratuite pour Mac, Windows et navigateur</title>
 <meta name="description" content="Prism est un logiciel de retouche photo gratuit : calques, réglages, fichiers RAW, outils d’IA qui tournent sur votre appareil et photothèque. Pour Mac, Windows, ou dans le navigateur.">
 <meta property="og:title" content="Prism · Retouche photo gratuite">
 <meta property="og:description" content="Calques, réglages, RAW, IA et photothèque. Pour Mac, Windows ou dans le navigateur.">
-<meta property="og:image" content="editeur.jpg">
+<meta property="og:image" content="https://asmodeus-73.github.io/Prism/editeur.jpg">
+<meta property="og:url" content="https://asmodeus-73.github.io/Prism/">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="alternate" hreflang="en" href="en/">
 <link rel="icon" href="favicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+<link rel="preload" href="fonts/Geist.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -117,6 +118,7 @@
     <details><summary>Prism marche-t-il hors ligne ?</summary><p>Oui, l’application pour Mac et Windows. Il faut une connexion pour télécharger un modèle d’IA la première fois.</p></details>
     <details><summary>Quels fichiers Prism peut-il ouvrir ?</summary><p>JPEG, HEIC, PNG, TIFF, WebP, AVIF, PSD, PDF, GIF, BMP, SVG, JPEG 2000 et les RAW de la plupart des appareils photo. Export en JPEG, PNG, TIFF, WebP, AVIF, GIF et en projet Prism (tous les calques).</p></details>
     <details><summary>Pourquoi mon Mac ou Windows affiche un avertissement ?</summary><p>Prism n’est pas signé par Apple ni Microsoft. Sur Mac : Réglages Système, Confidentialité et sécurité, Ouvrir quand même. Sur Windows : Informations complémentaires, Exécuter quand même. Le code de Prism est public.</p></details>
+    <details><summary>Y a-t-il des outils pour trier ou décharger une carte ?</summary><p>Oui : six outils photo en ligne de commande, pour Mac, Windows et Linux. Tri rapide d’une carte avec notes XMP, déchargement vérifié sur plusieurs disques, contrôle d’une photothèque, export en lot, repérage des poussières du capteur. Ils sont joints à chaque version, sur la <a href="https://github.com/Asmodeus-73/Prism/releases/latest">page de téléchargement</a>.</p></details>
     <details><summary>Puis-je retrouver une ancienne version de ma retouche ?</summary><p>Oui. Prism garde une version toutes les 15 minutes, et vous pouvez nommer les vôtres. Tout se passe dans le panneau Versions.</p></details>
   </div>
 </div></section>
