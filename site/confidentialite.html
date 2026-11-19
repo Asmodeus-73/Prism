@@ -2,14 +2,13 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://api.github.com; img-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Confidentialité · Prism</title>
 <meta name="description" content="Ce que Prism fait de vos photos et de vos données : tout reste sur votre appareil.">
 <link rel="alternate" hreflang="en" href="en/privacy.html">
 <link rel="icon" href="favicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+<link rel="preload" href="fonts/Geist.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -33,7 +32,7 @@
   <h2>Ce qui passe par Internet</h2>
   <ul>
     <li><b>Ce site et la version en ligne</b> sont hébergés par GitHub Pages. GitHub reçoit votre adresse IP à chaque page chargée, comme tout hébergeur.</li>
-    <li><b>La police d’écriture</b> (Geist) vient de Google Fonts, qui reçoit votre adresse IP.</li>
+    <li><b>La police d’écriture de la version en ligne</b> (Geist) vient de Google Fonts, qui reçoit votre adresse IP. Ce site, lui, l’héberge lui-même.</li>
     <li><b>Les téléchargements</b> (l’application, les modèles d’IA, la recherche de la dernière version) passent par GitHub.</li>
   </ul>
   <p>Rien d’autre : ni statistiques d’utilisation, ni rapport d’erreur.</p>
@@ -41,7 +40,7 @@
   <h2>Le compte Prism (bientôt)</h2>
   <p>Un compte facultatif permettra de synchroniser vos photos entre vos appareils. <b>Il n’est pas ouvert.</b> Voici ce qu’il enregistrera :</p>
   <ul>
-    <li>votre adresse e-mail, votre mot de passe chiffré et, si vous les ajoutez, un nom et une photo de profil ;</li>
+    <li>votre adresse e-mail, votre mot de passe haché (jamais stocké en clair) et, si vous les ajoutez, un nom et une photo de profil ;</li>
     <li>la liste de vos appareils connectés (nom et type d’appareil) ;</li>
     <li>pendant la synchronisation, vos photos restent sur le serveur <b>24 heures au plus</b>, puis sont effacées. Si vos deux appareils sont allumés, elles passent de l’un à l’autre sans serveur ;</li>
     <li>la liste des modifications à synchroniser (sans les photos), gardée 30 jours.</li>

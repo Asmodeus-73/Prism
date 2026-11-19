@@ -8,6 +8,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -49,27 +50,46 @@ pub fn load<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// Only plain names: no separators, no "..", nothing hidden.
+/// Names Windows refuses for a file, whatever the extension (CON, NUL.json, COM1...).
+fn reserved_on_windows(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit()
+            && stem.as_bytes()[3] != b'0')
+}
+
+/// Only plain names: no separators, no "..", nothing hidden, nothing Windows refuses.
 fn safe(name: &str) -> Result<&str, String> {
     let ok = !name.is_empty()
         && name.len() <= 200
         && !name.starts_with('.')
+        && !name.ends_with('.')
+        && !reserved_on_windows(name)
         && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
     if ok { Ok(name) } else { Err(format!("Nom invalide : {name}")) }
 }
 
+/// "a/b" is stored as "a__b": a part may not hold "__" itself, or "a/b" and "a__b" would share a folder.
 fn collection_dir(root: &Path, col: &str) -> Result<PathBuf, String> {
-    let parts: Vec<&str> = col.split('/').map(safe).collect::<Result<_, _>>()?;
+    let parts: Vec<&str> = col
+        .split('/')
+        .map(|p| if p.contains("__") { Err(format!("Nom invalide : {p}")) } else { safe(p) })
+        .collect::<Result<_, _>>()?;
     Ok(root.join("docs").join(parts.join("__")))
 }
+
+static TMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Write to a temporary file then rename, so a synced copy is never half written.
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path.parent().ok_or("Chemin invalide")?;
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let tmp = dir.join(format!(
-        ".{}.tmp",
-        path.file_name().and_then(|n| n.to_str()).unwrap_or("prism")
+        ".{}.{}.tmp",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("prism"),
+        TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     fs::rename(&tmp, path).map_err(|e| e.to_string())
@@ -234,6 +254,11 @@ fn content_type(id: &str) -> &'static str {
     }
 }
 
+/// Requests currently waiting for a file that is still syncing: past this many,
+/// a missing file answers "not found" at once instead of holding one more thread.
+const MAX_WAITING: usize = 8;
+static WAITING: AtomicUsize = AtomicUsize::new(0);
+
 /// Serves stored files to the page at prismsync://localhost/<id>
 /// (http://prismsync.localhost/<id> on Windows). A file that another
 /// computer has not finished syncing yet is waited for a little while.
@@ -252,13 +277,23 @@ pub fn protocol<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: tauri::http::
         let found = root.ok().and_then(|root| {
             let id = safe(&id).ok()?;
             let path = root.join("assets").join(id);
-            for _ in 0..40 {
-                if let Ok(bytes) = fs::read(&path) {
-                    return Some(bytes);
-                }
-                std::thread::sleep(Duration::from_millis(500));
+            if let Ok(bytes) = fs::read(&path) {
+                return Some(bytes);
             }
-            None
+            if WAITING.fetch_add(1, Ordering::SeqCst) >= MAX_WAITING {
+                WAITING.fetch_sub(1, Ordering::SeqCst);
+                return None;
+            }
+            let mut found = None;
+            for _ in 0..20 {
+                std::thread::sleep(Duration::from_millis(500));
+                if let Ok(bytes) = fs::read(&path) {
+                    found = Some(bytes);
+                    break;
+                }
+            }
+            WAITING.fetch_sub(1, Ordering::SeqCst);
+            found
         });
         let res = Response::builder()
             .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin)
@@ -291,5 +326,44 @@ mod tests {
         assert!(collection_dir(root, "../x").is_err());
         assert!(collection_dir(root, "a/../../x").is_err());
         assert_eq!(collection_dir(root, "a/b").unwrap(), root.join("docs").join("a__b"));
+    }
+
+    /// Windows refuse ces noms : un document ainsi nommé ne se synchroniserait jamais.
+    #[test]
+    fn windows_reserved_names_are_refused() {
+        for bad in ["CON", "nul", "NUL.json", "com1", "LPT9.txt", "aux", "x."] {
+            assert!(safe(bad).is_err(), "{bad:?} accepté");
+        }
+        for good in ["COM0", "COMET", "console", "nullable.json", "lpt"] {
+            assert!(safe(good).is_ok(), "{good:?} refusé");
+        }
+    }
+
+    /// "a/b" et "a__b" ne doivent pas tomber dans le même dossier.
+    #[test]
+    fn collections_do_not_collide() {
+        let root = Path::new("/r");
+        assert!(collection_dir(root, "a__b").is_err());
+        assert!(collection_dir(root, "a/b").is_ok());
+    }
+
+    /// Deux écritures du même document ne partagent pas de fichier temporaire.
+    #[test]
+    fn concurrent_writes_use_distinct_temporaries() {
+        let dir = std::env::temp_dir().join(format!("prism-sync-{}", std::process::id()));
+        let file = dir.join("doc.json");
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let file = file.clone();
+                std::thread::spawn(move || write_atomic(&file, format!("{{\"n\":{i}}}").as_bytes()))
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap().unwrap();
+        }
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(text.starts_with("{\"n\":"));
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "fichier temporaire oublié");
+        let _ = fs::remove_dir_all(&dir);
     }
 }
