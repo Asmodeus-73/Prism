@@ -12,7 +12,7 @@ serde.workspace = true
 serde_json.workspace = true
 kamadak-exif.workspace = true
 zune-jpeg.workspace = true
-zune-core = "0.4"
+zune-core = "0.5"
 memmap2 = "0.9"
 tiny_http = "0.12"
 jpeg-encoder = { version = "0.6", features = ["simd"] }
