@@ -55,8 +55,11 @@ jobs:
 
       - run: npm ci
 
-      - name: La page web correspond à ses sources
-        run: node web-src/build.mjs --check
+      - name: Page web fabriquée depuis ses sources
+        run: node web-src/build.mjs
+
+      - name: Modèles d'IA (release « modeles », vérifiés par empreinte)
+        run: node scripts/models.mjs
 
       - name: Les algorithmes de Photo Studio correspondent à leurs sources
         run: node web-src/ps/build.mjs --check
@@ -150,6 +153,9 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Page web et modèles d'IA
+        run: node web-src/build.mjs && node scripts/models.mjs
 
       - run: npx playwright install webkit
 
