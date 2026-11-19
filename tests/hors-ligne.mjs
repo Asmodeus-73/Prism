@@ -14,7 +14,7 @@ const server=http.createServer((q,r)=>{const u=decodeURIComponent(new URL(q.url,
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const BASE=`http://localhost:${server.address().port}/app/?sw=1`;
 const browser=await pw[process.env.PRISM_BROWSER||'chromium'].launch();
-const ctx=await browser.newContext(),page=await ctx.newPage();
+const ctx=await browser.newContext();let page=await ctx.newPage();
 const errs=[];page.on('pageerror',e=>errs.push(e.message));
 let fails=0;const check=(ok,name,info='')=>{console.log((ok?'✓ ':'✗ ')+name+(ok?'':'  '+info));if(!ok)fails++};
 
@@ -36,7 +36,8 @@ const er=await page.evaluate(async()=>{const L=S.doc.layers.find(l=>l.kind==='pi
   const a=L.canvas.getContext('2d').getImageData(0,0,W,H).data;let ch=0;for(let i=0;i<a.length;i+=4)if(a[i]!==b0[i])ch++;return{ch,dir:LM.dir,sab:typeof SharedArrayBuffer}}).catch(e=>({err:String(e)}));
 check(er.ch>100&&er.dir==='migan'&&er.sab==='function','gomme IA rapide (MI-GAN) sur plusieurs fils',JSON.stringify(er));
 await ctx.setOffline(true);
-await page.reload();
+// a fresh tab rather than a reload: WebKit can crash while tearing down the AI threads of the old page
+{const p2=await ctx.newPage();p2.on('pageerror',e=>errs.push(e.message));await page.close();page=p2;await page.goto(BASE);}
 const off=await page.waitForFunction(()=>typeof loadSample==='function',null,{timeout:15000}).then(()=>true,()=>false);
 check(off,'hors ligne : la page et son script se chargent');
 check(await page.evaluate(()=>self.crossOriginIsolated),'hors ligne : toujours isolée');
