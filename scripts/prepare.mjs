@@ -1,12 +1,14 @@
 // Builds dist/ for Tauri: the web version from web/ (kept identical to the
 // published artifact) plus the desktop additions from desktop/.
-import { cpSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, statSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { cpSync, readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
+// web/index.html, app.js and sw.js are built from web-src/ (not kept in git)
+if (spawnSync(process.execPath, [join(root, 'web-src', 'build.mjs')], { stdio: 'inherit' }).status !== 0) process.exit(1);
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist);
 cpSync(join(root, 'web'), dist, { recursive: true });
@@ -14,17 +16,8 @@ cpSync(join(root, 'desktop'), join(dist, 'desktop'), { recursive: true });
 
 // AI model files (about 460 MB) stay out of the app: it fetches each one the first
 // time it is needed (src-tauri/src/models.rs), checked against the hash listed here.
-const models = {};
-for (const dir of readdirSync(join(dist, 'ai'))) {
-  const full = join(dist, 'ai', dir);
-  if (!statSync(full).isDirectory()) continue;
-  for (const f of readdirSync(full)) {
-    if (!f.endsWith('.wasm')) continue;
-    const rel = `ai/${dir}/${f}`;
-    models[rel] = createHash('sha256').update(readFileSync(join(full, f))).digest('hex');
-    rmSync(join(full, f));
-  }
-}
+const models = JSON.parse(readFileSync(join(root, 'web', 'ai', 'models.json'), 'utf8'));
+for (const rel of Object.keys(models)) if (existsSync(join(dist, rel))) rmSync(join(dist, rel));
 // Files that exist only in the GitHub release "modeles" (generative fill, src-tauri/src/sd.rs): path -> sha256
 Object.assign(models, JSON.parse(readFileSync(join(root, 'desktop', 'models-extra.json'), 'utf8')).models);
 writeFileSync(join(dist, 'desktop', 'models.js'), `window.PRISM_MODELS=${JSON.stringify(models)};\n`);
