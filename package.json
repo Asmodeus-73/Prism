@@ -1,8 +1,8 @@
 {
   "name": "prism-desktop",
   "private": true,
-  "version": "1.0.1",
-  "displayVersion": "1.0.0",
+  "version": "1.0.2",
+  "displayVersion": "1.0.2",
   "codename": "Aurore",
   "type": "module",
   "scripts": {
