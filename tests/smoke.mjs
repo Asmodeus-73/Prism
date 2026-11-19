@@ -629,6 +629,11 @@ await test('signaler un problème : Aide, rapport avec version et journal d’er
   const r=await ev(()=>{const it=MENU2.help.items().some(x=>x&&x.label==='Signaler un problème…');PrismReport.dialog();const o=document.querySelector('#rpOut').value,u=PrismReport.issueUrl('Test',true);closeDialog();
     return{it,v:o.includes('Version : '+PRISM_VERSION),log:/erreur volontaire/.test(o)&&/essai de journal/.test(o),u:u.startsWith('https://github.com/Asmodeus-73/Prism/issues/new?')&&u.length<=7500}});
   if(!(r.it&&r.v&&r.log&&r.u))throw new Error(JSON.stringify(r)+'\n'+await ev(()=>ERRLOG.slice(-4).map(e=>e.k+' '+e.m).join('\n')))});
+await test('mesurer la vitesse : 10 calques dans un onglet à part, des temps mesurés, retour à la photo, rien d’enregistré',async()=>{await sample();
+  const r=await ev(async()=>{const it=MENU2.help.items().some(x=>x&&x.label==='Mesurer la vitesse…');const before=S.doc,n0=PrismTabs.tabs.length,p0=(await IDB.keys('projects')).length;
+    const m=await PrismSpeed.run(24,()=>{});const t=PrismSpeed.table(m);
+    return{it,layers:m.layers,ok:m.slide.ms.n===20&&m.full.ms.n===6&&m.open>0&&m.slide.ms.med>0,back:S.doc===before,tabs:PrismTabs.tabs.length===n0,saved:(await IDB.all('projects')).filter(m=>m&&m.name==='Mesure de vitesse').length,t:/Glisser un réglage/.test(t)}});
+  if(!(r.it&&r.layers===10&&r.ok&&r.back&&r.tabs&&r.saved===0&&r.t))throw new Error(JSON.stringify(r))});
 await test('signaler un problème : dans l’app de bureau, la fin du journal des plantages natifs est jointe',async()=>{
   const r=await ev(async()=>{const D=window.PRISM_DESKTOP;window.PRISM_DESKTOP={invoke:async(c,a)=>c==='crash_log'?'panicked at src/ai.rs:12: essai de plantage ('+a.max+')':null};
     try{await PrismReport.readNative();const o=PrismReport.report('x',true),no=PrismReport.report('x',false),u=PrismReport.issueUrl('x',true);return{o:/Plantages de l’application[\s\S]*essai de plantage \(3000\)/.test(o),no:!/Plantages/.test(no),u:u.length<=7500}}
