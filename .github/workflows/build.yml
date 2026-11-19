@@ -13,14 +13,17 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Read-only by default: each job that publishes says so itself.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # The app no longer carries its AI model files: it fetches each one on first use
   # from the "modeles" release, where every file is stored once under its SHA-256.
   # Files already there are kept, so every version of Prism finds its own.
   models:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -48,6 +51,8 @@ jobs:
 
   build:
     needs: models
+    permissions:
+      contents: write
     # Release notes: the public one, and the one of the private beta.
     env:
       NOTES: |
@@ -84,7 +89,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.0
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -159,15 +164,44 @@ jobs:
           # Until the update key exists (setup-update-key.yml), build without the update files.
           args: ${{ matrix.args }} ${{ env.BETA && '--config src-tauri/beta.conf.json' || (secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config src-tauri/no-updater.conf.json' || '') }}
 
+  # The photo tools (outils/) of this version, joined to its release as one zip per system.
+  outils:
+    needs: build
+    uses: ./.github/workflows/outils.yml
+
+  outils-release:
+    needs: outils
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Joindre les outils photo à la release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          tag="v$(node -p 'require("./package.json").version')"
+          for nom in mac windows linux; do
+            gh run download "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" -n "outils-photo-$nom" -D "outils-$nom"
+            (cd "outils-$nom" && chmod +x prism-* 2>/dev/null; zip -qr "../outils-photo-$nom.zip" .)
+          done
+          gh release upload "$tag" -R "$GITHUB_REPOSITORY" --clobber outils-photo-mac.zip outils-photo-windows.zip outils-photo-linux.zip
+
   # Public version: latest.json gets the signature of each file actually published.
   updater-json:
     needs: build
+    permissions:
+      contents: write
     uses: ./.github/workflows/updater-json.yml
 
   # Private beta: once the new beta is built, keep only it and the one just before;
   # older beta drafts are deleted. Public releases are never touched (drafts only).
   prune-betas:
     needs: build
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

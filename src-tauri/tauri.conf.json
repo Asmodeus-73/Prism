@@ -72,8 +72,10 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": [
-          "French"
-        ]
+          "French",
+          "English"
+        ],
+        "displayLanguageSelector": false
       }
     },
     "fileAssociations": [
