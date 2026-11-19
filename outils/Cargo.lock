@@ -1273,7 +1273,7 @@ dependencies = [
  "rawler",
  "rayon",
  "socle",
- "zune-core 0.4.12",
+ "zune-core 0.5.3",
  "zune-jpeg 0.4.21",
 ]
 
@@ -1313,7 +1313,7 @@ dependencies = [
  "serde_json",
  "socle",
  "tiny_http",
- "zune-core 0.4.12",
+ "zune-core 0.5.3",
  "zune-jpeg 0.4.21",
 ]
 
@@ -1661,7 +1661,7 @@ dependencies = [
  "serde_json",
  "walkdir",
  "xxhash-rust",
- "zune-core 0.4.12",
+ "zune-core 0.5.3",
  "zune-jpeg 0.4.21",
 ]
 
