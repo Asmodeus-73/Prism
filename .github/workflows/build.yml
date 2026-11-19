@@ -37,15 +37,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
+          npm ci
           node scripts/prepare.mjs
           gh release view modeles >/dev/null 2>&1 || gh release create modeles --prerelease --title "Modèles d'IA" --notes "Fichiers des modèles d'IA que Prism télécharge la première fois qu'il en a besoin. Rien à télécharger ici à la main."
           gh release view modeles --json assets --jq '.assets[].name' > have.txt
           mkdir -p up
+          # model files are no longer in git (web/ai/models.json lists them): a file missing from the
+          # release is uploaded only if it is in web/ (a local copy, checked by hash); otherwise the build stops.
           node -e 'const m=require("./dist/models.json");for(const [p,h] of Object.entries(m))console.log(h+" "+p)' | while read -r hash rel; do
             grep -qx "$hash" have.txt && continue
-            echo "$hash  web/$rel" | sha256sum -c --quiet
-            cp "web/$rel" "up/$hash"
+            if [ -f "web/$rel" ] && echo "$hash  web/$rel" | sha256sum -c --quiet; then cp "web/$rel" "up/$hash"
+            else echo "::error::$rel ($hash) n'est pas dans la release « modeles »"; echo 1 > missing; fi
           done
+          [ -f missing ] && exit 1
           if [ -n "$(ls up)" ]; then gh release upload modeles up/* ; fi
           echo "$(ls up | wc -l) fichier(s) ajouté(s)"
 

@@ -6,7 +6,7 @@
 //   feat/*.js       features loaded last, each in its own { } block, in file-name order
 //   The style sheet and the script are minified by esbuild (whitespace and syntax only: names are kept, so error
 //   reports stay readable).
-// Output: web/index.html and web/app.js.
+// Output: web/index.html, web/app.js and web/sw.js (from sw.js). They are not kept in git: CI, the site and the app build them.
 // Usage: node web-src/build.mjs [--check]   (--check: fail if web/index.html or web/app.js is not up to date; needs the esbuild dev dependency)
 import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import os from 'node:os';import {createHash} from 'node:crypto';
 const esbuild=await import('esbuild');
@@ -27,7 +27,11 @@ const out=page.replace('@@CSS@@',()=>min(css,'css')).replace('@@JSV@@',()=>jsv);
 // syntax check of the whole script, as the browser will see it
 const tmp=path.join(os.tmpdir(),`prism-check-${process.pid}.js`);fs.writeFileSync(tmp,script);
 const r=spawnSync(process.execPath,['--check',tmp],{stdio:'inherit'});fs.rmSync(tmp);if(r.status!==0){console.error('SYNTAX_FAIL');process.exit(1)}
-const dest=path.join(root,'web','index.html'),destJs=path.join(root,'web','app.js');
-if(process.argv.includes('--check')){for(const [f,c] of [[dest,out],[destJs,script]])if(!fs.existsSync(f)||read(f)!==c){console.error(path.relative(root,f)+' is out of date: run node web-src/build.mjs');process.exit(1)}console.log('web/index.html and web/app.js are up to date');}
-else{fs.writeFileSync(dest,out);fs.writeFileSync(destJs,script);console.log('built',Buffer.byteLength(out),'+',Buffer.byteLength(script),'bytes,',list('app/js').length,'scripts,',feats.length,'features');}
+// web/sw.js: the online version's service worker, with this build's version and the SHA-256 of each AI model file
+// (web/ai/models.json, see scripts/models.mjs)
+const models=JSON.parse(read(path.join(root,'web','ai','models.json')));
+const sw=read(path.join(here,'sw.js')).replace('@@VERSION@@',()=>version+'-'+createHash('sha256').update(out).update(script).digest('hex').slice(0,12)).replace('@@MODELS@@',()=>JSON.stringify(models));
+const dest=path.join(root,'web','index.html'),destJs=path.join(root,'web','app.js'),destSw=path.join(root,'web','sw.js');
+if(process.argv.includes('--check')){for(const [f,c] of [[dest,out],[destJs,script],[destSw,sw]])if(!fs.existsSync(f)||read(f)!==c){console.error(path.relative(root,f)+' is out of date: run node web-src/build.mjs');process.exit(1)}console.log('web/index.html, web/app.js and web/sw.js are up to date');}
+else{fs.writeFileSync(dest,out);fs.writeFileSync(destJs,script);fs.writeFileSync(destSw,sw);console.log('built',Buffer.byteLength(out),'+',Buffer.byteLength(script),'bytes,',list('app/js').length,'scripts,',feats.length,'features');}
 console.log('SYNTAX_OK');
