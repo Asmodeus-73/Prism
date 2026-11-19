@@ -16,10 +16,11 @@ Le tri des rafales (n°6 de la liste de départ) fait partie de `prism-tri`.
 
 ## Installer
 
-Les exécutables Mac, Windows et Linux sont construits par GitHub Actions (workflow « Outils photo ») :
-ouvrez la dernière exécution dans l'onglet Actions et téléchargez `outils-photo-mac`,
-`outils-photo-windows` ou `outils-photo-linux`. Ils ne sont pas signés : même démarche qu'au premier
-lancement de Prism.
+Chaque version de Prism joint les outils à sa page de téléchargement
+([dernière version](https://github.com/Asmodeus-73/Prism/releases/latest)) : `outils-photo-mac.zip`,
+`outils-photo-windows.zip` ou `outils-photo-linux.zip`. Entre deux versions, le workflow « Outils photo »
+les construit aussi (onglet Actions, « Artifacts »). Ils ne sont pas signés : même démarche qu'au
+premier lancement de Prism.
 
 En local : `cd outils && cargo build --release`, les exécutables sont dans `target/release/`.
 

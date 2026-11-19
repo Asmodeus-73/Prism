@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-raw-decode"
+description = "Enables the raw_decode command without any pre-configured scope."
+commands.allow = ["raw_decode"]
+
+[[permission]]
+identifier = "deny-raw-decode"
+description = "Denies the raw_decode command without any pre-configured scope."
+commands.deny = ["raw_decode"]

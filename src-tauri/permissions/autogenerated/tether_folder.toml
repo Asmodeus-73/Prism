@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tether-folder"
+description = "Enables the tether_folder command without any pre-configured scope."
+commands.allow = ["tether_folder"]
+
+[[permission]]
+identifier = "deny-tether-folder"
+description = "Denies the tether_folder command without any pre-configured scope."
+commands.deny = ["tether_folder"]

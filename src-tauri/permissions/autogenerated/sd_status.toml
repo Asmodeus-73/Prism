@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sd-status"
+description = "Enables the sd_status command without any pre-configured scope."
+commands.allow = ["sd_status"]
+
+[[permission]]
+identifier = "deny-sd-status"
+description = "Denies the sd_status command without any pre-configured scope."
+commands.deny = ["sd_status"]
