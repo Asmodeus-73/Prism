@@ -1,10 +1,10 @@
 # Sources de l'éditeur
 
-`web/index.html` est fabriqué ; on ne le modifie jamais à la main.
+`web/index.html`, `web/app.js` et `web/sw.js` sont fabriqués par `node web-src/build.mjs` et ne sont pas dans git. Les modèles d'IA se téléchargent avec `node scripts/models.mjs`.
 
 ```
 web-src/
-  app/page.html      la page (barres, panneaux) ; @@CSS@@ et @@JS@@ marquent où vont la feuille de style et le script
+  app/page.html      la page (barres, panneaux) ; @@CSS@@ marque où va la feuille de style, @@JSV@@ la version de `app.js` (le script est un fichier à part : la CSP n'autorise aucun script dans la page)
   app/css/*.css      la feuille de style, par sujet, assemblée dans l'ordre des noms
   app/js/*.js        l'éditeur, par sujet, assemblé dans l'ordre des noms en un seul script
   feat/*.js          les fonctions ajoutées en dernier, chacune dans son propre bloc { }
@@ -12,7 +12,7 @@ web-src/
 ```
 
 Construire : `node web-src/build.mjs` (ou `npm run build-web`). Le script et la feuille de style sortent minifiés par esbuild (`npm ci` d'abord) : espaces et syntaxe seulement, les noms restent, pour que le journal des erreurs reste lisible. Les sources de `web-src/` restent la seule version à lire et à modifier.
-Vérifier : `npm test` contrôle que `web/index.html` correspond aux sources, puis lance les tests de l'éditeur dans Chromium (`tests/smoke.mjs`).
+Vérifier : `npm test` fabrique la page, puis lance les tests de l'éditeur dans Chromium (`tests/smoke.mjs`).
 
 ## Règles
 

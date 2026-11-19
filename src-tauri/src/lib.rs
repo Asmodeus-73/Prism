@@ -1,5 +1,7 @@
 mod ai;
+mod crash;
 mod models;
+mod project;
 mod raw;
 mod sd;
 mod sync;
@@ -120,8 +122,11 @@ pub fn run() {
         .manage(ai::AiState::default())
         .manage(sd::SdState::default())
         .manage(tether::TetherState::default())
+        .manage(project::ProjectState::default())
         .setup(|app| {
+            crash::install(app.handle());
             sync::load(app.handle());
+            project::load(app.handle());
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("prismsync", sync::protocol)
@@ -130,6 +135,14 @@ pub fn run() {
             save_file,
             print_page,
             report_issue,
+            crash::crash_log,
+            crash::crash_log_clear,
+            project::project_save_as,
+            project::project_save,
+            project::project_open,
+            project::project_read,
+            project::project_pending,
+            project::project_recent,
             sync::sync_folder,
             sync::sync_choose,
             sync::sync_stop,
@@ -157,8 +170,19 @@ pub fn run() {
             tether::tether_stop,
             tether::tether_read
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Prism");
+        .build(tauri::generate_context!())
+        .expect("error while running Prism")
+        .run(|_app, _event| {
+            // macOS: a .prism file double-clicked in the Finder, or dropped on the Dock icon
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        project::opened(_app, path);
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]

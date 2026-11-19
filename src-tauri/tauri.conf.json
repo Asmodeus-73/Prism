@@ -72,10 +72,25 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": [
-          "French"
-        ]
+          "French",
+          "English"
+        ],
+        "displayLanguageSelector": false
       }
     },
+    "fileAssociations": [
+      {
+        "ext": ["prism"],
+        "name": "Projet Prism",
+        "description": "Projet Prism",
+        "role": "Editor",
+        "mimeType": "application/x-prism-project",
+        "exportedType": {
+          "identifier": "app.prism.photo.project",
+          "conformsTo": ["public.data", "public.zip-archive"]
+        }
+      }
+    ],
     "createUpdaterArtifacts": true,
     "resources": {
       "onnxruntime/*": "onnxruntime/"

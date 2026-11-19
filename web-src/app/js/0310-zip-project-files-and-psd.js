@@ -20,9 +20,11 @@ function safeFileName(n){let s=String(n||'').replace(/[\\/:*?"<>|\u0000-\u001f]+
   if(/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(s))s='_'+s;if(s.length>200){const e=(/\.[a-z0-9]{1,5}$/i.exec(s)||[''])[0];s=s.slice(0,200-e.length)+e}return s}
 async function saveFile(blob,fname){fname=safeFileName(fname);await dlReady;if(dlNS){try{await dlNS.save({filename:fname,data:blob});toast('Fichier enregistré : '+fname);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé');return}}}
   const url=URL.createObjectURL(blob);dialog({title:'Votre fichier est prêt',body:`<p><a class="btn primary" href="${url}" download="${esc(fname)}">Télécharger ${esc(fname)}</a></p><p class="muted">${fmtMo(blob.size)}</p>`,buttons:[{label:'Fermer',onClick:()=>setTimeout(()=>URL.revokeObjectURL(url),1000)}]})}
-async function exportProjectFile(){const d=S.doc;if(!d)return;busy(true,'Préparation du projet…',null);try{d.nosave=false;await flushSave();await saveNow();const m=await IDB.get('projects',d.pid);if(!m)throw new Error('projet non enregistré');const files=[];const seen=new Set();
+/* the project as one zip (revelateur.json + tiles/): "Exporter le projet", and the .prism files of the desktop app (1095) */
+async function projectZip(d=S.doc){d.nosave=false;await flushSave();await saveNow();const m=await IDB.get('projects',d.pid);if(!m)throw new Error('projet non enregistré');const files=[];const seen=new Set();
     for(const k of manifestKeys(m)){if(seen.has(k))continue;seen.add(k);files.push({name:'tiles/'+k+(k===m.thumb?'.jpg':'.png'),data:await IDB.get('blobs',k)})}
-    files.unshift({name:'revelateur.json',data:new TextEncoder().encode(JSON.stringify({...m,sync:false})),compress:true});const z=await makeZip(files);busy(false);
+    files.unshift({name:'revelateur.json',data:new TextEncoder().encode(JSON.stringify({...m,sync:false})),compress:true});return makeZip(files)}
+async function exportProjectFile(){const d=S.doc;if(!d)return;busy(true,'Préparation du projet…',null);try{const z=await projectZip(d);busy(false);
     await saveFile(z,(d.name||'projet').replace(/\.[a-z0-9]+$/i,'').replace(/[\\/:*?"<>|]+/g,'-')+'.prism.zip')}
   catch(e){busy(false);console.error(e);toast('Export du projet impossible : '+(e.message||e),5000)}}
 var importZip; /* défini dans 0830-reglages-developper-panel.js */

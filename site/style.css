@@ -1,5 +1,6 @@
 /* Prism website — shared styles (French pages at the root, English pages in /en/) */
 :root{--bg:#0e0e11;--bg-2:#16161a;--bg-3:#1d1d23;--line:rgba(255,255,255,.08);--line-2:rgba(255,255,255,.14);--fg:#f2f2f5;--fg-2:#a4a4ae;--fg-3:#787884;--accent:#5b67f0;--accent-2:#7b85ff;--accent-soft:rgba(91,103,240,.14);color-scheme:dark}
+@font-face{font-family:Geist;src:url(fonts/Geist.woff2) format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:80px;overflow-x:clip}
 body{margin:0;background:var(--bg);color:var(--fg);font:400 16px/1.6 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}

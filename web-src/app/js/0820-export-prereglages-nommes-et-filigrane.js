@@ -59,6 +59,7 @@ async function backupLibrary(){
       await tick()}
     const z=await makeZip(files);busy(false);
     await saveFile(z,'photothèque-prism-'+new Date().toISOString().slice(0,10)+'.prism-lib.zip');
+    PREF.set('backupAt',Date.now()); // for the reminder (1118)
     toast(ms.length+' projet'+(ms.length>1?'s':'')+' sauvegardé'+(ms.length>1?'s':''))
   }catch(e){busy(false);console.error(e);toast('Sauvegarde impossible : '+(e.message||e),5000)}}
 async function restoreLibrary(file){
